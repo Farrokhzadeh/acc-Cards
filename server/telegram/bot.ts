@@ -9,6 +9,8 @@ import { cancelTelegramCardRequest, createTelegramCardRequest, getCardRequestBin
 import { cancelTelegramFundingRequest, createTelegramFundingRequest, getFundingPolicy, getTelegramFundingRequest, previewFundingQuote } from "@/server/funding/service";
 import { attachTelegramReceipt } from "@/server/funding/receipts";
 import { deletePrivateSupportAttachment, storePrivateSupportAttachment } from "@/server/support/storage";
+import { createKycSubmission, getKycStatusForUser } from "@/server/kyc/service";
+import { KYC, kycConfirmSummary } from "@/server/kyc/messages";
 
 const telegramUserSchema = z.object({
   id: z.number().int().positive(),
@@ -218,9 +220,10 @@ async function mainKeyboard(userId: string): Promise<TelegramInlineKeyboard> {
     ["📄 My requests", "menu.requests"],
     ["➕ Add funds", "menu.add_funds"],
     ["🆕 Request card", "menu.request_card"],
+    ["🪪 Verify identity", "menu.kyc"],
     ["💬 Support", "support.start"],
   ].map(async ([text, action]) => ({ text, callback_data: await createCallbackToken({ userId, action }) })));
-  return { inline_keyboard: [[pairs[0], pairs[1]], [pairs[2], pairs[3]], [pairs[4]]] };
+  return { inline_keyboard: [[pairs[0], pairs[1]], [pairs[2], pairs[3]], [pairs[4], pairs[5]]] };
 }
 
 async function sendMainMenu(client: TelegramClient, user: BotUser, chatId: number) {
@@ -757,6 +760,23 @@ async function handleCallback(client: TelegramClient, callback: z.infer<typeof c
     if (await assertBotAccess(client, user, chatId)) await sendMainMenu(client, user, chatId);
     return;
   }
+  // KYC callbacks run before the account/membership gate so new customers can verify first.
+  if (resolved.action === "menu.kyc" || resolved.action === "kyc.submit" || resolved.action === "kyc.cancel") {
+    if (user.bannedAt) {
+      await client.sendMessage({ chatId, text: KYC.accessDisabled });
+      return;
+    }
+    try {
+      if (resolved.action === "menu.kyc") await beginKyc(client, user, chatId);
+      else if (resolved.action === "kyc.submit") await submitKyc(client, user, chatId);
+      else await cancelKyc(client, user, chatId);
+    } catch (error) {
+      const message = error instanceof ApiError ? error.message : "This action could not be completed right now.";
+      await client.sendMessage({ chatId, text: escapeHtml(message) });
+      await auditTelegramEvent({ userId: user.id, action: "telegram.kyc.failed", entityType: "kyc_submission", requestId, metadata: { action: resolved.action, errorCode: error instanceof ApiError ? error.code : "internal_error" } });
+    }
+    return;
+  }
   if (!(await assertBotAccess(client, user, chatId))) return;
 
   try {
@@ -888,24 +908,253 @@ No Kripicard funding has been executed.` });
 
 }
 
+type KycDraftPayload = {
+  fullName?: string;
+  dateOfBirth?: string | null;
+  country?: string;
+  nationalId?: string;
+  phone?: string;
+  document?: {
+    objectKey: string;
+    mimeType: string;
+    filename: string | null;
+    sizeBytes: number;
+    sha256Hex: string;
+  };
+};
+
+async function setKycState(userId: string, mode: string, payload: KycDraftPayload = {}, ttlMinutes = 30) {
+  await getPool().query(
+    `INSERT INTO telegram_bot_states(user_id, mode, payload, expires_at, updated_at)
+     VALUES ($1::uuid,$2,$3::jsonb,now()+($4::int * interval '1 minute'),now())
+     ON CONFLICT (user_id) DO UPDATE SET mode=EXCLUDED.mode,payload=EXCLUDED.payload,expires_at=EXCLUDED.expires_at,updated_at=now()`,
+    [userId, mode, JSON.stringify(payload), ttlMinutes],
+  );
+}
+
+async function getKycState(userId: string): Promise<{ mode: string; payload: KycDraftPayload } | null> {
+  const result = await getPool().query<{ mode: string; payload: KycDraftPayload }>(
+    `SELECT mode,payload FROM telegram_bot_states WHERE user_id=$1::uuid AND (expires_at IS NULL OR expires_at>now())`,
+    [userId],
+  );
+  const row = result.rows[0];
+  return row ? { mode: row.mode, payload: (row.payload ?? {}) as KycDraftPayload } : null;
+}
+
+async function shouldAutoPromptKyc(userId: string): Promise<boolean> {
+  const enabled = await settingValue("kyc_enabled", true);
+  const autoprompt = await settingValue("kyc_autoprompt", true);
+  if (!enabled || !autoprompt) return false;
+  const status = await getKycStatusForUser(userId);
+  return status === "none" || status === "rejected";
+}
+
+async function sendKycInvite(client: TelegramClient, user: BotUser, chatId: number) {
+  const start = await createCallbackToken({ userId: user.id, action: "menu.kyc", ttlMinutes: 30 });
+  await client.sendMessage({
+    chatId,
+    text: KYC.invite,
+    replyMarkup: { inline_keyboard: [[{ text: KYC.inviteButton, callback_data: start }]] },
+  });
+}
+
+async function beginKyc(client: TelegramClient, user: BotUser, chatId: number) {
+  const enabled = await settingValue("kyc_enabled", true);
+  if (!enabled) { await client.sendMessage({ chatId, text: KYC.featureDisabled }); return; }
+  const status = await getKycStatusForUser(user.id);
+  if (status === "approved") { await client.sendMessage({ chatId, text: KYC.alreadyApproved }); return; }
+  if (status === "pending") { await client.sendMessage({ chatId, text: KYC.alreadyPending }); return; }
+  await setKycState(user.id, "kyc_fullname", {}, 30);
+  await client.sendMessage({ chatId, text: KYC.intro });
+}
+
+async function handleKycText(client: TelegramClient, user: BotUser, chatId: number, text: string): Promise<boolean> {
+  const state = await getKycState(user.id);
+  if (!state || !state.mode.startsWith("kyc_")) return false;
+  const draft: KycDraftPayload = { ...(state.payload ?? {}) };
+  const value = text.trim();
+
+  if (state.mode === "kyc_fullname") {
+    if (value.length < 3 || value.length > 120) { await client.sendMessage({ chatId, text: KYC.errFullName }); return true; }
+    draft.fullName = value;
+    await setKycState(user.id, "kyc_dob", draft);
+    await client.sendMessage({ chatId, text: KYC.askDob });
+    return true;
+  }
+  if (state.mode === "kyc_dob") {
+    if (!validDob(value)) { await client.sendMessage({ chatId, text: KYC.errDob }); return true; }
+    draft.dateOfBirth = value;
+    await setKycState(user.id, "kyc_country", draft);
+    await client.sendMessage({ chatId, text: KYC.askCountry });
+    return true;
+  }
+  if (state.mode === "kyc_country") {
+    if (value.length < 2 || value.length > 80) { await client.sendMessage({ chatId, text: KYC.errCountry }); return true; }
+    draft.country = value;
+    await setKycState(user.id, "kyc_national_id", draft);
+    await client.sendMessage({ chatId, text: KYC.askNationalId });
+    return true;
+  }
+  if (state.mode === "kyc_national_id") {
+    if (value.length < 3 || value.length > 40) { await client.sendMessage({ chatId, text: KYC.errNationalId }); return true; }
+    draft.nationalId = value;
+    await setKycState(user.id, "kyc_phone", draft);
+    await client.sendMessage({ chatId, text: KYC.askPhone });
+    return true;
+  }
+  if (state.mode === "kyc_phone") {
+    if (!/^\+?[0-9][0-9 ()-]{6,20}$/.test(value)) { await client.sendMessage({ chatId, text: KYC.errPhone }); return true; }
+    draft.phone = value;
+    await setKycState(user.id, "kyc_document", draft, 30);
+    await client.sendMessage({ chatId, text: KYC.askDocument });
+    return true;
+  }
+  if (state.mode === "kyc_document") {
+    await client.sendMessage({ chatId, text: KYC.askDocument });
+    return true;
+  }
+  if (state.mode === "kyc_confirm") {
+    await client.sendMessage({ chatId, text: KYC.useButtons });
+    return true;
+  }
+  return false;
+}
+
+async function handleKycMedia(client: TelegramClient, user: BotUser, chatId: number, message: z.infer<typeof messageSchema>): Promise<boolean> {
+  const state = await getKycState(user.id);
+  if (!state || state.mode !== "kyc_document") return false;
+  const photo = message.photo?.at(-1);
+  const document = message.document;
+  const selected = document ?? photo;
+  if (!selected) { await client.sendMessage({ chatId, text: KYC.askDocument }); return true; }
+  if (document?.mime_type && !["image/jpeg", "image/png", "image/webp", "application/pdf"].includes(document.mime_type)) {
+    await client.sendMessage({ chatId, text: KYC.errDocType });
+    return true;
+  }
+  const env = parseServerEnv(process.env);
+  if (selected.file_size && selected.file_size > env.SUPPORT_ATTACHMENT_MAX_BYTES) {
+    await client.sendMessage({ chatId, text: KYC.errDocSize });
+    return true;
+  }
+  try {
+    const file = await client.getFile(selected.file_id);
+    if (!file.file_path) throw new ApiError(502, "telegram_file_missing_path", "Telegram did not provide a downloadable path for this file.");
+    const bytes = await client.downloadFile(file.file_path, env.SUPPORT_ATTACHMENT_MAX_BYTES);
+    const stored = await storePrivateSupportAttachment({
+      conversationId: user.id,
+      bytes,
+      originalFilename: document?.file_name ?? `kyc-${message.message_id}.jpg`,
+      declaredMimeType: document?.mime_type ?? "image/jpeg",
+    });
+    if (state.payload?.document?.objectKey && state.payload.document.objectKey !== stored.objectKey) {
+      await deletePrivateSupportAttachment(state.payload.document.objectKey).catch(() => {});
+    }
+    const draft: KycDraftPayload = {
+      ...(state.payload ?? {}),
+      document: {
+        objectKey: stored.objectKey,
+        mimeType: stored.detectedMimeType,
+        filename: stored.originalFilename,
+        sizeBytes: stored.sizeBytes,
+        sha256Hex: stored.sha256Hex,
+      },
+    };
+    await sendKycConfirm(client, user, chatId, draft);
+  } catch (error) {
+    await client.sendMessage({ chatId, text: error instanceof ApiError ? escapeHtml(error.message) : KYC.errDocGeneric });
+  }
+  return true;
+}
+
+async function sendKycConfirm(client: TelegramClient, user: BotUser, chatId: number, draft: KycDraftPayload) {
+  if (!draft.fullName || !draft.country || !draft.nationalId || !draft.phone || !draft.document) {
+    throw new ApiError(409, "kyc_incomplete", "This KYC draft is incomplete. Send /kyc to start again.");
+  }
+  await setKycState(user.id, "kyc_confirm", draft, 20);
+  const submit = await createCallbackToken({ userId: user.id, action: "kyc.submit", singleUse: true, ttlMinutes: 20 });
+  const cancel = await createCallbackToken({ userId: user.id, action: "kyc.cancel", singleUse: true, ttlMinutes: 20 });
+  const text = kycConfirmSummary({
+    fullName: escapeHtml(draft.fullName),
+    dateOfBirth: escapeHtml(draft.dateOfBirth ?? "—"),
+    country: escapeHtml(draft.country),
+    nationalId: escapeHtml(draft.nationalId),
+    phone: escapeHtml(draft.phone),
+  });
+  await client.sendMessage({
+    chatId,
+    text,
+    replyMarkup: { inline_keyboard: [[{ text: "✅ Submit / ثبت", callback_data: submit }], [{ text: "❌ Cancel / لغو", callback_data: cancel }]] },
+  });
+}
+
+async function submitKyc(client: TelegramClient, user: BotUser, chatId: number) {
+  const state = await getKycState(user.id);
+  if (!state || state.mode !== "kyc_confirm") throw new ApiError(409, "kyc_expired", "This KYC session expired. Send /kyc to start again.");
+  const draft = state.payload;
+  if (!draft.fullName || !draft.country || !draft.nationalId || !draft.phone) {
+    throw new ApiError(409, "kyc_incomplete", "This KYC draft is incomplete. Send /kyc to start again.");
+  }
+  const created = await createKycSubmission({
+    telegramUserId: user.id,
+    fullName: draft.fullName,
+    dateOfBirth: draft.dateOfBirth ?? null,
+    country: draft.country,
+    nationalId: draft.nationalId,
+    phone: draft.phone,
+    document: draft.document ?? null,
+  });
+  await getPool().query(`DELETE FROM telegram_bot_states WHERE user_id=$1::uuid`, [user.id]);
+  await auditTelegramEvent({ userId: user.id, action: "telegram.kyc.submitted", entityType: "kyc_submission", entityId: created.id });
+  await client.sendMessage({ chatId, text: KYC.submitted });
+}
+
+async function cancelKyc(client: TelegramClient, user: BotUser, chatId: number) {
+  const state = await getKycState(user.id);
+  if (state?.payload?.document?.objectKey) {
+    await deletePrivateSupportAttachment(state.payload.document.objectKey).catch(() => {});
+  }
+  await getPool().query(`DELETE FROM telegram_bot_states WHERE user_id=$1::uuid`, [user.id]);
+  await client.sendMessage({ chatId, text: KYC.cancelled });
+  if (await assertBotAccess(client, user, chatId)) await sendMainMenu(client, user, chatId);
+}
+
 async function handleMessage(client: TelegramClient, message: z.infer<typeof messageSchema>, user: BotUser) {
   const chatId = message.chat.id;
   if (message.chat.type !== "private") return;
   const text = message.text?.trim() ?? "";
+
+  if (user.bannedAt) {
+    await client.sendMessage({ chatId, text: KYC.accessDisabled });
+    return;
+  }
+
   if (text === "/cancel") {
     const state = await getBotState(user.id);
     if (state?.mode === "funding_request_receipt" && state.payload?.fundingRequestId) {
       await cancelTelegramFundingRequest(user.id, state.payload.fundingRequestId).catch(() => {});
     }
+    const kycState = await getKycState(user.id);
+    if (kycState?.payload?.document?.objectKey) {
+      await deletePrivateSupportAttachment(kycState.payload.document.objectKey).catch(() => {});
+    }
     await getPool().query(`DELETE FROM telegram_bot_states WHERE user_id = $1::uuid`, [user.id]);
+    if (await assertBotAccess(client, user, chatId)) await sendMainMenu(client, user, chatId);
+    else if (await shouldAutoPromptKyc(user.id)) await sendKycInvite(client, user, chatId);
+    return;
+  }
+
+  // KYC runs before the account/membership gate so brand-new customers can verify identity first.
+  if (await handleKycMedia(client, user, chatId, message)) return;
+  if (text && (await handleKycText(client, user, chatId, text))) return;
+  if (text === "/kyc") { await beginKyc(client, user, chatId); return; }
+
+  if (text === "/start" || text === "/menu") {
+    if (await shouldAutoPromptKyc(user.id)) { await sendKycInvite(client, user, chatId); return; }
     if (await assertBotAccess(client, user, chatId)) await sendMainMenu(client, user, chatId);
     return;
   }
+
   if (!(await assertBotAccess(client, user, chatId))) return;
-  if (text === "/start" || text === "/menu") {
-    await sendMainMenu(client, user, chatId);
-    return;
-  }
   if (await handleFundingReceiptMedia(client,user,chatId,message)) return;
   if (text && await handleCardRequestText(client, user, chatId, text)) return;
   if (text && await handleFundingRequestText(client,user,chatId,text)) return;

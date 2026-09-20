@@ -46,7 +46,7 @@ import {
   XCircle,
 } from "lucide-react";
 import { toast } from "sonner";
-import { AdminApiError, createAccount, fetchDashboardSnapshot, reauthenticateAdmin, revealAccountSecrets, updateAccount, verifyAccountConnection, syncAccountCards, revealLiveCardDetails, syncCardTransactions, fetchCardTransactions, fetchTransactions, fetchTransactionNotificationIssues, reconcileTransactionNotification, setCardFrozenState, refreshCardStatus, connectOutlookMailbox, syncOutlookMailbox, disconnectOutlookMailbox, connectGmailMailbox, syncGmailMailbox, disconnectGmailMailbox, fetchAccountEmailMessages, fetchTelegramBotStatus, configureTelegramWebhook, fetchForceJoinChannels, upsertForceJoinChannel, deleteForceJoinChannel, fetchSupportConversations, updateSupportConversation, retrySupportMessage, fetchClientSupportMessages, sendClientSupportMessage, fetchClientAssignableAccounts, assignClientAccount, unassignClientAccount, unassignAllClientAccounts, fetchCardRequests, reviewCardRequest, issueCardRequest, reconcileCardRequest, fetchFundingRequests, reviewFundingRequest, executeFundingRequest, reconcileFundingRequest, resolveFundingRequest, fundingReceiptDownloadUrl, fetchFundingSettings, updateFundingSettings, type ApiCardRequest, type ApiFundingRequest, type AssignableClientAccount, type LiveCardDetails, type StoredCardTransaction, type StoredEmailMessage, type TelegramBotStatus, fetchProviderReadiness, type ProviderReadinessSnapshot, type TransactionNotificationIssue, type SupportConversationSummary, fetchOperationalSnapshot, updateOperationalAlert, updateRuntimeControl, type OperationalSnapshot } from "@/lib/admin-api";
+import { AdminApiError, createAccount, fetchDashboardSnapshot, reauthenticateAdmin, revealAccountSecrets, updateAccount, verifyAccountConnection, syncAccountCards, revealLiveCardDetails, syncCardTransactions, fetchCardTransactions, fetchTransactions, fetchTransactionNotificationIssues, reconcileTransactionNotification, setCardFrozenState, refreshCardStatus, connectOutlookMailbox, syncOutlookMailbox, disconnectOutlookMailbox, connectGmailMailbox, syncGmailMailbox, disconnectGmailMailbox, fetchAccountEmailMessages, fetchTelegramBotStatus, configureTelegramWebhook, fetchForceJoinChannels, upsertForceJoinChannel, deleteForceJoinChannel, fetchSupportConversations, updateSupportConversation, retrySupportMessage, fetchClientSupportMessages, sendClientSupportMessage, fetchClientAssignableAccounts, assignClientAccount, unassignClientAccount, unassignAllClientAccounts, fetchCardRequests, reviewCardRequest, issueCardRequest, reconcileCardRequest, fetchFundingRequests, reviewFundingRequest, executeFundingRequest, reconcileFundingRequest, resolveFundingRequest, fundingReceiptDownloadUrl, fetchFundingSettings, updateFundingSettings, type ApiCardRequest, type ApiFundingRequest, type AssignableClientAccount, type LiveCardDetails, type StoredCardTransaction, type StoredEmailMessage, type TelegramBotStatus, fetchProviderReadiness, type ProviderReadinessSnapshot, type TransactionNotificationIssue, type SupportConversationSummary, fetchOperationalSnapshot, updateOperationalAlert, updateRuntimeControl, type OperationalSnapshot, fetchKycSubmissions, reviewKycSubmission, kycDocumentUrl, type ApiKycSubmission } from "@/lib/admin-api";
 import { disableAdminMfa, enableAdminMfa, fetchCurrentAdmin, logoutAdmin, setupAdminMfa, type CurrentAdmin } from "@/lib/auth-client";
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -143,6 +143,7 @@ type View =
   | "overview"
   | "accounts"
   | "clients"
+  | "kyc"
   | "requests"
   | "transactions"
   | "inbox"
@@ -496,6 +497,7 @@ const navItems: { view: View; label: string; icon: typeof LayoutDashboard; badge
   { view: "overview", label: "Overview", icon: LayoutDashboard },
   { view: "accounts", label: "Accounts", icon: WalletCards },
   { view: "clients", label: "Clients", icon: Users },
+  { view: "kyc", label: "KYC", icon: UserRoundCheck },
   { view: "requests", label: "Requests", icon: ReceiptText, badge: "4" },
   { view: "transactions", label: "Transactions", icon: ArrowLeftRight },
   { view: "inbox", label: "Inbox", icon: MessagesSquare, badge: "2" },
@@ -507,6 +509,7 @@ const viewCopy: Record<View, { title: string; description: string }> = {
   overview: { title: "Overview", description: "Card operations across every connected account." },
   accounts: { title: "Kripicard accounts", description: "API connections, card funding, and card exposure." },
   clients: { title: "Telegram clients", description: "Account assignments, cards, access, and activity." },
+  kyc: { title: "Customer KYC", description: "Identity verifications submitted through the Telegram bot." },
   requests: { title: "Requests", description: "Review client payments and new card requests." },
   transactions: { title: "Transactions", description: "Provider activity across every client card." },
   inbox: { title: "Client inbox", description: "Handle Telegram support without leaving the console." },
@@ -2009,7 +2012,7 @@ export default function DashboardApp() {
 
         <main className="flex-1 overflow-x-hidden px-4 py-6 md:px-8 md:py-8">
           <div className="mx-auto max-w-[1440px]">
-            {!(["overview", "settings"] as View[]).includes(view) && <div className="relative mb-4 sm:hidden"><Search className="absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-[#9d99aa]" /><Input value={search} onChange={(event) => setSearch(event.target.value)} placeholder={`Search ${viewCopy[view].title.toLowerCase()}`} className="h-11 rounded-[14px] border-[#e5e3ec] bg-white pl-10 shadow-sm" /></div>}
+            {!(["overview", "settings", "kyc"] as View[]).includes(view) && <div className="relative mb-4 sm:hidden"><Search className="absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-[#9d99aa]" /><Input value={search} onChange={(event) => setSearch(event.target.value)} placeholder={`Search ${viewCopy[view].title.toLowerCase()}`} className="h-11 rounded-[14px] border-[#e5e3ec] bg-white pl-10 shadow-sm" /></div>}
             {view === "overview" && (
               <Overview
                 accounts={accounts}
@@ -2048,6 +2051,7 @@ export default function DashboardApp() {
                 accountName={accountName}
               />
             )}
+            {view === "kyc" && <KycView />}
             {view === "requests" && (
               <RequestsView
                 fundingRequests={fundingRequests}
@@ -2579,6 +2583,162 @@ export default function DashboardApp() {
 
       <Toaster richColors position="top-right" />
     </SidebarProvider>
+  );
+}
+
+function KycDetailField({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-[14px] border border-[#ece9f2] bg-[#faf9fc] p-3">
+      <p className="text-[11px] font-semibold uppercase tracking-wide text-[#9692a3]">{label}</p>
+      <p className="mt-1 break-words text-sm text-[#2c2940]">{value}</p>
+    </div>
+  );
+}
+
+function KycView() {
+  const [items, setItems] = useState<ApiKycSubmission[]>([]);
+  const [filter, setFilter] = useState<"pending" | "approved" | "rejected" | "all">("pending");
+  const [search, setSearch] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [tick, setTick] = useState(0);
+  const [selected, setSelected] = useState<ApiKycSubmission | null>(null);
+  const [note, setNote] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    setLoading(true);
+    fetchKycSubmissions({ status: filter, search: search || undefined, limit: 50 }, controller.signal)
+      .then((res) => setItems(res.items))
+      .catch((error) => {
+        if (error instanceof DOMException && error.name === "AbortError") return;
+        toast.error(error instanceof AdminApiError ? error.message : "Could not load KYC submissions.");
+      })
+      .finally(() => setLoading(false));
+    return () => controller.abort();
+  }, [filter, search, tick]);
+
+  async function decide(decision: "approve" | "reject") {
+    if (!selected) return;
+    setBusy(true);
+    try {
+      await reviewKycSubmission(selected.id, { decision, note: note.trim() || null });
+      toast.success(decision === "approve" ? "Customer approved." : "Customer rejected.");
+      setSelected(null);
+      setNote("");
+      setTick((t) => t + 1);
+    } catch (error) {
+      toast.error(error instanceof AdminApiError ? error.message : "Could not update the submission.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const filters: Array<{ id: "pending" | "approved" | "rejected" | "all"; label: string }> = [
+    { id: "pending", label: "Pending" },
+    { id: "approved", label: "Approved" },
+    { id: "rejected", label: "Rejected" },
+    { id: "all", label: "All" },
+  ];
+
+  const badgeClass = (s: ApiKycSubmission["status"]) =>
+    s === "approved"
+      ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+      : s === "rejected"
+        ? "border-red-200 bg-red-50 text-red-700"
+        : "border-amber-200 bg-amber-50 text-amber-700";
+
+  return (
+    <div>
+      <PageIntro
+        title="Customer KYC"
+        description="Identity verifications submitted through the Telegram bot. Review who your customers are."
+        action={<Button variant="outline" className="rounded-xl" onClick={() => setTick((t) => t + 1)}><RefreshCw className="size-4" />Refresh</Button>}
+      />
+
+      <div className="mb-4 flex flex-wrap items-center gap-2">
+        {filters.map((f) => (
+          <Button key={f.id} variant={filter === f.id ? "default" : "outline"} className="rounded-full" onClick={() => setFilter(f.id)}>{f.label}</Button>
+        ))}
+        <div className="relative ml-auto w-full sm:w-72">
+          <Search className="absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-[#9d99aa]" />
+          <Input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search name, ID, phone…" className="h-11 rounded-[14px] border-[#e5e3ec] bg-white pl-10 shadow-sm" />
+        </div>
+      </div>
+
+      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)]">
+        <Card className="surface-card rounded-[20px]">
+          <CardHeader><CardTitle className="text-[16px]">Submissions {items.length ? <span className="text-[#9692a3]">({items.length})</span> : null}</CardTitle></CardHeader>
+          <CardContent className="space-y-2">
+            {loading ? (
+              <div className="rounded-2xl border border-dashed p-8 text-center text-sm text-[#9692a3]">Loading…</div>
+            ) : items.length === 0 ? (
+              <div className="rounded-2xl border border-dashed p-8 text-center text-sm text-[#9692a3]">No {filter === "all" ? "" : `${filter} `}submissions.</div>
+            ) : (
+              items.map((item) => (
+                <button
+                  key={item.id}
+                  onClick={() => { setSelected(item); setNote(item.reviewNote ?? ""); }}
+                  className={`flex w-full items-center justify-between gap-3 rounded-[16px] border p-3 text-left transition ${selected?.id === item.id ? "border-[#6157e7] bg-[#f6f5ff]" : "border-[#ece9f2] bg-white hover:bg-[#faf9fc]"}`}
+                >
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-semibold text-[#2c2940]">{item.fullName}</p>
+                    <p className="truncate text-xs text-[#8f8b9c]">{item.country} · {item.customer.username ? `@${item.customer.username}` : item.customer.displayName ?? `TG ${item.customer.telegramUserId}`}</p>
+                  </div>
+                  <Badge variant="outline" className={`shrink-0 rounded-full ${badgeClass(item.status)}`}>{item.status}</Badge>
+                </button>
+              ))
+            )}
+          </CardContent>
+        </Card>
+
+        <Card className="surface-card rounded-[20px]">
+          <CardHeader><CardTitle className="text-[16px]">Detail</CardTitle></CardHeader>
+          <CardContent>
+            {!selected ? (
+              <div className="rounded-2xl border border-dashed p-8 text-center text-sm text-[#9692a3]">Select a submission to review it.</div>
+            ) : (
+              <div className="space-y-4">
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <KycDetailField label="Full name" value={selected.fullName} />
+                  <KycDetailField label="Date of birth" value={selected.dateOfBirth ?? "—"} />
+                  <KycDetailField label="Country" value={selected.country} />
+                  <KycDetailField label="National ID" value={selected.nationalId} />
+                  <KycDetailField label="Phone" value={selected.phone} />
+                  <KycDetailField label="Telegram" value={selected.customer.username ? `@${selected.customer.username}` : selected.customer.displayName ?? `ID ${selected.customer.telegramUserId}`} />
+                </div>
+
+                <div>
+                  <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-[#9692a3]">ID document</p>
+                  {selected.hasDocument ? (
+                    selected.documentMimeType?.startsWith("image/") ? (
+                      <img src={kycDocumentUrl(selected.id)} alt="KYC document" className="max-h-72 w-full rounded-[16px] border border-[#ece9f2] object-contain" />
+                    ) : (
+                      <a href={kycDocumentUrl(selected.id)} target="_blank" rel="noreferrer"><Button variant="outline" className="rounded-xl"><FileText className="size-4" />Open document</Button></a>
+                    )
+                  ) : (
+                    <p className="text-sm text-[#9692a3]">No document attached.</p>
+                  )}
+                </div>
+
+                <div>
+                  <Label htmlFor="kyc-note">Review note (optional)</Label>
+                  <Textarea id="kyc-note" value={note} onChange={(event) => setNote(event.target.value)} placeholder="Add a note for the record…" className="mt-1 min-h-20 rounded-[14px]" />
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <Badge variant="outline" className={`rounded-full ${badgeClass(selected.status)}`}>{selected.status}</Badge>
+                  <div className="ml-auto flex gap-2">
+                    <Button variant="outline" className="rounded-xl border-red-200 text-red-700 hover:bg-red-50" disabled={busy} onClick={() => decide("reject")}><XCircle className="size-4" />Reject</Button>
+                    <Button className="rounded-xl" disabled={busy} onClick={() => decide("approve")}><Check className="size-4" />Approve</Button>
+                  </div>
+                </div>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+    </div>
   );
 }
 

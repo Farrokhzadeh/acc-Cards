@@ -703,3 +703,56 @@ export async function updateRuntimeControl(key: OperationalSnapshot["controls"][
     body: JSON.stringify({ enabled, reason }),
   });
 }
+
+// --- KYC (Know Your Customer) ---
+
+export type ApiKycSubmission = {
+  id: string;
+  telegramUserId: string;
+  fullName: string;
+  dateOfBirth: string | null;
+  country: string;
+  nationalId: string;
+  phone: string;
+  hasDocument: boolean;
+  documentMimeType: string | null;
+  documentFilename: string | null;
+  status: "pending" | "approved" | "rejected";
+  reviewNote: string | null;
+  reviewedBy: string | null;
+  reviewedAt: string | null;
+  submittedAt: string;
+  createdAt: string;
+  customer: { displayName: string | null; username: string | null; telegramUserId: string };
+};
+
+export async function fetchKycSubmissions(
+  params?: { status?: "pending" | "approved" | "rejected" | "all"; search?: string; limit?: number; cursor?: string },
+  signal?: AbortSignal,
+): Promise<{ items: ApiKycSubmission[]; nextCursor: string | null }> {
+  const qs = new URLSearchParams();
+  if (params?.status && params.status !== "all") qs.set("status", params.status);
+  if (params?.search) qs.set("search", params.search);
+  if (params?.limit) qs.set("limit", String(params.limit));
+  if (params?.cursor) qs.set("cursor", params.cursor);
+  const suffix = qs.toString() ? `?${qs.toString()}` : "";
+  return apiJson<{ items: ApiKycSubmission[]; nextCursor: string | null }>(`/api/v1/kyc${suffix}`, { method: "GET", signal });
+}
+
+export async function fetchKycSubmission(id: string, signal?: AbortSignal): Promise<ApiKycSubmission> {
+  return apiJson<ApiKycSubmission>(`/api/v1/kyc/${encodeURIComponent(id)}`, { method: "GET", signal });
+}
+
+export async function reviewKycSubmission(
+  id: string,
+  input: { decision: "approve" | "reject"; note?: string | null },
+): Promise<{ ok: true; status: "pending" | "approved" | "rejected" }> {
+  return apiJson<{ ok: true; status: "pending" | "approved" | "rejected" }>(
+    `/api/v1/kyc/${encodeURIComponent(id)}/review`,
+    { method: "POST", body: JSON.stringify(input) },
+  );
+}
+
+export function kycDocumentUrl(id: string): string {
+  return `/api/v1/kyc/${encodeURIComponent(id)}/document`;
+}
