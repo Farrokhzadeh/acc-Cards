@@ -10,7 +10,8 @@ import { cancelTelegramFundingRequest, createTelegramFundingRequest, getFundingP
 import { attachTelegramReceipt } from "@/server/funding/receipts";
 import { deletePrivateSupportAttachment, storePrivateSupportAttachment } from "@/server/support/storage";
 import { createKycSubmission, getKycStatusForUser } from "@/server/kyc/service";
-import { KYC, kycConfirmSummary, pick, MENU, COMMON } from "@/server/kyc/messages";
+import { KYC, kycConfirmSummary, pick, MENU, COMMON, PAYMENT } from "@/server/kyc/messages";
+import { getPaymentCard } from "@/server/settings/payment-card";
 import { getTelegramClient } from "@/server/telegram/credentials";
 
 const telegramUserSchema = z.object({
@@ -245,6 +246,18 @@ async function sendLangPicker(client: TelegramClient, user: BotUser, chatId: num
   });
 }
 
+async function sendPaymentInfo(client: TelegramClient, user: BotUser, chatId: number) {
+  const pc = await getPaymentCard();
+  if (!pc.cardNumber) {
+    await client.sendMessage({ chatId, text: pick(PAYMENT.notConfigured, user.lang) });
+    return;
+  }
+  const text = pick(PAYMENT.info, user.lang)
+    .replace("{card}", escapeHtml(pc.cardNumber))
+    .replace("{holder}", escapeHtml(pc.cardHolder || "—"));
+  await client.sendMessage({ chatId, text });
+}
+
 // Route a user "home" (/start, /menu, or right after choosing a language) with
 // messaging that reflects their real KYC / account state instead of a generic error.
 async function routeHome(client: TelegramClient, user: BotUser, chatId: number) {
@@ -252,8 +265,10 @@ async function routeHome(client: TelegramClient, user: BotUser, chatId: number) 
   const st = await getKycStatusForUser(user.id);
   if (st === "none" || st === "rejected") { await sendKycInvite(client, user, chatId); return; }
   if (st === "pending") { await client.sendMessage({ chatId, text: pick(KYC.alreadyPending, user.lang) }); return; }
-  if (await assertBotAccess(client, user, chatId)) await sendMainMenu(client, user, chatId);
-  else await client.sendMessage({ chatId, text: pick(KYC.approvedNoAccount, user.lang) });
+  if (user.bannedAt) { await client.sendMessage({ chatId, text: pick(KYC.accessDisabled, user.lang) }); return; }
+  const cards = await userCards(user.id);
+  if (!cards.length) await sendPaymentInfo(client, user, chatId);
+  await sendMainMenu(client, user, chatId);
 }
 
 async function sendMainMenu(client: TelegramClient, user: BotUser, chatId: number) {
@@ -574,7 +589,7 @@ function formatRialValue(value: string) {
 async function beginFundingRequest(client: TelegramClient, user: BotUser, chatId: number) {
   const cards = await userCards(user.id);
   if (!cards.length) {
-    await client.sendMessage({ chatId, text: "You do not currently have an assigned card that can receive a funding request." });
+    await sendPaymentInfo(client, user, chatId);
     return;
   }
   const rows: TelegramInlineKeyboard["inline_keyboard"] = [];

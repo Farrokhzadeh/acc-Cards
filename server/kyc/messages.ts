@@ -85,6 +85,14 @@ export const COMMON = {
   kycNone: m("not verified", "تأیید نشده"),
 };
 
+export const PAYMENT = {
+  info: m(
+    "💳 <b>Make your payment</b>\nSend your payment to the card below; our team will activate your card after confirmation.\nCard number: <code>{card}</code>\nCard holder: <b>{holder}</b>",
+    "💳 <b>پرداخت خود را انجام دهید</b>\nمبلغ را به کارت زیر واریز کنید؛ پس از تأیید، تیم ما کارت شما را فعال می‌کند.\nشماره کارت: <code>{card}</code>\nبه نام: <b>{holder}</b>",
+  ),
+  notConfigured: m("Payment card is not configured yet. Please contact support.", "کارت پرداخت هنوز تنظیم نشده است. لطفاً با پشتیبانی تماس بگیرید."),
+};
+
 // Confirmation summary for the KYC review step (single language).
 export function kycConfirmSummary(
   f: { fullName: string; dateOfBirth: string; country: string; nationalId: string; phone: string },

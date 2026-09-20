@@ -339,6 +339,14 @@ export async function clearTelegramBotToken() {
   return apiJson<{ ok: true }>("/api/v1/telegram/bot-token", { method: "DELETE" });
 }
 
+export async function fetchPaymentCard() {
+  return apiJson<{ cardNumber: string; cardHolder: string }>("/api/v1/settings/payment-card", { method: "GET" });
+}
+
+export async function updatePaymentCard(input: { cardNumber: string; cardHolder: string }) {
+  return apiJson<{ ok: true }>("/api/v1/settings/payment-card", { method: "PUT", body: JSON.stringify(input) });
+}
+
 export async function fetchForceJoinChannels() {
   return apiJson<{ items: Array<{ id: string; chatId: string; title: string; inviteUrl: string | null; enabled: boolean; sortOrder: number }> }>("/api/v1/telegram/force-join-channels", { method: "GET" });
 }
