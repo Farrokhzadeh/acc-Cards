@@ -1,3 +1,25 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+echo "🧹 Starting AccAbad-Cards cleanup..."
+
+# 1. Remove useless Phase implementation logs
+echo "Removing Phase implementation logs..."
+rm -f PHASE-*-IMPLEMENTATION.md
+rm -f AccAbad-Demo-to-Production-Phases.md
+
+# 2. Organize remaining docs into a 'docs' folder
+echo "Organizing remaining documentation..."
+mkdir -p docs
+
+# Move files only if they exist to avoid errors
+[ -f KRIPICARD-PROVIDER-CONTRACT.md ] && mv KRIPICARD-PROVIDER-CONTRACT.md docs/
+[ -f PROVIDER-READINESS-QUESTIONS.md ] && mv PROVIDER-READINESS-QUESTIONS.md docs/
+[ -f RECOVERY-RUNBOOK.md ] && mv RECOVERY-RUNBOOK.md docs/
+
+# 3. Write the new clean README.md
+echo "Updating README.md..."
+cat << 'EOF' > README.md
 # AccAbad Admin
 
 **Secure, multi-tenant card issuance and management platform.**
