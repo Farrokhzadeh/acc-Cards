@@ -10,7 +10,7 @@ import { cancelTelegramFundingRequest, createTelegramFundingRequest, getFundingP
 import { attachTelegramReceipt } from "@/server/funding/receipts";
 import { deletePrivateSupportAttachment, storePrivateSupportAttachment } from "@/server/support/storage";
 import { createKycSubmission, getKycStatusForUser } from "@/server/kyc/service";
-import { KYC, kycConfirmSummary, pick, MENU, COMMON, PAYMENT } from "@/server/kyc/messages";
+import { KYC, kycConfirmSummary, pick, MENU, COMMON, PAYMENT, FLOW } from "@/server/kyc/messages";
 import { getPaymentCard } from "@/server/settings/payment-card";
 import { getTelegramClient } from "@/server/telegram/credentials";
 
@@ -345,7 +345,14 @@ function formatUsdCents(value: string | bigint | null) {
 async function sendCards(client: TelegramClient, user: BotUser, chatId: number) {
   const cards = await userCards(user.id);
   if (!cards.length) {
-    await client.sendMessage({ chatId, text: "No cards are currently available on your assigned account(s).", replyMarkup: { inline_keyboard: [[{ text: "← Main menu", callback_data: await createCallbackToken({ userId: user.id, action: "menu.home" }) }]] } });
+    const verify = await createCallbackToken({ userId: user.id, action: "menu.kyc" });
+    const pay = await createCallbackToken({ userId: user.id, action: "menu.payment" });
+    const home = await createCallbackToken({ userId: user.id, action: "menu.home" });
+    await client.sendMessage({
+      chatId,
+      text: pick(FLOW.emptyCards, user.lang),
+      replyMarkup: { inline_keyboard: [[{ text: pick(MENU.verify, user.lang), callback_data: verify }], [{ text: pick(MENU.payment, user.lang), callback_data: pay }], [{ text: pick(MENU.back, user.lang), callback_data: home }]] },
+    });
     return;
   }
   const rows: TelegramInlineKeyboard["inline_keyboard"] = [];
@@ -353,8 +360,8 @@ async function sendCards(client: TelegramClient, user: BotUser, chatId: number) 
     const token = await createCallbackToken({ userId: user.id, action: "card.detail", entityId: card.id });
     rows.push([{ text: `${card.status === "frozen" ? "❄️" : "💳"} ${card.label || "Card"} •${card.last4 ?? "????"}`, callback_data: token }]);
   }
-  rows.push([{ text: "← Main menu", callback_data: await createCallbackToken({ userId: user.id, action: "menu.home" }) }]);
-  await client.sendMessage({ chatId, text: "<b>Your cards</b>\nCards are resolved from your current account assignments.", replyMarkup: { inline_keyboard: rows } });
+  rows.push([{ text: pick(MENU.back, user.lang), callback_data: await createCallbackToken({ userId: user.id, action: "menu.home" }) }]);
+  await client.sendMessage({ chatId, text: pick(FLOW.cardsHeader, user.lang), replyMarkup: { inline_keyboard: rows } });
 }
 
 async function sendCardDetail(client: TelegramClient, user: BotUser, chatId: number, cardId: string) {
@@ -380,7 +387,7 @@ async function sendTransactions(client: TelegramClient, user: BotUser, chatId: n
     const amount = `${Number(BigInt(tx.amountMinor)) / 100} ${escapeHtml(tx.currency)}`;
     const merchant = escapeHtml(tx.merchant || tx.type || "Transaction");
     return `• ${merchant} — ${amount} — ${escapeHtml(tx.status)}`;
-  }).join("\n") : "No synchronized transactions are stored for this card yet.";
+  }).join("\n") : pick(FLOW.emptyTransactions, user.lang);
   const back = await createCallbackToken({ userId: user.id, action: "card.detail", entityId: cardId });
   await client.sendMessage({ chatId, text: `<b>Recent transactions · •${escapeHtml(card.last4 ?? "????")}</b>\n${lines}`, replyMarkup: { inline_keyboard: [[{ text: "← Card", callback_data: back }]] } });
 }
@@ -401,10 +408,13 @@ async function sendRequests(client: TelegramClient, user: BotUser, chatId: numbe
   for (const request of funding.rows) {
     rows.push([{ text: `${request.reference} · ${request.status}`, callback_data: await createCallbackToken({ userId: user.id, action: "fundreq.detail", entityId: request.id }) }]);
   }
-  const text = cardRequests.rows.length || funding.rows.length
-    ? `<b>My requests</b>\nTap a request below to see its current status and timeline.`
-    : "<b>My requests</b>\nYou do not have any requests yet.";
-  rows.push([{ text: "← Main menu", callback_data: await createCallbackToken({ userId: user.id, action: "menu.home" }) }]);
+  const isEmpty = !cardRequests.rows.length && !funding.rows.length;
+  const text = isEmpty ? pick(FLOW.emptyRequests, user.lang) : pick(FLOW.requestsHeader, user.lang);
+  if (isEmpty) {
+    rows.push([{ text: pick(MENU.requestCard, user.lang), callback_data: await createCallbackToken({ userId: user.id, action: "menu.request_card" }) }]);
+    rows.push([{ text: pick(MENU.payment, user.lang), callback_data: await createCallbackToken({ userId: user.id, action: "menu.payment" }) }]);
+  }
+  rows.push([{ text: pick(MENU.back, user.lang), callback_data: await createCallbackToken({ userId: user.id, action: "menu.home" }) }]);
   await client.sendMessage({ chatId, text, replyMarkup: { inline_keyboard: rows } });
 }
 
@@ -459,7 +469,8 @@ function validDob(input: string) {
 async function beginCardRequest(client: TelegramClient, user: BotUser, chatId: number) {
   const capacity = await getTelegramCardRequestCapacity(user.id);
   if (capacity.assigned_accounts < 1) {
-    await client.sendMessage({ chatId, text: "You need an assigned Kripicard account before requesting a card." });
+    await client.sendMessage({ chatId, text: pick(FLOW.getCardLead, user.lang) });
+    await sendPaymentInfo(client, user, chatId);
     return;
   }
   if (capacity.usedSlots >= capacity.platformLimit) {
@@ -842,6 +853,7 @@ async function handleCallback(client: TelegramClient, callback: z.infer<typeof c
   try {
   switch (resolved.action) {
       case "menu.home": await sendMainMenu(client, user, chatId); break;
+      case "menu.payment": await sendPaymentInfo(client, user, chatId); break;
       case "menu.cards": await sendCards(client, user, chatId); break;
       case "card.detail": if (resolved.entity_id) await sendCardDetail(client, user, chatId, resolved.entity_id); break;
       case "card.transactions": if (resolved.entity_id) await sendTransactions(client, user, chatId, resolved.entity_id); break;

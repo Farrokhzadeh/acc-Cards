@@ -67,6 +67,8 @@ export const MENU = {
   verify: m("🪪 Verify identity", "🪪 احراز هویت"),
   support: m("💬 Support", "💬 پشتیبانی"),
   language: m("🌐 Language", "🌐 زبان"),
+  payment: m("💳 Payment info", "💳 اطلاعات پرداخت"),
+  back: m("← Menu", "← منو"),
 };
 
 export const COMMON = {
@@ -91,6 +93,24 @@ export const PAYMENT = {
     "💳 <b>پرداخت خود را انجام دهید</b>\nمبلغ را به کارت زیر واریز کنید؛ پس از تأیید، تیم ما کارت شما را فعال می‌کند.\nشماره کارت: <code>{card}</code>\nبه نام: <b>{holder}</b>",
   ),
   notConfigured: m("Payment card is not configured yet. Please contact support.", "کارت پرداخت هنوز تنظیم نشده است. لطفاً با پشتیبانی تماس بگیرید."),
+};
+
+export const FLOW = {
+  getCardLead: m(
+    "🆕 <b>Getting your card</b>\nSend your payment to the card below. After we confirm it, our team issues your card — no extra steps needed.",
+    "🆕 <b>دریافت کارت</b>\nمبلغ را به کارت زیر واریز کنید. پس از تأیید، تیم ما کارت شما را صادر می‌کند — مرحله اضافه‌ای لازم نیست.",
+  ),
+  emptyCards: m(
+    "You don't have a card yet.\n1️⃣ Verify your identity\n2️⃣ Make your first payment\nOur team activates your card right after.",
+    "هنوز کارت ندارید.\n1️⃣ هویت خود را تأیید کنید\n2️⃣ اولین پرداخت را انجام دهید\nتیم ما بلافاصله کارت شما را فعال می‌کند.",
+  ),
+  cardsHeader: m("<b>Your cards</b>\nTap a card to see details, balance, and transactions.", "<b>کارت‌های شما</b>\nبرای جزئیات، موجودی و تراکنش‌ها روی یک کارت بزنید."),
+  emptyRequests: m(
+    "<b>My requests</b>\nNo requests yet. When you request a card or top up, you can track every step here.",
+    "<b>درخواست‌های من</b>\nهنوز درخواستی ندارید. وقتی کارت درخواست دهید یا موجودی اضافه کنید، همه مراحل اینجا پیگیری می‌شود.",
+  ),
+  requestsHeader: m("<b>My requests</b>\nTap a request to see its status and timeline.", "<b>درخواست‌های من</b>\nبرای وضعیت و زمان‌بندی روی یک درخواست بزنید."),
+  emptyTransactions: m("No transactions yet. Once you use your card, its activity appears here.", "هنوز تراکنشی نیست. پس از استفاده از کارت، فعالیت‌ها اینجا نمایش می‌گیرد."),
 };
 
 // Confirmation summary for the KYC review step (single language).
