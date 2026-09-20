@@ -48,7 +48,10 @@ export const KYC = {
   useButtons: m("Use the Submit or Cancel button below, or send /cancel.", "از دکمهٔ ثبت یا لغو در زیر استفاده کنید، یا /cancel بفرستید."),
   submitted: m("✅ Thank you! Your identity verification was submitted and is now <b>pending admin review</b>.", "✅ سپاس! درخواست احراز هویت شما ثبت شد و اکنون <b>در انتظار بررسی مدیر</b> است."),
   cancelled: m("Identity verification cancelled.", "احراز هویت لغو شد."),
-  approvedNotice: m("🎉 Your identity has been <b>approved</b>. Welcome!", "🎉 هویت شما <b>تأیید</b> شد. خوش آمدید!"),
+  approvedNotice: m(
+    "🎉 Your identity has been <b>approved</b>. Welcome!\nYour account is being activated — once an admin assigns your account, you can request a card from the menu.",
+    "🎉 هویت شما <b>تأیید</b> شد. خوش آمدید!\nحساب شما در حال فعال‌سازی است — پس از اختصاص حساب توسط مدیر، می‌توانید از منو کارت درخواست کنید.",
+  ),
   rejectedNotice: m("Your identity verification was <b>rejected</b>. You can start again with /kyc.", "احراز هویت شما <b>رد</b> شد. می‌توانید با /kyc دوباره شروع کنید."),
 };
 
@@ -71,6 +74,11 @@ export const COMMON = {
   langSetEn: m("Language set to English.", "زبان به English تنظیم شد."),
   langSetFa: m("زبان به فارسی تنظیم شد.", "زبان به فارسی تنظیم شد."),
   approvedMenuHint: m("Tap a button below to continue:", "برای ادامه یک دکمه بزنید:"),
+  kycStatus: m("🪪 Identity:", "🪪 وضعیت هویت:"),
+  kycApproved: m("approved ✅", "تأیید شده ✅"),
+  kycPending: m("pending review ⏳", "در حال بررسی ⏳"),
+  kycRejected: m("rejected ❌", "رد شده ❌"),
+  kycNone: m("not verified", "تأیید نشده"),
 };
 
 // Confirmation summary for the KYC review step (single language).

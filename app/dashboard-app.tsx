@@ -821,6 +821,7 @@ export default function DashboardApp() {
   const [transactionNotificationIssues, setTransactionNotificationIssues] = useState<TransactionNotificationIssue[]>([]);
   const [messages, setMessages] = useState(initialMessages);
   const [supportConversations, setSupportConversations] = useState<SupportConversationSummary[]>([]);
+  const [kycStatusByUser, setKycStatusByUser] = useState<Record<string, "approved" | "pending" | "rejected">>({});
   const [supportAttachment, setSupportAttachment] = useState<File | null>(null);
   const [operationalSnapshot, setOperationalSnapshot] = useState<OperationalSnapshot | null>(null);
   const [activeClientId, setActiveClientId] = useState<string | null>(null);
@@ -1036,6 +1037,26 @@ export default function DashboardApp() {
       .catch(() => {
         if (!cancelled) { setTelegramStatus(null); setChannels([]); }
       });
+    return () => { cancelled = true; };
+  }, [backendDataLoaded]);
+
+  useEffect(() => {
+    if (!backendDataLoaded) return;
+    let cancelled = false;
+    fetchKycSubmissions({ limit: 200 })
+      .then((res) => {
+        if (cancelled) return;
+        const rank = { approved: 3, pending: 2, rejected: 1 } as const;
+        const map: Record<string, "approved" | "pending" | "rejected"> = {};
+        for (const item of res.items) {
+          const key = item.customer?.telegramUserId;
+          if (!key) continue;
+          const cur = map[key];
+          if (!cur || rank[item.status] > rank[cur]) map[key] = item.status;
+        }
+        setKycStatusByUser(map);
+      })
+      .catch(() => {});
     return () => { cancelled = true; };
   }, [backendDataLoaded]);
 
@@ -2067,6 +2088,7 @@ export default function DashboardApp() {
                 onOpen={setActiveClientId}
                 onToggleBan={toggleBan}
                 accountName={accountName}
+                kycStatusByUser={kycStatusByUser}
               />
             )}
             {view === "kyc" && <KycView />}
@@ -2975,7 +2997,13 @@ function AccountsView({ accounts, clients, cards, accountEmails, onAdd, onOpen, 
   );
 }
 
-function ClientsView({ clients, cards, maxCardsPerClient, onOpen, onToggleBan, accountName }: { clients: Client[]; cards: ClientCard[]; maxCardsPerClient: number; onOpen: (id: string) => void; onToggleBan: (id: string) => void; accountName: (id: string | null) => string }) {
+function ClientsView({ clients, cards, maxCardsPerClient, onOpen, onToggleBan, accountName, kycStatusByUser }: { clients: Client[]; cards: ClientCard[]; maxCardsPerClient: number; onOpen: (id: string) => void; onToggleBan: (id: string) => void; accountName: (id: string | null) => string; kycStatusByUser: Record<string, "approved" | "pending" | "rejected"> }) {
+  const kycBadge = (telegramId: string) => {
+    const s = kycStatusByUser[telegramId];
+    if (!s) return <Badge variant="outline" className="border-slate-200 bg-slate-50 text-slate-600">KYC —</Badge>;
+    const cls = s === "approved" ? "border-emerald-200 bg-emerald-50 text-emerald-700" : s === "pending" ? "border-amber-200 bg-amber-50 text-amber-800" : "border-red-200 bg-red-50 text-red-700";
+    return <Badge variant="outline" className={cls}>KYC {s}</Badge>;
+  };
   const paging = usePaginatedItems(clients);
   return (
     <>
@@ -2988,7 +3016,7 @@ function ClientsView({ clients, cards, maxCardsPerClient, onOpen, onToggleBan, a
               {paging.pageItems.map((client) => {
                 const accessibleCards = cards.filter((card) => client.accountIds.includes(card.accountId));
                 return <TableRow key={client.id}>
-                  <TableCell className="pl-6"><div className="flex items-center gap-3"><Avatar className="size-10"><AvatarFallback className="bg-[#eeecff] text-xs font-bold text-[#5b50d6]">{initials(client.name)}</AvatarFallback></Avatar><div><button onClick={() => onOpen(client.id)} className="font-semibold text-[#353146] hover:text-[#6157e7]">{client.name}</button><p className="mt-0.5 text-xs text-[#9692a3]">{client.username} · {client.telegramId}</p></div></div></TableCell>
+                  <TableCell className="pl-6"><div className="flex items-center gap-3"><Avatar className="size-10"><AvatarFallback className="bg-[#eeecff] text-xs font-bold text-[#5b50d6]">{initials(client.name)}</AvatarFallback></Avatar><div><button onClick={() => onOpen(client.id)} className="font-semibold text-[#353146] hover:text-[#6157e7]">{client.name}</button> <span className="align-middle">{kycBadge(client.telegramId)}</span><p className="mt-0.5 text-xs text-[#9692a3]">{client.username} · {client.telegramId}</p></div></div></TableCell>
                   <TableCell>{client.accountIds.length ? <div className="flex max-w-[280px] flex-wrap gap-1.5">{client.accountIds.map((id) => <Badge key={id} variant="outline" className="rounded-full border-[#d8d3ff] bg-[#f2f0ff] text-[#5549ca]">{accountName(id)}</Badge>)}</div> : <Badge variant="outline" className="border-amber-200 bg-amber-50 text-amber-800">Contact admin</Badge>}</TableCell>
                   <TableCell><span className="font-semibold">{accessibleCards.length}</span><span className="mt-1 block text-xs text-[#9692a3]">{Math.max(maxCardsPerClient - accessibleCards.length, 0)} remaining</span></TableCell><TableCell className="font-medium">{formatUsd(client.totalFunded)}</TableCell>
                   <TableCell><Badge variant="outline" className={client.banned ? "border-red-200 bg-red-50 text-red-700" : "border-emerald-200 bg-emerald-50 text-emerald-700"}>{client.banned ? "Banned" : "Active"}</Badge></TableCell>

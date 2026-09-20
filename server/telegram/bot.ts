@@ -252,9 +252,15 @@ async function sendMainMenu(client: TelegramClient, user: BotUser, chatId: numbe
      ON CONFLICT (user_id) DO UPDATE SET mode='idle', payload='{}'::jsonb, expires_at=NULL, updated_at=now()`,
     [user.id],
   );
+  const kycStatus = await getKycStatusForUser(user.id);
+  const kycLabel =
+    kycStatus === "approved" ? pick(COMMON.kycApproved, user.lang)
+    : kycStatus === "pending" ? pick(COMMON.kycPending, user.lang)
+    : kycStatus === "rejected" ? pick(COMMON.kycRejected, user.lang)
+    : pick(COMMON.kycNone, user.lang);
   await client.sendMessage({
     chatId,
-    text: `${pick(COMMON.welcome, user.lang)}${user.displayName ? `, <b>${escapeHtml(user.displayName)}</b>` : ""}. ${pick(COMMON.chooseOption, user.lang)}`,
+    text: `${pick(COMMON.welcome, user.lang)}${user.displayName ? `, <b>${escapeHtml(user.displayName)}</b>` : ""}. ${pick(COMMON.chooseOption, user.lang)}\n${pick(COMMON.kycStatus, user.lang)} <b>${kycLabel}</b>`,
     replyMarkup: await mainKeyboard(user.id, user.lang),
   });
 }
