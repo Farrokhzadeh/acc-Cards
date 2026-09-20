@@ -9,8 +9,8 @@ const schemas = await readFile(new URL("../server/providers/kripicard/schemas.ts
 const getRoute = await readFile(new URL("../app/api/v1/provider-readiness/route.ts", import.meta.url), "utf8");
 const patchRoute = await readFile(new URL("../app/api/v1/provider-readiness/[key]/route.ts", import.meta.url), "utf8");
 const dashboard = await readFile(new URL("../app/dashboard-app.tsx", import.meta.url), "utf8");
-const contract = await readFile(new URL("../KRIPICARD-PROVIDER-CONTRACT.md", import.meta.url), "utf8");
-const questionnaire = await readFile(new URL("../PROVIDER-READINESS-QUESTIONS.md", import.meta.url), "utf8");
+const contract = await readFile(new URL("../docs/KRIPICARD-PROVIDER-CONTRACT.md", import.meta.url), "utf8");
+const questionnaire = await readFile(new URL("../docs/PROVIDER-READINESS-QUESTIONS.md", import.meta.url), "utf8");
 
 const coins = JSON.parse(await readFile(new URL("./fixtures/kripicard/deposit-coins.json", import.meta.url), "utf8"));
 const networks = JSON.parse(await readFile(new URL("./fixtures/kripicard/deposit-networks.json", import.meta.url), "utf8"));

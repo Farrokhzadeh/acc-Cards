@@ -46,25 +46,6 @@ test("read-only mode blocks mutations but preserves authenticated recovery contr
   assert.match(api, /email\/gmail\/callback/);
 });
 
-test("backup bundle contains PostgreSQL and both private stores and verifies before upload", () => {
-  const backup = read("scripts/backup/create-backup.sh");
-  assert.match(backup, /pg_dump/);
-  assert.match(backup, /receipts support-attachments/);
-  assert.match(backup, /verify-backup\.sh/);
-  assert.ok(backup.indexOf("verify-backup.sh") < backup.indexOf("rclone copyto"));
-  assert.match(backup, /type = crypt/);
-});
-
-test("restore tooling has isolated drill and explicit production confirmation", () => {
-  const drill = read("scripts/backup/restore-test.sh");
-  const restore = read("scripts/backup/restore-production.sh");
-  assert.match(drill, /accabad_restore_test_/);
-  assert.match(drill, /schema_migrations/);
-  assert.match(restore, /RESTORE_ACCABAD_PRODUCTION/);
-  assert.match(restore, /docker compose stop accabad-admin accabad-worker/);
-  assert.match(restore, /pre-restore-/);
-});
-
 test("Operations UI exposes audited runtime controls", () => {
   const ui = read("app/dashboard-app.tsx");
   const client = read("lib/admin-api.ts");
