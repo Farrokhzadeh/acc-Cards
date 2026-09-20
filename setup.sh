@@ -51,6 +51,14 @@ EOF
   echo "[setup] .env created. BACK UP the APP_ENCRYPTION_KEY - it encrypts stored secrets."
 fi
 
+# Ensure the upload/data dirs exist and are writable by the unprivileged container
+# user (node, uid 1000). Without this, saving KYC documents, receipts, and support
+# attachments fails with a permission error (the dirs are root-owned bind mounts).
+mkdir -p "${ACCABAD_DATA_DIR:-./runtime-data}/receipts" "${ACCABAD_DATA_DIR:-./runtime-data}/support-attachments"
+if ! chown -R 1000:1000 "${ACCABAD_DATA_DIR:-./runtime-data}" 2>/dev/null; then
+  echo "[setup] note: run 'sudo chown -R 1000:1000 ${ACCABAD_DATA_DIR:-./runtime-data}' so the app can write uploads."
+fi
+
 echo
 echo "[setup] Next steps:"
 echo "  1) docker compose up -d --build"

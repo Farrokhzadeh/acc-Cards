@@ -133,3 +133,11 @@ Any new migrations apply automatically via `db-migrate` on startup.
 - `APP_BASE_URL` must be a public **HTTPS** URL with a valid certificate (Telegram requires it),
   and Telegram must be able to reach `APP_BASE_URL/api/telegram/webhook`. If a CDN/proxy
   (e.g. ArvanCloud) is in front, make sure it forwards to your origin and isn't blocking the path.
+
+**Bot says "We couldn't process that document" when sending a KYC photo (uploads fail)**
+- The container runs as the unprivileged `node` user (uid 1000), but the upload dirs under
+  `./runtime-data/` are root-owned bind mounts, so writes are denied. Fix ownership and restart:
+  ```bash
+  sudo chown -R 1000:1000 ./runtime-data
+  docker compose restart accabad-admin accabad-worker
+  ```
