@@ -1,0 +1,43 @@
+# Dependencies
+/node_modules
+/.pnp
+.pnp.*
+
+# Build output
+/.next
+/dist
+/out
+/coverage
+*.tsbuildinfo
+
+# Runtime/cache
+/.wrangler
+/.sites-runtime
+/outputs
+/work
+
+# Environment and secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# Tooling / OS
+.DS_Store
+.vercel
+
+# PostgreSQL backups
+/backups/*
+!/backups/.gitkeep
+/runtime-data/
+acceptance-evidence/
+rollout/production-rollout.json
+rollout-evidence/

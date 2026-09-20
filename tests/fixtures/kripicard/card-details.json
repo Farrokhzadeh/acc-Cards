@@ -1,0 +1,8 @@
+{
+  "success": true,
+  "card_number": "5395020000001234",
+  "expiry": "12/27",
+  "cvv": "123",
+  "balance": 20.00,
+  "status": "active"
+}

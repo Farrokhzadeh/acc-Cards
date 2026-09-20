@@ -1,0 +1,155 @@
+services:
+  postgres:
+    image: postgres:17-bookworm
+    container_name: accabad-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${DATABASE_NAME}
+      POSTGRES_USER: ${DATABASE_USER}
+      POSTGRES_PASSWORD: ${DATABASE_PASSWORD:?DATABASE_PASSWORD must be set}
+    ports:
+      - "${POSTGRES_BIND_IP:-127.0.0.1}:${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - accabad_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 128
+
+  db-migrate:
+    image: postgres:17-bookworm
+    container_name: accabad-db-migrate
+    restart: "no"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      PGHOST: postgres
+      PGPORT: 5432
+      PGDATABASE: ${DATABASE_NAME}
+      PGUSER: ${DATABASE_USER}
+      PGPASSWORD: ${DATABASE_PASSWORD:?DATABASE_PASSWORD must be set}
+      MIGRATIONS_DIR: /app/db/migrations
+    volumes:
+      - ./db:/app/db:ro
+      - ./scripts/db/migrate.sh:/app/scripts/db/migrate.sh:ro
+    entrypoint: ["/bin/bash", "/app/scripts/db/migrate.sh"]
+    security_opt:
+      - no-new-privileges:true
+    cap_drop: ["ALL"]
+    pids_limit: 128
+
+  clamav:
+    image: clamav/clamav:1.4
+    container_name: accabad-clamav
+    restart: unless-stopped
+    volumes:
+      - accabad_clamav_signatures:/var/lib/clamav
+    security_opt:
+      - no-new-privileges:true
+    cap_drop: ["ALL"]
+    pids_limit: 256
+
+  accabad-admin:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: accabad-admin
+    restart: unless-stopped
+    init: true
+    env_file:
+      - .env
+    environment:
+      DATABASE_HOST: postgres
+      DATABASE_PORT: 5432
+    depends_on:
+      postgres:
+        condition: service_healthy
+      db-migrate:
+        condition: service_completed_successfully
+    ports:
+      - "${ACCABAD_BIND_IP:-127.0.0.1}:${ACCABAD_PORT:-3000}:3000"
+    security_opt:
+      - no-new-privileges:true
+    cap_drop: ["ALL"]
+    pids_limit: 256
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m,mode=1777,noexec,nosuid,nodev
+    volumes:
+      - ${ACCABAD_DATA_DIR:-./runtime-data}/receipts:/var/lib/accabad/receipts
+      - ${ACCABAD_DATA_DIR:-./runtime-data}/support-attachments:/var/lib/accabad/support-attachments
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:3000/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 30s
+      timeout: 5s
+      start_period: 20s
+      retries: 3
+
+  accabad-worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: accabad-worker
+    restart: unless-stopped
+    init: true
+    env_file:
+      - .env
+    environment:
+      DATABASE_HOST: postgres
+      DATABASE_PORT: 5432
+    depends_on:
+      postgres:
+        condition: service_healthy
+      db-migrate:
+        condition: service_completed_successfully
+    command: ["npm", "run", "worker"]
+    security_opt:
+      - no-new-privileges:true
+    cap_drop: ["ALL"]
+    pids_limit: 256
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m,mode=1777,noexec,nosuid,nodev
+    volumes:
+      - ${ACCABAD_DATA_DIR:-./runtime-data}/receipts:/var/lib/accabad/receipts
+      - ${ACCABAD_DATA_DIR:-./runtime-data}/support-attachments:/var/lib/accabad/support-attachments
+
+  admin-bootstrap:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    profiles: ["tools"]
+    env_file:
+      - .env
+    environment:
+      DATABASE_HOST: postgres
+      DATABASE_PORT: 5432
+    depends_on:
+      postgres:
+        condition: service_healthy
+      db-migrate:
+        condition: service_completed_successfully
+    command: ["node", "scripts/admin/bootstrap.mjs"]
+    security_opt:
+      - no-new-privileges:true
+    cap_drop: ["ALL"]
+    pids_limit: 128
+    read_only: true
+    tmpfs:
+      - /tmp:size=16m,mode=1777,noexec,nosuid,nodev
+
+volumes:
+  accabad_postgres_data:
+  accabad_clamav_signatures:

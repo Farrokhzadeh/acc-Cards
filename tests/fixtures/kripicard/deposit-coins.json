@@ -1,0 +1,8 @@
+{
+  "success": true,
+  "data": [
+    { "symbol": "USDT", "name": "Tether", "networks_count": 5 },
+    { "symbol": "BTC", "name": "Bitcoin", "networks_count": 1 },
+    { "symbol": "ETH", "name": "Ethereum", "networks_count": 3 }
+  ]
+}

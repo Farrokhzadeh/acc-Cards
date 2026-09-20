@@ -1,0 +1,15 @@
+{
+  "success": true,
+  "data": {
+    "id": "E48138ADD0CE",
+    "status": "pending",
+    "amount_usd": 50,
+    "fee_usd": 6,
+    "credited_on_completion_usd": 44,
+    "pay_address": "TD8i91pL5w2T6AaxCqi7foQWHCigLCW62a",
+    "pay_amount": "50.01",
+    "pay_currency": "USDT",
+    "network": "trx",
+    "expires_at": "2026-06-28T20:34:31.409Z"
+  }
+}

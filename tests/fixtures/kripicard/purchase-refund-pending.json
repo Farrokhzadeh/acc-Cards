@@ -1,0 +1,6 @@
+{
+  "success": false,
+  "pending": true,
+  "code": "REFUND_PENDING",
+  "message": "Your order did not complete and the automatic refund could not be applied..."
+}

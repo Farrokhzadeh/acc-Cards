@@ -1,0 +1,61 @@
+{
+  "schemaVersion": 1,
+  "releaseId": "phase24-production-release-pending",
+  "strategy": "maintenance_window_all_users",
+  "productionOrigin": "https://admin.example.com",
+  "release": {
+    "version": "0.24.0",
+    "artifactSha256": null,
+    "previousArtifactSha256": null,
+    "changeReference": null
+  },
+  "maintenanceWindow": {
+    "startsAt": null,
+    "endsAt": null,
+    "timezone": "UTC",
+    "noticeReference": null
+  },
+  "gates": {
+    "phase22DependencyScan": { "status": "blocked", "evidence": null, "evidenceSha256": null },
+    "phase22SecretScan": { "status": "blocked", "evidence": null, "evidenceSha256": null },
+    "phase22ExternalPentest": { "status": "blocked", "evidence": null, "evidenceSha256": null },
+    "phase23FullStagingAcceptance": { "status": "blocked", "evidence": null, "evidenceSha256": null },
+    "freshBackupVerified": { "status": "blocked", "evidence": null, "evidenceSha256": null },
+    "isolatedRestoreDrill": { "status": "blocked", "evidence": null, "evidenceSha256": null },
+    "monitoringAndAlerts": { "status": "blocked", "evidence": null, "evidenceSha256": null },
+    "providerReconciliationReady": { "status": "blocked", "evidence": null, "evidenceSha256": null }
+  },
+  "approvals": {
+    "applicationOwner": { "status": "blocked", "approvedBy": null, "approvedAt": null },
+    "securityReviewer": { "status": "blocked", "approvedBy": null, "approvedAt": null },
+    "operationsOwner": { "status": "blocked", "approvedBy": null, "approvedAt": null }
+  },
+  "deploymentSafeguards": {
+    "productionRolloutBlocked": true,
+    "forceReadOnlyMode": true,
+    "enableLiveProviderWrites": false,
+    "enableCardStateWrites": false,
+    "enableCardCreation": false,
+    "enableCardFunding": false,
+    "enableTelegramSends": false,
+    "enableOutlookSync": false,
+    "enableGmailSync": false
+  },
+  "openingState": {
+    "audience": "all_users",
+    "productionRolloutBlocked": false,
+    "forceReadOnlyMode": false,
+    "liveProviderWritesRemainDisabled": true,
+    "manualReconciliationRequired": true,
+    "maximumInitialMoneyOperations": 5
+  },
+  "rollback": {
+    "owner": null,
+    "runbook": "PRODUCTION-ROLLBACK-RUNBOOK.md",
+    "maximumDecisionMinutes": 10,
+    "errorRatePercent": 2,
+    "p95LatencyMs": 2000,
+    "providerMismatchCount": 1,
+    "unexpectedDuplicateCount": 1
+  }
+}

@@ -1,0 +1,26 @@
+{
+  "success": true,
+  "total": 2,
+  "data": [
+    {
+      "card_id": "MR_A1B2C3D4E5F6G7H8",
+      "name_on_card": "John Alex",
+      "last4": "4321",
+      "card_brand": "MasterCard",
+      "card_type": "MasterCard",
+      "status": "active",
+      "balance": 18.50,
+      "created_at": "2026-04-10T14:23:00.000Z"
+    },
+    {
+      "card_id": "VC_X9Y8Z7W6",
+      "name_on_card": "John Alex",
+      "last4": "7890",
+      "card_brand": "Visa",
+      "card_type": "VIRTUAL",
+      "status": "active",
+      "balance": 42.00,
+      "created_at": "2026-03-22T09:11:00.000Z"
+    }
+  ]
+}

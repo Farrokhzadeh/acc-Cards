@@ -1,0 +1,10 @@
+{
+  "success": true,
+  "message": "Card created successfully",
+  "card_id": "MR_A1B2C3D4E5F6G7H8",
+  "last_4": "4321",
+  "bin": "537872",
+  "amount": 20,
+  "fee": 1.8,
+  "total_charged": 21.8
+}

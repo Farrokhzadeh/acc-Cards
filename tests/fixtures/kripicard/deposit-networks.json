@@ -1,0 +1,11 @@
+{
+  "success": true,
+  "data": {
+    "currency": "USDT",
+    "networks": [
+      { "network": "trx", "name": "Tron (TRC20)", "min_amount": 1 },
+      { "network": "eth", "name": "Ethereum (ERC20)", "min_amount": 1 },
+      { "network": "bsc", "name": "BNB Smart Chain (BEP20)", "min_amount": 0.5 }
+    ]
+  }
+}

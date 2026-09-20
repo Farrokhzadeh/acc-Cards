@@ -1,0 +1,18 @@
+{
+  "baseUrl": "https://admin-staging.example.test",
+  "expectedAppEnvironment": "staging",
+  "workflow": {
+    "kripicardAccountId": null,
+    "clientId": null,
+    "cardId": null,
+    "cardRequestId": null,
+    "fundingRequestId": null,
+    "emailAccountId": null,
+    "telegramTestUserId": null
+  },
+  "loadSmoke": {
+    "requests": 100,
+    "concurrency": 5,
+    "maximumP95Ms": 1500
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "success": true,
+  "message": "Card funded successfully",
+  "data": {
+    "card_id": "MR_A1B2C3D4E5F6G7H8",
+    "amount": 50,
+    "fee": 3.00,
+    "total_debited": 53.00
+  }
+}

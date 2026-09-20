@@ -1,0 +1,93 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:17-bookworm
+        env:
+          POSTGRES_DB: accabad
+          POSTGRES_USER: accabad
+          POSTGRES_PASSWORD: ci-database-password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U accabad -d accabad"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      APP_ENV: staging
+      APP_BASE_URL: https://staging.example.invalid
+      APP_VERSION: ci
+      ENABLE_LIVE_PROVIDER_WRITES: "false"
+      APP_ENCRYPTION_KEY: "AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE="
+      ADMIN_SESSION_HOURS: "12"
+      ADMIN_REAUTH_MINUTES: "10"
+      ADMIN_MFA_CHALLENGE_MINUTES: "5"
+      ADMIN_LOGIN_RATE_MAX_FAILURES: "5"
+      ADMIN_LOGIN_RATE_WINDOW_MINUTES: "15"
+      DATABASE_HOST: 127.0.0.1
+      DATABASE_PORT: "5432"
+      DATABASE_NAME: accabad
+      DATABASE_USER: accabad
+      DATABASE_PASSWORD: ci-database-password
+      DATABASE_SSL_MODE: disable
+      DATABASE_CONNECT_TIMEOUT_MS: "3000"
+      DATABASE_POOL_MAX: "10"
+      DATABASE_IDLE_TIMEOUT_MS: "30000"
+      DATABASE_STATEMENT_TIMEOUT_MS: "10000"
+      PGHOST: 127.0.0.1
+      PGPORT: "5432"
+      PGDATABASE: accabad
+      PGUSER: accabad
+      PGPASSWORD: ci-database-password
+      MIGRATIONS_DIR: db/migrations
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22.13.1
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci --no-audit --no-fund
+
+      - name: Install PostgreSQL client
+        run: sudo apt-get update && sudo apt-get install -y postgresql-client
+
+      - name: Validate environment
+        run: npm run env:check
+
+      - name: Apply migrations
+        run: bash scripts/db/migrate.sh
+
+      - name: Validate Docker Compose
+        run: docker compose config >/dev/null
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Unit/static tests
+        run: npm test
+
+      - name: PostgreSQL integration tests
+        run: npm run test:db-integration
+
+      - name: Build
+        run: npm run build

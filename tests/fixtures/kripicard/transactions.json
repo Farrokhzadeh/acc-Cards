@@ -1,0 +1,43 @@
+{
+  "success": true,
+  "data": {
+    "card_id": "MR_A1B2C3D4E5F6G7H8",
+    "balance": 18.50,
+    "total_transactions": 3,
+    "transactions": [
+      {
+        "date": "2026-04-12 10:44:00",
+        "type": "Authorize",
+        "merchant": "Amazon.com",
+        "amount": 14.99,
+        "currency": "USD",
+        "status": "success",
+        "reason": "Approved or completed successfully",
+        "reason_code": "approved",
+        "reason_source": "provider"
+      },
+      {
+        "date": "2026-04-11 18:02:00",
+        "type": "Authorize",
+        "merchant": "Spotify",
+        "amount": 9.99,
+        "currency": "USD",
+        "status": "failed",
+        "reason": "Balance insufficient",
+        "reason_code": "insufficient_funds",
+        "reason_source": "provider"
+      },
+      {
+        "date": "2026-04-11 09:15:00",
+        "type": "OTP",
+        "merchant": "GOOGLE *TEMPORARY HOLD",
+        "amount": 0,
+        "currency": "USD",
+        "status": "success",
+        "reason": "Card verification — one-time password check",
+        "reason_code": "verification",
+        "reason_source": "derived"
+      }
+    ]
+  }
+}
