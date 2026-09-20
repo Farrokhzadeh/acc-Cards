@@ -1,4 +1,4 @@
-import { parseServerEnv } from "@/config/env-schema.mjs";
+import { getTelegramCredentials } from "@/server/telegram/credentials";
 import { getPool, withTransaction } from "@/server/database/pool";
 import { decryptSecret } from "@/server/security/crypto";
 import { TelegramClient } from "@/server/providers/telegram/client";
@@ -301,9 +301,9 @@ async function deliverSupportMessage(client: TelegramClient, row: OutboxRow) {
 }
 
 export async function processTelegramOutbox(limit = 100) {
-  const env = parseServerEnv(process.env);
-  if (!env.TELEGRAM_BOT_TOKEN) return { processed: 0, sent: 0, failed: 0, deadLetter: 0, configured: false };
-  const client = new TelegramClient(env.TELEGRAM_BOT_TOKEN);
+  const creds = await getTelegramCredentials();
+  if (!creds.token) return { processed: 0, sent: 0, failed: 0, deadLetter: 0, configured: false };
+  const client = new TelegramClient(creds.token);
   const bounded = Math.max(1, Math.min(500, limit));
   const summary = { processed: 0, sent: 0, failed: 0, deadLetter: 0, configured: true };
   for (let index = 0; index < bounded; index += 1) {

@@ -11,6 +11,7 @@ import { attachTelegramReceipt } from "@/server/funding/receipts";
 import { deletePrivateSupportAttachment, storePrivateSupportAttachment } from "@/server/support/storage";
 import { createKycSubmission, getKycStatusForUser } from "@/server/kyc/service";
 import { KYC, kycConfirmSummary } from "@/server/kyc/messages";
+import { getTelegramClient } from "@/server/telegram/credentials";
 
 const telegramUserSchema = z.object({
   id: z.number().int().positive(),
@@ -1172,7 +1173,7 @@ async function handleMessage(client: TelegramClient, message: z.infer<typeof mes
 
 export async function processTelegramUpdate(updateInput: unknown, payloadHash: string, requestId: string) {
   const update = telegramUpdateSchema.parse(updateInput);
-  const client = new TelegramClient();
+  const client = await getTelegramClient();
   const inserted = await getPool().query<{ id: string }>(
     `INSERT INTO webhook_events(source, external_id, payload_hash, status)
      VALUES ('telegram', $1, $2, 'processing')

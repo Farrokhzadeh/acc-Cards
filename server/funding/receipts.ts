@@ -1,7 +1,7 @@
 import { parseServerEnv } from "@/config/env-schema.mjs";
 import { getPool, withTransaction } from "@/server/database/pool";
 import { ApiError } from "@/server/http/api";
-import { TelegramClient } from "@/server/providers/telegram/client";
+import { getTelegramClient } from "@/server/telegram/credentials";
 import { deletePrivateReceipt, storePrivateReceipt, readPrivateReceipt } from "@/server/receipts/storage";
 import { markReceiptAttachedInTransaction } from "@/server/funding/service";
 
@@ -20,7 +20,7 @@ export async function attachTelegramReceipt(input: {
   if (!request.rows[0]) throw new ApiError(404,"not_found","Funding request not found.");
   if (!["pending_receipt","correction_needed"].includes(request.rows[0].status)) throw new ApiError(409,"invalid_state","This request is not waiting for receipt evidence.");
 
-  const telegram = new TelegramClient();
+  const telegram = await getTelegramClient();
   const file = await telegram.getFile(input.telegramFileId);
   if (!file.file_path) throw new ApiError(502,"telegram_file_unavailable","Telegram did not return a downloadable file path.");
   if (file.file_size && file.file_size > env.RECEIPT_MAX_BYTES) throw new ApiError(413,"receipt_too_large","The receipt exceeds the configured size limit.");

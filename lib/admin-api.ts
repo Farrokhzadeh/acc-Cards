@@ -315,6 +315,9 @@ export async function createTrustedEmailRule(input: { label: string; senderMatch
 
 export type TelegramBotStatus = {
   configured: boolean;
+  tokenSource?: "database" | "environment" | "none";
+  tokenHint?: string | null;
+  error?: string | null;
   bot: null | { id: number; username: string | null; displayName: string };
   webhook: null | { url: string; pendingUpdates: number; lastErrorDate: string | null; lastErrorMessage: string | null; allowedUpdates: string[] };
   expectedWebhookUrl: string;
@@ -326,6 +329,14 @@ export async function fetchTelegramBotStatus() {
 
 export async function configureTelegramWebhook() {
   return apiJson<{ configured: true; url: string; pendingUpdates: number; lastErrorMessage: string | null }>("/api/v1/telegram/webhook/configure", { method: "POST", body: "{}" });
+}
+
+export async function setTelegramBotToken(token: string) {
+  return apiJson<{ ok: true; tokenHint: string }>("/api/v1/telegram/bot-token", { method: "PUT", body: JSON.stringify({ token }) });
+}
+
+export async function clearTelegramBotToken() {
+  return apiJson<{ ok: true }>("/api/v1/telegram/bot-token", { method: "DELETE" });
 }
 
 export async function fetchForceJoinChannels() {
