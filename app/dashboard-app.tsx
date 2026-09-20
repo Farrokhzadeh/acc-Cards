@@ -811,15 +811,15 @@ function AccountAssignmentPicker({ accounts, clients, client, backendDataLoaded,
 export default function DashboardApp() {
   const [view, setView] = useState<View>("overview");
   const [backendDataLoaded, setBackendDataLoaded] = useState(false);
-  const [accounts, setAccounts] = useState(initialAccounts);
-  const [clients, setClients] = useState(initialClients);
-  const [cards, setCards] = useState(initialCards);
-  const [accountEmails, setAccountEmails] = useState(initialAccountEmails);
-  const [fundingRequests, setFundingRequests] = useState(initialFundingRequests);
-  const [cardRequests, setCardRequests] = useState(initialCardRequests);
-  const [transactions, setTransactions] = useState(initialTransactions);
+  const [accounts, setAccounts] = useState<Account[]>([]);
+  const [clients, setClients] = useState<Client[]>([]);
+  const [cards, setCards] = useState<ClientCard[]>([]);
+  const [accountEmails, setAccountEmails] = useState<AccountEmail[]>([]);
+  const [fundingRequests, setFundingRequests] = useState<FundingRequest[]>([]);
+  const [cardRequests, setCardRequests] = useState<CardRequest[]>([]);
+  const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [transactionNotificationIssues, setTransactionNotificationIssues] = useState<TransactionNotificationIssue[]>([]);
-  const [messages, setMessages] = useState(initialMessages);
+  const [messages, setMessages] = useState<Record<string, Message[]>>({});
   const [supportConversations, setSupportConversations] = useState<SupportConversationSummary[]>([]);
   const [kycStatusByUser, setKycStatusByUser] = useState<Record<string, "approved" | "pending" | "rejected">>({});
   const [supportAttachment, setSupportAttachment] = useState<File | null>(null);
@@ -835,7 +835,7 @@ export default function DashboardApp() {
   const [fundingExecutionPendingId, setFundingExecutionPendingId] = useState<string | null>(null);
   const [emailActionPendingId, setEmailActionPendingId] = useState<string | null>(null);
   const [activeRequestId, setActiveRequestId] = useState<string | null>(null);
-  const [activeChatId, setActiveChatId] = useState("usr-amir");
+  const [activeChatId, setActiveChatId] = useState("");
   const [search, setSearch] = useState("");
   const [accountDialogOpen, setAccountDialogOpen] = useState(false);
   const [createCardDialogOpen, setCreateCardDialogOpen] = useState(false);

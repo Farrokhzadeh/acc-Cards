@@ -245,6 +245,17 @@ async function sendLangPicker(client: TelegramClient, user: BotUser, chatId: num
   });
 }
 
+// Route a user "home" (/start, /menu, or right after choosing a language) with
+// messaging that reflects their real KYC / account state instead of a generic error.
+async function routeHome(client: TelegramClient, user: BotUser, chatId: number) {
+  if (user.lang === null) { await sendLangPicker(client, user, chatId); return; }
+  const st = await getKycStatusForUser(user.id);
+  if (st === "none" || st === "rejected") { await sendKycInvite(client, user, chatId); return; }
+  if (st === "pending") { await client.sendMessage({ chatId, text: pick(KYC.alreadyPending, user.lang) }); return; }
+  if (await assertBotAccess(client, user, chatId)) await sendMainMenu(client, user, chatId);
+  else await client.sendMessage({ chatId, text: pick(KYC.approvedNoAccount, user.lang) });
+}
+
 async function sendMainMenu(client: TelegramClient, user: BotUser, chatId: number) {
   await getPool().query(
     `INSERT INTO telegram_bot_states(user_id, mode, payload, expires_at, updated_at)
@@ -791,8 +802,7 @@ async function handleCallback(client: TelegramClient, callback: z.infer<typeof c
     await setUserLang(user.id, lang);
     user.lang = lang;
     await client.sendMessage({ chatId, text: lang === "fa" ? COMMON.langSetFa.fa : COMMON.langSetEn.en });
-    if (await shouldAutoPromptKyc(user.id)) await sendKycInvite(client, user, chatId);
-    else if (await assertBotAccess(client, user, chatId)) await sendMainMenu(client, user, chatId);
+    await routeHome(client, user, chatId);
     return;
   }
   // KYC callbacks run before the account/membership gate so new customers can verify first.
@@ -1184,12 +1194,7 @@ async function handleMessage(client: TelegramClient, message: z.infer<typeof mes
   if (text === "/kyc") { await beginKyc(client, user, chatId); return; }
 
   if (text === "/lang") { await sendLangPicker(client, user, chatId); return; }
-  if (text === "/start" || text === "/menu") {
-    if (user.lang === null) { await sendLangPicker(client, user, chatId); return; }
-    if (await shouldAutoPromptKyc(user.id)) { await sendKycInvite(client, user, chatId); return; }
-    if (await assertBotAccess(client, user, chatId)) await sendMainMenu(client, user, chatId);
-    return;
-  }
+  if (text === "/start" || text === "/menu") { await routeHome(client, user, chatId); return; }
 
   if (!(await assertBotAccess(client, user, chatId))) return;
   if (await handleFundingReceiptMedia(client,user,chatId,message)) return;

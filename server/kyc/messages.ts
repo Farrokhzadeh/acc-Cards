@@ -53,6 +53,10 @@ export const KYC = {
     "🎉 هویت شما <b>تأیید</b> شد. خوش آمدید!\nحساب شما در حال فعال‌سازی است — پس از اختصاص حساب توسط مدیر، می‌توانید از منو کارت درخواست کنید.",
   ),
   rejectedNotice: m("Your identity verification was <b>rejected</b>. You can start again with /kyc.", "احراز هویت شما <b>رد</b> شد. می‌توانید با /kyc دوباره شروع کنید."),
+  approvedNoAccount: m(
+    "Your identity is approved ✅. An administrator still needs to assign your account before you can request cards. Please contact them.",
+    "هویت شما تأیید شده ✅. مدیر هنوز باید حساب شما را اختصاص دهد تا بتوانید کارت درخواست کنید. لطفاً با مدیر تماس بگیرید.",
+  ),
 };
 
 export const MENU = {
@@ -69,8 +73,8 @@ export const COMMON = {
   welcome: m("Welcome", "خوش آمدید"),
   chooseOption: m("Choose an option:", "یک گزینه انتخاب کنید:"),
   langPicker: m("🌐 Choose your language:", "🌐 زبان خود را انتخاب کنید:"),
-  langEn: m("🇬 English", "🇧 English"),
-  langFa: m("🇮🇷 فارسی", "🇮🇷 فارسی"),
+  langEn: m("English", "English"),
+  langFa: m("فارسی", "فارسی"),
   langSetEn: m("Language set to English.", "زبان به English تنظیم شد."),
   langSetFa: m("زبان به فارسی تنظیم شد.", "زبان به فارسی تنظیم شد."),
   approvedMenuHint: m("Tap a button below to continue:", "برای ادامه یک دکمه بزنید:"),
