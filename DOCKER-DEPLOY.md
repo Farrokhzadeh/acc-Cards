@@ -41,7 +41,7 @@ Open `.env` and set at minimum:
 - `DATABASE_PASSWORD` — **≥ 12 characters**.
 - `APP_ENCRYPTION_KEY` — generate with `openssl rand -base64 32`. **Back this up**; losing it
   makes stored secrets unreadable.
-- `APP_BASE_URL` — the URL you'll reach the panel at (e.g. `http://localhost:3000`).
+- `APP_BASE_URL` — the **exact public URL** you use in the browser (e.g. `https://cards.example.com`). ⚠️ Must match the browser's scheme + host **exactly**, or login-protected actions (reauth, save bot token, etc.) fail with **"The request origin could not be verified."** After changing it, recreate the app containers: `docker compose up -d --force-recreate accabad-admin accabad-worker`.
 
 Keep **`APP_ENV=staging`** for a simple deploy. Switching to `production` re-enforces
 HTTPS-only URLs **and** fail-closed ClamAV scanning (which this lean setup removed).
@@ -118,3 +118,18 @@ docker compose up -d --build
 ```
 
 Any new migrations apply automatically via `db-migrate` on startup.
+
+## Troubleshooting
+
+**"The request origin could not be verified."** (on reauth, save bot token, or any save action)
+- `APP_BASE_URL` in `.env` does not match the URL in your browser's address bar. The CSRF check
+  compares the browser `Origin` against `APP_BASE_URL`. Set it to the exact public URL
+  (scheme + host, e.g. `https://cards.example.com`), then recreate the app containers:
+  ```bash
+  docker compose up -d --force-recreate accabad-admin accabad-worker
+  ```
+
+**Bot token saved but webhook won't configure / bot doesn't respond**
+- `APP_BASE_URL` must be a public **HTTPS** URL with a valid certificate (Telegram requires it),
+  and Telegram must be able to reach `APP_BASE_URL/api/telegram/webhook`. If a CDN/proxy
+  (e.g. ArvanCloud) is in front, make sure it forwards to your origin and isn't blocking the path.

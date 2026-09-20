@@ -8,7 +8,11 @@ DB_NAME="${DATABASE_NAME:-accabad_admin}"
 if [ -f .env ]; then
   echo "[setup] .env already exists - leaving it untouched."
 else
-  echo "[setup] Creating .env (database: $DB_NAME) with generated secrets..."
+  if [ -z "${APP_BASE_URL:-}" ]; then
+    read -rp "[setup] Public URL of the panel (must EXACTLY match your browser address, e.g. https://cards.example.com) [http://localhost:3000]: " _url
+    APP_BASE_URL="${_url:-http://localhost:3000}"
+  fi
+  echo "[setup] Creating .env (database: $DB_NAME, url: $APP_BASE_URL) with generated secrets..."
   DBPW="$(openssl rand -base64 24 | tr -d '/+=' | cut -c1-30)"
   KEY="$(openssl rand -base64 32)"
   cat > .env <<EOF
