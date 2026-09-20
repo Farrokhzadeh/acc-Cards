@@ -44,17 +44,6 @@ services:
     cap_drop: ["ALL"]
     pids_limit: 128
 
-  clamav:
-    image: clamav/clamav:1.4
-    container_name: accabad-clamav
-    restart: unless-stopped
-    volumes:
-      - accabad_clamav_signatures:/var/lib/clamav
-    security_opt:
-      - no-new-privileges:true
-    cap_drop: ["ALL"]
-    pids_limit: 256
-
   accabad-admin:
     build:
       context: .
@@ -152,4 +141,3 @@ services:
 
 volumes:
   accabad_postgres_data:
-  accabad_clamav_signatures:

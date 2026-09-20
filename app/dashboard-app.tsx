@@ -943,7 +943,6 @@ export default function DashboardApp() {
         setAccounts(nextAccounts);
         setCards(nextCards);
         setClients(nextClients);
-        // Phase 3 only moves the core account/card/client reads to PostgreSQL.
         // Keep unimplemented domains from showing stale demo records beside real DB records.
         setAccountEmails([]);
         setFundingRequests([]);

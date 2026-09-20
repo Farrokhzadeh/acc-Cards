@@ -1,76 +1,47 @@
 # AccAbad Admin
 
-**Secure, multi-tenant card issuance and management platform.**
+A multi-tenant card issuance & management admin panel (plus Telegram bot and email sync).
 
-AccAbad is a production-grade admin panel and Telegram bot designed for high-security financial operations. It integrates with the Kripicard API for card issuance and funding, supports encrypted OAuth for email synchronization (Outlook/Gmail), and provides a durable, two-way support relay via Telegram.
+> **This branch is simplified for a single-admin deploy:** bundled Postgres via Docker Compose, **no ClamAV**, and all provider write-gates **OFF** by default. The original enterprise runbooks (pen-test scope, rollout/rollback, staging acceptance) are preserved under [`docs/archive/`](docs/archive/) if you ever need them.
 
-## 🛡️ Security & Architecture
+## Run it — 3 steps
 
-*   **Financial-Grade Safety:** Explicitly disables automatic retries for money-moving API calls (`createcard`, `fundcard`) to prevent double-spend scenarios.
-*   **Hardened Containers:** All services run with `read_only: true`, `no-new-privileges`, and dropped capabilities (`cap_drop: ALL`).
-*   **Encrypted Secrets:** Kripicard credentials, OAuth refresh tokens, and sensitive provider data are encrypted at rest using AES-256-GCM.
-*   **Immutable Audit Logs:** Every state change (card issuance, funding, assignment) is recorded in an append-only timeline with redacted audit trails.
-*   **Kill Switches:** Money-critical operations are gated behind environment variables (`ENABLE_KRIPICARD_CARD_CREATION`) and require recent admin re-authentication.
+```bash
+# 1. Configure - auto-generates .env (clean DB name + random secrets)
+./setup.sh
+#    (or manually: cp .env.example .env, then set DATABASE_PASSWORD + APP_ENCRYPTION_KEY)
 
-## ✨ Key Features
+# 2. Start everything (Postgres + schema + app + worker). Schema is created automatically.
+docker compose up -d --build
 
-*   **Kripicard Integration:** Full lifecycle management (Create, Fund, Freeze/Unfreeze, Sync Transactions) with robust handling of ambiguous provider states (e.g., HTTP 202).
-*   **Telegram Bot:** 
-    *   Verified webhook with deduplication.
-    *   Durable outbox for OTP delivery and transaction alerts.
-    *   Private support relay with PDF/Image attachments (scanned by ClamAV).
-*   **Email Sync:** 
-    *   **Outlook/Hotmail:** Delegated OAuth via Microsoft Graph with delta sync.
-    *   **Gmail:** Restricted `gmail.readonly` scope with history-based incremental sync.
-*   **Operational Tooling:** 
-    *   Verified host-local backups (Postgres + Receipts) with encrypted off-site upload (MEGA/rclone).
-    *   Database-backed emergency controls and read-only modes.
+# 3. Create your admin login
+docker compose --profile tools run --rm \
+  -e BOOTSTRAP_ADMIN_EMAIL='you@example.com' \
+  -e BOOTSTRAP_ADMIN_PASSWORD='a-strong-password-12+' \
+  admin-bootstrap
+```
 
-## 🛠 Tech Stack
+Then open **http://localhost:3000** and sign in.
 
-*   **Backend:** Node.js 22, TypeScript, Drizzle ORM
-*   **Frontend:** React 19, Next.js (Vinext), Tailwind CSS
-*   **Database:** PostgreSQL 17 (with custom checksum-verified migration runner)
-*   **Infrastructure:** Docker, ClamAV (Malware Scanning)
+Full details (exposing ports, logs, enabling card/funding writes later) are in **[DOCKER-DEPLOY.md](DOCKER-DEPLOY.md)**.
 
-## 🚀 Quick Start (Local)
+## Tech stack
 
-1.  **Clone and Configure:**
-    ```bash
-    git clone https://github.com/Farrokhzadeh/AccAbad-Cards.git
-    cd AccAbad-Cards
-    cp .env.example .env
-    ```
+Node 22 · TypeScript · Next.js (Vinext) + React 19 · Drizzle ORM · PostgreSQL 17 · Docker
 
-2.  **Generate Secrets:**
-    Run this to generate a secure encryption key for your `.env`:
-    ```bash
-    openssl rand -base64 32
-    ```
+## Project layout
 
-3.  **Start Services:**
-    ```bash
-    docker compose up -d --build
-    ```
+| Path | What it is |
+|------|-----------|
+| `app/` | UI pages + API routes |
+| `server/` | Backend logic (auth, providers, jobs, database) |
+| `db/` | Drizzle schema + SQL migrations (applied automatically on start) |
+| `config/` | Environment schema & validation |
+| `scripts/` | env check, admin bootstrap, db migrate/seed |
+| `components/`, `lib/`, `hooks/`, `types/` | Shared frontend code |
 
-4.  **Bootstrap Admin User:**
-    ```bash
-    docker compose run --rm \
-      -e BOOTSTRAP_ADMIN_EMAIL='admin@example.com' \
-      -e BOOTSTRAP_ADMIN_PASSWORD='super-secret-password' \
-      admin-bootstrap
-    ```
+## Notes
 
-## ⚙️ Configuration
-
-### Core Settings
-*   `APP_ENV`: Set to `staging` or `production`.
-*   `APP_ENCRYPTION_KEY`: **Critical.** Used to encrypt database fields. Do not lose this.
-*   `DATABASE_PASSWORD`: Postgres password.
-
-### Provider Gates (Safety)
-Keep these `false` until you have verified read-only connectivity.
-```env
-ENABLE_LIVE_PROVIDER_WRITES=false
-ENABLE_KRIPICARD_CARD_CREATION=false
-ENABLE_KRIPICARD_CARD_FUNDING=false
+- **No manual migrations.** The `db-migrate` compose step creates the schema on first boot and is idempotent afterward.
+- **Money operations are gated off** until you explicitly enable them in `.env` (see DOCKER-DEPLOY.md).
+- Optional integrations (Outlook/Gmail OAuth, Telegram) are disabled until you add their credentials.
