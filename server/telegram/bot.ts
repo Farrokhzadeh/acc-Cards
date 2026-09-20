@@ -10,7 +10,7 @@ import { cancelTelegramFundingRequest, createTelegramFundingRequest, getFundingP
 import { attachTelegramReceipt } from "@/server/funding/receipts";
 import { deletePrivateSupportAttachment, storePrivateSupportAttachment } from "@/server/support/storage";
 import { createKycSubmission, getKycStatusForUser } from "@/server/kyc/service";
-import { KYC, kycConfirmSummary } from "@/server/kyc/messages";
+import { KYC, kycConfirmSummary, pick, MENU, COMMON } from "@/server/kyc/messages";
 import { getTelegramClient } from "@/server/telegram/credentials";
 
 const telegramUserSchema = z.object({
@@ -61,6 +61,7 @@ type BotUser = {
   username: string | null;
   displayName: string | null;
   bannedAt: Date | null;
+  lang: string | null;
 };
 
 type CallbackRow = {
@@ -92,7 +93,7 @@ async function auditTelegramEvent(args: { userId?: string | null; action: string
 
 async function upsertTelegramUser(input: TelegramUserInput): Promise<BotUser> {
   const result = await getPool().query<{
-    id: string; telegram_user_id: string | bigint; username: string | null; display_name: string | null; banned_at: Date | null;
+    id: string; telegram_user_id: string | bigint; username: string | null; display_name: string | null; banned_at: Date | null; lang: string | null;
   }>(
     `INSERT INTO telegram_users(telegram_user_id, username, display_name, first_name, last_name, last_seen_at)
      VALUES ($1::bigint, $2, $3, $4, $5, now())
@@ -103,7 +104,7 @@ async function upsertTelegramUser(input: TelegramUserInput): Promise<BotUser> {
        last_name = EXCLUDED.last_name,
        last_seen_at = now(),
        updated_at = now()
-     RETURNING id, telegram_user_id, username, display_name, banned_at`,
+     RETURNING id, telegram_user_id, username, display_name, banned_at, lang`,
     [String(input.id), input.username ?? null, displayName(input), input.first_name || null, input.last_name ?? null],
   );
   const row = result.rows[0]!;
@@ -113,7 +114,12 @@ async function upsertTelegramUser(input: TelegramUserInput): Promise<BotUser> {
     username: row.username,
     displayName: row.display_name,
     bannedAt: row.banned_at,
+    lang: row.lang,
   };
+}
+
+async function setUserLang(userId: string, lang: string) {
+  await getPool().query(`UPDATE telegram_users SET lang = $2, updated_at = now() WHERE id = $1::uuid`, [userId, lang]);
 }
 
 async function accountCount(userId: string) {
@@ -129,7 +135,7 @@ async function settingValue<T>(key: string, fallback: T): Promise<T> {
   return result.rows[0]?.typed_value ?? fallback;
 }
 
-async function createCallbackToken(args: {
+export async function createCallbackToken(args: {
   userId: string;
   action: string;
   entityId?: string | null;
@@ -215,16 +221,28 @@ async function sendNoAssignment(client: TelegramClient, chatId: number) {
   await client.sendMessage({ chatId, text: escapeHtml(String(text)) });
 }
 
-async function mainKeyboard(userId: string): Promise<TelegramInlineKeyboard> {
+async function mainKeyboard(userId: string, lang: string | null): Promise<TelegramInlineKeyboard> {
+  const L = (msg: { en: string; fa: string }) => pick(msg, lang);
   const pairs = await Promise.all([
-    ["💳 My cards", "menu.cards"],
-    ["📄 My requests", "menu.requests"],
-    ["➕ Add funds", "menu.add_funds"],
-    ["🆕 Request card", "menu.request_card"],
-    ["🪪 Verify identity", "menu.kyc"],
-    ["💬 Support", "support.start"],
+    [L(MENU.cards), "menu.cards"],
+    [L(MENU.requests), "menu.requests"],
+    [L(MENU.addFunds), "menu.add_funds"],
+    [L(MENU.requestCard), "menu.request_card"],
+    [L(MENU.verify), "menu.kyc"],
+    [L(MENU.support), "support.start"],
+    [L(MENU.language), "menu.lang"],
   ].map(async ([text, action]) => ({ text, callback_data: await createCallbackToken({ userId, action }) })));
-  return { inline_keyboard: [[pairs[0], pairs[1]], [pairs[2], pairs[3]], [pairs[4], pairs[5]]] };
+  return { inline_keyboard: [[pairs[0], pairs[1]], [pairs[2], pairs[3]], [pairs[4], pairs[5]], [pairs[6]]] };
+}
+
+async function sendLangPicker(client: TelegramClient, user: BotUser, chatId: number) {
+  const en = await createCallbackToken({ userId: user.id, action: "lang.en" });
+  const fa = await createCallbackToken({ userId: user.id, action: "lang.fa" });
+  await client.sendMessage({
+    chatId,
+    text: pick(COMMON.langPicker, user.lang),
+    replyMarkup: { inline_keyboard: [[{ text: COMMON.langEn.en, callback_data: en }, { text: COMMON.langFa.fa, callback_data: fa }]] },
+  });
 }
 
 async function sendMainMenu(client: TelegramClient, user: BotUser, chatId: number) {
@@ -236,8 +254,8 @@ async function sendMainMenu(client: TelegramClient, user: BotUser, chatId: numbe
   );
   await client.sendMessage({
     chatId,
-    text: `Welcome${user.displayName ? `, <b>${escapeHtml(user.displayName)}</b>` : ""}. Choose an option:`,
-    replyMarkup: await mainKeyboard(user.id),
+    text: `${pick(COMMON.welcome, user.lang)}${user.displayName ? `, <b>${escapeHtml(user.displayName)}</b>` : ""}. ${pick(COMMON.chooseOption, user.lang)}`,
+    replyMarkup: await mainKeyboard(user.id, user.lang),
   });
 }
 
@@ -761,10 +779,20 @@ async function handleCallback(client: TelegramClient, callback: z.infer<typeof c
     if (await assertBotAccess(client, user, chatId)) await sendMainMenu(client, user, chatId);
     return;
   }
+  if (resolved.action === "menu.lang" || resolved.action === "lang.en" || resolved.action === "lang.fa") {
+    if (resolved.action === "menu.lang") { await sendLangPicker(client, user, chatId); return; }
+    const lang = resolved.action === "lang.fa" ? "fa" : "en";
+    await setUserLang(user.id, lang);
+    user.lang = lang;
+    await client.sendMessage({ chatId, text: lang === "fa" ? COMMON.langSetFa.fa : COMMON.langSetEn.en });
+    if (await shouldAutoPromptKyc(user.id)) await sendKycInvite(client, user, chatId);
+    else if (await assertBotAccess(client, user, chatId)) await sendMainMenu(client, user, chatId);
+    return;
+  }
   // KYC callbacks run before the account/membership gate so new customers can verify first.
   if (resolved.action === "menu.kyc" || resolved.action === "kyc.submit" || resolved.action === "kyc.cancel") {
     if (user.bannedAt) {
-      await client.sendMessage({ chatId, text: KYC.accessDisabled });
+      await client.sendMessage({ chatId, text: pick(KYC.accessDisabled, user.lang) });
       return;
     }
     try {
@@ -954,19 +982,19 @@ async function sendKycInvite(client: TelegramClient, user: BotUser, chatId: numb
   const start = await createCallbackToken({ userId: user.id, action: "menu.kyc", ttlMinutes: 30 });
   await client.sendMessage({
     chatId,
-    text: KYC.invite,
-    replyMarkup: { inline_keyboard: [[{ text: KYC.inviteButton, callback_data: start }]] },
+    text: pick(KYC.invite, user.lang),
+    replyMarkup: { inline_keyboard: [[{ text: pick(KYC.inviteButton, user.lang), callback_data: start }]] },
   });
 }
 
 async function beginKyc(client: TelegramClient, user: BotUser, chatId: number) {
   const enabled = await settingValue("kyc_enabled", true);
-  if (!enabled) { await client.sendMessage({ chatId, text: KYC.featureDisabled }); return; }
+  if (!enabled) { await client.sendMessage({ chatId, text: pick(KYC.featureDisabled, user.lang) }); return; }
   const status = await getKycStatusForUser(user.id);
-  if (status === "approved") { await client.sendMessage({ chatId, text: KYC.alreadyApproved }); return; }
-  if (status === "pending") { await client.sendMessage({ chatId, text: KYC.alreadyPending }); return; }
+  if (status === "approved") { await client.sendMessage({ chatId, text: pick(KYC.alreadyApproved, user.lang) }); return; }
+  if (status === "pending") { await client.sendMessage({ chatId, text: pick(KYC.alreadyPending, user.lang) }); return; }
   await setKycState(user.id, "kyc_fullname", {}, 30);
-  await client.sendMessage({ chatId, text: KYC.intro });
+  await client.sendMessage({ chatId, text: pick(KYC.intro, user.lang) });
 }
 
 async function handleKycText(client: TelegramClient, user: BotUser, chatId: number, text: string): Promise<boolean> {
@@ -976,46 +1004,46 @@ async function handleKycText(client: TelegramClient, user: BotUser, chatId: numb
   const value = text.trim();
 
   if (state.mode === "kyc_fullname") {
-    if (value.length < 3 || value.length > 120) { await client.sendMessage({ chatId, text: KYC.errFullName }); return true; }
+    if (value.length < 3 || value.length > 120) { await client.sendMessage({ chatId, text: pick(KYC.errFullName, user.lang) }); return true; }
     draft.fullName = value;
     await setKycState(user.id, "kyc_dob", draft);
-    await client.sendMessage({ chatId, text: KYC.askDob });
+    await client.sendMessage({ chatId, text: pick(KYC.askDob, user.lang) });
     return true;
   }
   if (state.mode === "kyc_dob") {
-    if (!validDob(value)) { await client.sendMessage({ chatId, text: KYC.errDob }); return true; }
+    if (!validDob(value)) { await client.sendMessage({ chatId, text: pick(KYC.errDob, user.lang) }); return true; }
     draft.dateOfBirth = value;
     await setKycState(user.id, "kyc_country", draft);
-    await client.sendMessage({ chatId, text: KYC.askCountry });
+    await client.sendMessage({ chatId, text: pick(KYC.askCountry, user.lang) });
     return true;
   }
   if (state.mode === "kyc_country") {
-    if (value.length < 2 || value.length > 80) { await client.sendMessage({ chatId, text: KYC.errCountry }); return true; }
+    if (value.length < 2 || value.length > 80) { await client.sendMessage({ chatId, text: pick(KYC.errCountry, user.lang) }); return true; }
     draft.country = value;
     await setKycState(user.id, "kyc_national_id", draft);
-    await client.sendMessage({ chatId, text: KYC.askNationalId });
+    await client.sendMessage({ chatId, text: pick(KYC.askNationalId, user.lang) });
     return true;
   }
   if (state.mode === "kyc_national_id") {
-    if (value.length < 3 || value.length > 40) { await client.sendMessage({ chatId, text: KYC.errNationalId }); return true; }
+    if (value.length < 3 || value.length > 40) { await client.sendMessage({ chatId, text: pick(KYC.errNationalId, user.lang) }); return true; }
     draft.nationalId = value;
     await setKycState(user.id, "kyc_phone", draft);
-    await client.sendMessage({ chatId, text: KYC.askPhone });
+    await client.sendMessage({ chatId, text: pick(KYC.askPhone, user.lang) });
     return true;
   }
   if (state.mode === "kyc_phone") {
-    if (!/^\+?[0-9][0-9 ()-]{6,20}$/.test(value)) { await client.sendMessage({ chatId, text: KYC.errPhone }); return true; }
+    if (!/^\+?[0-9][0-9 ()-]{6,20}$/.test(value)) { await client.sendMessage({ chatId, text: pick(KYC.errPhone, user.lang) }); return true; }
     draft.phone = value;
     await setKycState(user.id, "kyc_document", draft, 30);
-    await client.sendMessage({ chatId, text: KYC.askDocument });
+    await client.sendMessage({ chatId, text: pick(KYC.askDocument, user.lang) });
     return true;
   }
   if (state.mode === "kyc_document") {
-    await client.sendMessage({ chatId, text: KYC.askDocument });
+    await client.sendMessage({ chatId, text: pick(KYC.askDocument, user.lang) });
     return true;
   }
   if (state.mode === "kyc_confirm") {
-    await client.sendMessage({ chatId, text: KYC.useButtons });
+    await client.sendMessage({ chatId, text: pick(KYC.useButtons, user.lang) });
     return true;
   }
   return false;
@@ -1027,14 +1055,14 @@ async function handleKycMedia(client: TelegramClient, user: BotUser, chatId: num
   const photo = message.photo?.at(-1);
   const document = message.document;
   const selected = document ?? photo;
-  if (!selected) { await client.sendMessage({ chatId, text: KYC.askDocument }); return true; }
+  if (!selected) { await client.sendMessage({ chatId, text: pick(KYC.askDocument, user.lang) }); return true; }
   if (document?.mime_type && !["image/jpeg", "image/png", "image/webp", "application/pdf"].includes(document.mime_type)) {
-    await client.sendMessage({ chatId, text: KYC.errDocType });
+    await client.sendMessage({ chatId, text: pick(KYC.errDocType, user.lang) });
     return true;
   }
   const env = parseServerEnv(process.env);
   if (selected.file_size && selected.file_size > env.SUPPORT_ATTACHMENT_MAX_BYTES) {
-    await client.sendMessage({ chatId, text: KYC.errDocSize });
+    await client.sendMessage({ chatId, text: pick(KYC.errDocSize, user.lang) });
     return true;
   }
   try {
@@ -1062,7 +1090,7 @@ async function handleKycMedia(client: TelegramClient, user: BotUser, chatId: num
     };
     await sendKycConfirm(client, user, chatId, draft);
   } catch (error) {
-    await client.sendMessage({ chatId, text: error instanceof ApiError ? escapeHtml(error.message) : KYC.errDocGeneric });
+    await client.sendMessage({ chatId, text: error instanceof ApiError ? escapeHtml(error.message) : pick(KYC.errDocGeneric, user.lang) });
   }
   return true;
 }
@@ -1080,7 +1108,7 @@ async function sendKycConfirm(client: TelegramClient, user: BotUser, chatId: num
     country: escapeHtml(draft.country),
     nationalId: escapeHtml(draft.nationalId),
     phone: escapeHtml(draft.phone),
-  });
+  }, user.lang);
   await client.sendMessage({
     chatId,
     text,
@@ -1106,7 +1134,7 @@ async function submitKyc(client: TelegramClient, user: BotUser, chatId: number) 
   });
   await getPool().query(`DELETE FROM telegram_bot_states WHERE user_id=$1::uuid`, [user.id]);
   await auditTelegramEvent({ userId: user.id, action: "telegram.kyc.submitted", entityType: "kyc_submission", entityId: created.id });
-  await client.sendMessage({ chatId, text: KYC.submitted });
+  await client.sendMessage({ chatId, text: pick(KYC.submitted, user.lang) });
 }
 
 async function cancelKyc(client: TelegramClient, user: BotUser, chatId: number) {
@@ -1115,7 +1143,7 @@ async function cancelKyc(client: TelegramClient, user: BotUser, chatId: number) 
     await deletePrivateSupportAttachment(state.payload.document.objectKey).catch(() => {});
   }
   await getPool().query(`DELETE FROM telegram_bot_states WHERE user_id=$1::uuid`, [user.id]);
-  await client.sendMessage({ chatId, text: KYC.cancelled });
+  await client.sendMessage({ chatId, text: pick(KYC.cancelled, user.lang) });
   if (await assertBotAccess(client, user, chatId)) await sendMainMenu(client, user, chatId);
 }
 
@@ -1125,7 +1153,7 @@ async function handleMessage(client: TelegramClient, message: z.infer<typeof mes
   const text = message.text?.trim() ?? "";
 
   if (user.bannedAt) {
-    await client.sendMessage({ chatId, text: KYC.accessDisabled });
+    await client.sendMessage({ chatId, text: pick(KYC.accessDisabled, user.lang) });
     return;
   }
 
@@ -1149,7 +1177,9 @@ async function handleMessage(client: TelegramClient, message: z.infer<typeof mes
   if (text && (await handleKycText(client, user, chatId, text))) return;
   if (text === "/kyc") { await beginKyc(client, user, chatId); return; }
 
+  if (text === "/lang") { await sendLangPicker(client, user, chatId); return; }
   if (text === "/start" || text === "/menu") {
+    if (user.lang === null) { await sendLangPicker(client, user, chatId); return; }
     if (await shouldAutoPromptKyc(user.id)) { await sendKycInvite(client, user, chatId); return; }
     if (await assertBotAccess(client, user, chatId)) await sendMainMenu(client, user, chatId);
     return;

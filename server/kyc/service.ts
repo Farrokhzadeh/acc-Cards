@@ -246,5 +246,18 @@ export async function reviewKycSubmission(args: {
     requestId: args.requestId,
     metadata: { decision: args.decision },
   });
+  const sub = await getPool().query<{ telegram_user_id: string }>(
+    `SELECT telegram_user_id FROM kyc_submissions WHERE id = $1::uuid`,
+    [args.id],
+  );
+  const userId = sub.rows[0]?.telegram_user_id;
+  if (userId) {
+    await getPool().query(
+      `INSERT INTO outbox_events(topic, aggregate_type, aggregate_id, event_type, payload, idempotency_key, status, available_at)
+       VALUES ('telegram', 'kyc_submission', $1, 'kyc.decision', $2::jsonb, $3, 'pending', now())
+       ON CONFLICT (idempotency_key) DO NOTHING`,
+      [args.id, JSON.stringify({ userId, decision: args.decision }), `kyc-decision:${args.id}:${status}`],
+    );
+  }
   return { ok: true, status: row.status };
 }

@@ -498,9 +498,9 @@ const navItems: { view: View; label: string; icon: typeof LayoutDashboard; badge
   { view: "accounts", label: "Accounts", icon: WalletCards },
   { view: "clients", label: "Clients", icon: Users },
   { view: "kyc", label: "KYC", icon: UserRoundCheck },
-  { view: "requests", label: "Requests", icon: ReceiptText, badge: "4" },
+  { view: "requests", label: "Requests", icon: ReceiptText },
   { view: "transactions", label: "Transactions", icon: ArrowLeftRight },
-  { view: "inbox", label: "Inbox", icon: MessagesSquare, badge: "2" },
+  { view: "inbox", label: "Inbox", icon: MessagesSquare },
   { view: "operations", label: "Operations", icon: Activity },
   { view: "settings", label: "Settings", icon: Settings2 },
 ];
@@ -1916,6 +1916,11 @@ export default function DashboardApp() {
 
   const accountName = (id: string | null) => accounts.find((account) => account.id === id)?.name ?? "Not connected";
   const clientName = (id: string | null) => id ? clients.find((client) => client.id === id)?.name ?? "Unknown client" : "No Telegram user";
+  const pendingRequestCount =
+    cardRequests.filter((r) => r.status === "New").length +
+    fundingRequests.filter((r) => r.status === "pending_review" || r.status === "needs_reconciliation").length;
+  const unreadInboxCount = supportConversations.reduce((sum, c) => sum + (c.unreadAdminCount ?? 0), 0);
+  const badgeFor = (view: View): number => (view === "requests" ? pendingRequestCount : view === "inbox" ? unreadInboxCount : 0);
 
   useEffect(() => {
     const valid: View[] = ["overview", "accounts", "clients", "kyc", "requests", "transactions", "inbox", "operations", "settings"];
@@ -1966,7 +1971,7 @@ export default function DashboardApp() {
                       <item.icon />
                       <span>{item.label}</span>
                     </SidebarMenuButton>
-                    {item.badge && <SidebarMenuBadge className="top-3 rounded-full bg-[#6157e7] text-white">{item.badge}</SidebarMenuBadge>}
+                    {badgeFor(item.view) > 0 && <SidebarMenuBadge className="top-3 rounded-full bg-[#6157e7] text-white">{badgeFor(item.view)}</SidebarMenuBadge>}
                   </SidebarMenuItem>
                 ))}
               </SidebarMenu>
