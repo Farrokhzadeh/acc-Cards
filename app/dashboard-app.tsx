@@ -3371,6 +3371,7 @@ function ClientPaymentSection({ clientId }: { clientId: string | null }) {
       <div className="flex flex-wrap items-center gap-2">
         <p className="text-xs font-bold uppercase tracking-[.14em] text-[#8179e8]">Payment</p>
         {payment.declaredAt && <Badge variant="outline" className="rounded-full border-indigo-200 bg-indigo-50 text-indigo-700">Declared {new Date(payment.declaredAt).toLocaleDateString()}</Badge>}
+        {payment.amountUsdCents && <Badge variant="outline" className="rounded-full border-emerald-200 bg-emerald-50 text-emerald-700">${(Number(payment.amountUsdCents) / 100).toFixed(2)} paid</Badge>}
         {payment.hasReceipt
           ? <a href={clientReceiptUrl(clientId)} target="_blank" rel="noreferrer" className="text-xs font-semibold text-[#6157e7] underline-offset-2 hover:underline">View receipt</a>
           : <span className="text-xs text-[#9692a3]">no receipt uploaded</span>}

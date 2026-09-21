@@ -97,6 +97,8 @@ export const PAYMENT = {
   ),
   notConfigured: m("Payment card is not configured yet. Please contact support.", "کارت پرداخت هنوز تنظیم نشده است. لطفاً با پشتیبانی تماس بگیرید."),
   askReceipt: m("🧾 Please send your <b>payment receipt</b> (screenshot or PDF) so we can verify your payment. This speeds up activation.", "🧾 لطفاً <b>رسید پرداخت</b> خود را (اسکرین‌شات یا PDF) بفرستید تا پرداخت شما را تأیید کنیم. این کار فعال‌سازی را سریع‌تر می‌کند."),
+  askAmount: m("💵 Enter the amount you paid in USD (for example <code>20</code>):", "💵 مبلغ پرداختی خود را به دلار وارد کنید (مثلاً <code>20</code>):"),
+  errAmount: m("Enter a valid amount in USD, for example <code>20</code>.", "یک مبلغ معتبر به دلار وارد کنید، مثلاً <code>20</code>."),
   skipReceipt: m("I don't have a receipt", "رسید ندارم"),
 };
 

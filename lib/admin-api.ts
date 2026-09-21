@@ -362,7 +362,7 @@ export type ClientKyc = {
 } | null;
 
 export type ClientPayment = {
-  declaredAt: string | null; hasReceipt: boolean; receiptMime: string | null; receiptAt: string | null;
+  declaredAt: string | null; hasReceipt: boolean; receiptMime: string | null; receiptAt: string | null; amountUsdCents: string | null;
 } | null;
 
 export async function fetchClientKyc(id: string) {

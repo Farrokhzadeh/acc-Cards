@@ -142,6 +142,23 @@ async function setPaymentReceipt(userId: string, objectKey: string, mime: string
   );
 }
 
+async function setPaymentAmount(userId: string, cents: number) {
+  await getPool().query(`UPDATE telegram_users SET payment_amount_usd_cents = $2, updated_at = now() WHERE id = $1::uuid`, [userId, cents]);
+}
+
+// Collects the paid amount, then moves on to receipt collection.
+async function handlePaymentAmountText(client: TelegramClient, user: BotUser, chatId: number, text: string): Promise<boolean> {
+  const state = await getKycState(user.id);
+  if (!state || state.mode !== "payment_amount") return false;
+  const cents = dollarsToCents(text.trim());
+  if (cents == null || cents <= 0) { await client.sendMessage({ chatId, text: pick(PAYMENT.errAmount, user.lang) }); return true; }
+  await setPaymentAmount(user.id, cents);
+  await setKycState(user.id, "payment_receipt", {}, 60);
+  const skip = await createCallbackToken({ userId: user.id, action: "menu.skipreceipt" });
+  await client.sendMessage({ chatId, text: pick(PAYMENT.askReceipt, user.lang), replyMarkup: { inline_keyboard: [[{ text: pick(PAYMENT.skipReceipt, user.lang), callback_data: skip }]] } });
+  return true;
+}
+
 // Collects the payment receipt (photo/PDF) after the user declared payment.
 async function handlePaymentReceiptMedia(client: TelegramClient, user: BotUser, chatId: number, message: z.infer<typeof messageSchema>): Promise<boolean> {
   const state = await getKycState(user.id);
@@ -991,9 +1008,8 @@ async function handleCallback(client: TelegramClient, callback: z.infer<typeof c
     if (user.bannedAt) { await client.sendMessage({ chatId, text: pick(KYC.accessDisabled, user.lang) }); return; }
     await setPaymentDeclared(user.id);
     await auditTelegramEvent({ userId: user.id, action: "telegram.payment.declared", entityType: "telegram_user", entityId: user.id });
-    await setKycState(user.id, "payment_receipt", {}, 60);
-    const skip = await createCallbackToken({ userId: user.id, action: "menu.skipreceipt" });
-    await client.sendMessage({ chatId, text: pick(PAYMENT.askReceipt, user.lang), replyMarkup: { inline_keyboard: [[{ text: pick(PAYMENT.skipReceipt, user.lang), callback_data: skip }]] } });
+    await setKycState(user.id, "payment_amount", {}, 60);
+    await client.sendMessage({ chatId, text: pick(PAYMENT.askAmount, user.lang) });
     return;
   }
   if (resolved.action === "menu.skipreceipt") {
@@ -1398,6 +1414,7 @@ async function handleMessage(client: TelegramClient, message: z.infer<typeof mes
   }
 
   // KYC runs before the account/membership gate so brand-new customers can verify identity first.
+  if (text && (await handlePaymentAmountText(client, user, chatId, text))) return;
   if (await handlePaymentReceiptMedia(client, user, chatId, message)) return;
   if (await handleKycMedia(client, user, chatId, message)) return;
   if (text && (await handleKycText(client, user, chatId, text))) return;
