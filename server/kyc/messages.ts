@@ -50,10 +50,7 @@ export const KYC = {
   useButtons: m("Use the Submit or Cancel button below, or send /cancel.", "از دکمهٔ ثبت یا لغو در زیر استفاده کنید، یا /cancel بفرستید."),
   submitted: m("✅ Thank you! Your identity verification was submitted and is now <b>pending admin review</b>.", "✅ سپاس! درخواست احراز هویت شما ثبت شد و اکنون <b>در انتظار بررسی مدیر</b> است."),
   cancelled: m("Identity verification cancelled.", "احراز هویت لغو شد."),
-  approvedNotice: m(
-    "🎉 Your identity has been <b>approved</b>. Welcome!\nYour account is being activated — once an admin assigns your account, you can request a card from the menu.",
-    "🎉 هویت شما <b>تأیید</b> شد. خوش آمدید!\nحساب شما در حال فعال‌سازی است — پس از اختصاص حساب توسط مدیر، می‌توانید از منو کارت درخواست کنید.",
-  ),
+  approvedNotice: m("🎉 Your identity has been <b>approved</b>. Next step: pay the setup/load fee to get your card.", "🎉 هویت شما <b>تأیید</b> شد. مرحله بعد: پرداخت هزینه راه‌اندازی/شارژ برای دریافت کارت."),
   rejectedNotice: m("Your identity verification was <b>rejected</b>. You can start again with /kyc.", "احراز هویت شما <b>رد</b> شد. می‌توانید با /kyc دوباره شروع کنید."),
   approvedNoAccount: m(
     "Your identity is approved ✅. An administrator still needs to assign your account before you can request cards. Please contact them.",

@@ -131,6 +131,14 @@ async function isPaymentDeclared(userId: string): Promise<boolean> {
   return Boolean(r.rows[0]?.payment_declared_at);
 }
 
+async function getPaymentStatus(userId: string): Promise<string | null> {
+  const r = await getPool().query<{ payment_status: string | null }>(
+    `SELECT payment_status FROM telegram_users WHERE id = $1::uuid`,
+    [userId],
+  );
+  return r.rows[0]?.payment_status ?? null;
+}
+
 async function setPaymentDeclared(userId: string) {
   await getPool().query(`UPDATE telegram_users SET payment_declared_at = now(), updated_at = now() WHERE id = $1::uuid`, [userId]);
 }
@@ -410,7 +418,8 @@ async function routeHome(client: TelegramClient, user: BotUser, chatId: number) 
   if (st === "pending") { await client.sendMessage({ chatId, text: pick(KYC.alreadyPending, user.lang) }); return; }
   // KYC approved: menu unlocks only once an admin has assigned an account (approval).
   if ((await accountCount(user.id)) > 0) { await sendMainMenu(client, user, chatId); return; }
-  if (!(await isPaymentDeclared(user.id))) { await sendPaymentScreen(client, user, chatId); return; }
+  const pstat = await getPaymentStatus(user.id);
+  if (!pstat || pstat === "denied") { await sendPaymentScreen(client, user, chatId); return; }
   await sendWaitingScreen(client, user, chatId);
 }
 
@@ -1416,7 +1425,7 @@ async function handleMessage(client: TelegramClient, message: z.infer<typeof mes
     }
     await getPool().query(`DELETE FROM telegram_bot_states WHERE user_id = $1::uuid`, [user.id]);
     if (await assertBotAccess(client, user, chatId)) await sendMainMenu(client, user, chatId);
-    else if (await shouldAutoPromptKyc(user.id)) await sendKycInvite(client, user, chatId);
+    else await routeHome(client, user, chatId);
     return;
   }
 
