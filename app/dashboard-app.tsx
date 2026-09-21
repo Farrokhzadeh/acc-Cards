@@ -144,7 +144,6 @@ type View =
   | "accounts"
   | "clients"
   | "requests"
-  | "transactions"
   | "inbox"
   | "operations"
   | "settings";
@@ -307,7 +306,6 @@ const navItems: { view: View; label: string; icon: typeof LayoutDashboard; badge
   { view: "accounts", label: "Accounts", icon: WalletCards },
   { view: "clients", label: "Clients", icon: Users },
   { view: "requests", label: "Requests", icon: ReceiptText },
-  { view: "transactions", label: "Transactions", icon: ArrowLeftRight },
   { view: "inbox", label: "Inbox", icon: MessagesSquare },
   { view: "operations", label: "Operations", icon: Activity },
   { view: "settings", label: "Settings", icon: Settings2 },
@@ -318,7 +316,6 @@ const viewCopy: Record<View, { title: string; description: string }> = {
   accounts: { title: "Kripicard accounts", description: "API connections, card funding, and card exposure." },
   clients: { title: "Telegram clients", description: "Account assignments, cards, access, and activity." },
   requests: { title: "Requests", description: "Review client payments and new card requests." },
-  transactions: { title: "Transactions", description: "Provider activity across every client card." },
   inbox: { title: "Client inbox", description: "Handle Telegram support without leaving the console." },
   operations: { title: "Operations", description: "Audit, worker health, sync lag, and operational alerts." },
   settings: { title: "Settings", description: "Pricing, exchange rate, bot access, and 3DS routing." },
@@ -933,7 +930,7 @@ export default function DashboardApp() {
   }, [backendDataLoaded]);
 
   useEffect(() => {
-    if (!backendDataLoaded || view !== "transactions") return;
+    if (!backendDataLoaded || view !== "requests") return;
     const timer = window.setTimeout(() => {
       Promise.all([
         fetchTransactions({ search: search.trim() || undefined, limit: 100 }),
@@ -1753,7 +1750,7 @@ export default function DashboardApp() {
   const badgeFor = (view: View): number => (view === "requests" ? pendingRequestCount : view === "inbox" ? unreadInboxCount : 0);
 
   useEffect(() => {
-    const valid: View[] = ["overview", "accounts", "clients", "requests", "transactions", "inbox", "operations", "settings"];
+    const valid: View[] = ["overview", "accounts", "clients", "requests", "inbox", "operations", "settings"];
     const applyHash = () => {
       const hash = window.location.hash.replace(/^#/, "") as View;
       if (valid.includes(hash)) setView(hash);
@@ -1914,6 +1911,9 @@ export default function DashboardApp() {
                 maxCardsPerClient={maxCardsPerClient}
                 search={search}
                 kycPendingCount={kycPendingCount}
+                transactions={transactions}
+                issues={transactionNotificationIssues}
+                onReconcileIssue={reconcileNotificationIssue}
                 onOpenRequest={setActiveRequestId}
                 onCardRequestAction={async (id, action, selectedAccountId) => {
                   try {
@@ -1942,9 +1942,6 @@ export default function DashboardApp() {
                   }
                 }}
               />
-            )}
-            {view === "transactions" && (
-              <TransactionsView transactions={transactions} clientName={clientName} search={search} issues={transactionNotificationIssues} onReconcileIssue={reconcileNotificationIssue} />
             )}
             {view === "operations" && (
               <OperationsView snapshot={operationalSnapshot} onControlAction={async (key, enabled) => {
@@ -2264,10 +2261,10 @@ export default function DashboardApp() {
                           <div className="flex gap-3"><span className="grid size-10 shrink-0 place-items-center rounded-[13px] bg-[#eeecff] text-[#6157e7]"><CreditCard className="size-5" /></span><div><p className="font-semibold text-[#302d43]">{card.label} · •{card.last4}</p><p className="mt-1 text-xs text-[#9692a3]">{card.cardholder} · BIN {card.bin} · expires {card.expiry}</p></div></div>
                           <Badge variant="outline" className={card.frozen ? "border-slate-200 bg-slate-100 text-slate-600" : "border-emerald-200 bg-emerald-50 text-emerald-700"}>{card.frozen ? "Frozen" : "Active"}</Badge>
                         </div>
-                        <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-[#efedf3] pt-3"><div><p className="text-xs text-[#9692a3]">Card balance</p><p className="font-semibold">{formatUsd(card.balance)}</p></div><div className="flex flex-wrap gap-2"><Button size="sm" disabled={backendDataLoaded} className="rounded-xl bg-[#6157e7] text-white hover:bg-[#554bcf]" onClick={() => openFundCard(card.id)}><CircleDollarSign className="size-4" />{backendDataLoaded ? "Funding disabled" : "Add funds"}</Button><Button variant="outline" size="sm" className="rounded-xl" disabled={cardStatePendingId === card.id} onClick={() => void toggleCard(card.id)}>{card.frozen ? <Unlock className="size-4" /> : <Snowflake className="size-4" />}{card.frozen ? "Unfreeze" : "Freeze"}</Button><Button variant="outline" size="sm" className="rounded-xl" onClick={() => { setLiveCardDetails(null); setActiveCardId(card.id); }}><Eye className="size-4" />Details</Button></div></div>
+                        <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-[#efedf3] pt-3"><div><p className="text-xs text-[#9692a3]">Card balance</p><p className="font-semibold">{formatUsd(card.balance)}</p></div><div className="flex flex-wrap gap-2"><Button variant="outline" size="sm" className="rounded-xl" disabled={cardStatePendingId === card.id} onClick={() => void toggleCard(card.id)}>{card.frozen ? <Unlock className="size-4" /> : <Snowflake className="size-4" />}{card.frozen ? "Unfreeze" : "Freeze"}</Button><Button variant="outline" size="sm" className="rounded-xl" onClick={() => { setLiveCardDetails(null); setActiveCardId(card.id); }}><Eye className="size-4" />Details</Button></div></div>
                       </div>
                     ))}
-                    {!activeAccountCardMatches.length && <div className="rounded-[18px] border border-dashed bg-white p-8 text-center"><CreditCard className="mx-auto size-7 text-[#c1bdcc]" /><p className="mt-2 text-sm font-medium">{search ? "No matching cards" : "No cards in this account"}</p>{!search && <Button size="sm" className="mt-4 rounded-xl bg-[#6157e7] text-white" onClick={() => openCreateCard(activeAccount.id)}><Plus className="size-4" />Create card (legacy demo)</Button>}</div>}
+                    {!activeAccountCardMatches.length && <div className="rounded-[18px] border border-dashed bg-white p-8 text-center"><CreditCard className="mx-auto size-7 text-[#c1bdcc]" /><p className="mt-2 text-sm font-medium">{search ? "No matching cards" : "No cards in this account"}</p></div>}
                     <ListPagination page={accountCardPaging.page} pageSize={accountCardPaging.pageSize} totalItems={accountCardPaging.totalItems} totalPages={accountCardPaging.totalPages} onPageChange={accountCardPaging.setPage} />
                   </TabsContent>
                   <TabsContent value="mail" className="mt-4 space-y-3">
@@ -2284,7 +2281,7 @@ export default function DashboardApp() {
                   </TabsContent>
                 </Tabs>
               </div>
-              <SheetFooter className="flex-wrap border-t border-[#eceaf2] bg-white px-6 py-4"><Button variant="outline" onClick={() => openEditAccount(activeAccount)} className="rounded-xl"><PencilLine className="size-4" />Edit connection</Button><Button disabled={backendDataLoaded || !activeAccountCards.length} onClick={() => openFundCard("", activeAccount.id)} className="rounded-xl bg-[#6157e7] text-white hover:bg-[#554bcf]"><CircleDollarSign className="size-4" />{backendDataLoaded ? "Provider funding disabled" : "Add funds"}</Button><Button variant="ghost" onClick={() => openCreateCard(activeAccount.id)} className="rounded-xl text-[#6157e7]"><Plus className="size-4" />Create card (legacy demo)</Button></SheetFooter>
+              <SheetFooter className="flex-wrap border-t border-[#eceaf2] bg-white px-6 py-4"><Button variant="outline" onClick={() => openEditAccount(activeAccount)} className="rounded-xl"><PencilLine className="size-4" />Edit connection</Button></SheetFooter>
             </>
           )}
         </SheetContent>
@@ -2673,7 +2670,7 @@ function Overview({
             <p className="mt-3 max-w-lg text-sm leading-6 text-[#aaa5c8]">Across {accounts.length} connected Kripicard accounts. Kripicard&apos;s documented production flow is wallet-based; card creation and funding stay disabled until the later payment phases implement that provider workflow safely.</p>
             <div className="mt-7 flex flex-wrap gap-2.5">
               <button onClick={() => onViewChange("accounts")} className="rounded-xl bg-white px-4 py-2.5 text-sm font-semibold text-[#282347] transition hover:bg-[#f0edff]">Manage accounts</button>
-              <button onClick={() => onViewChange("transactions")} className="rounded-xl border border-white/15 bg-white/[.06] px-4 py-2.5 text-sm font-medium text-white transition hover:bg-white/10">View transactions</button>
+              <button onClick={() => onViewChange("requests")} className="rounded-xl border border-white/15 bg-white/[.06] px-4 py-2.5 text-sm font-medium text-white transition hover:bg-white/10">View transactions</button>
             </div>
           </div>
           <div className="rounded-[24px] border border-white/10 bg-white/[.07] p-5 backdrop-blur-md">
@@ -2769,7 +2766,7 @@ function AccountsView({ accounts, clients, cards, accountEmails, onAdd, onOpen, 
   const paging = usePaginatedItems(accounts, 6);
   return (
     <>
-      <PageIntro title="Account connections" description="Credentials, visible account balances, external inboxes, and exclusive client assignments. Production card funding is executed only from accepted funding requests." action={<div className="flex flex-wrap gap-2"><Button variant="outline" onClick={onAdd} className="h-11 rounded-[14px] bg-white"><Plus className="size-4" />Add account</Button><Button variant="outline" onClick={() => onCreateCard()} className="h-11 rounded-[14px] bg-white"><CreditCard className="size-4" />Create card (legacy demo)</Button><Button onClick={() => onFundCard()} className="h-11 rounded-[14px] bg-[#6157e7] px-4 text-white shadow-[0_8px_22px_rgba(97,87,231,.18)] hover:bg-[#554bcf]"><CircleDollarSign className="size-4" />Add funds (legacy demo)</Button></div>} />
+      <PageIntro title="Account connections" description="Credentials, visible account balances, external inboxes, and exclusive client assignments. Production card funding is executed only from accepted funding requests." action={<div className="flex flex-wrap gap-2"><Button variant="outline" onClick={onAdd} className="h-11 rounded-[14px] bg-white"><Plus className="size-4" />Add account</Button></div>} />
       <div className="grid gap-4 xl:grid-cols-3">
         {paging.pageItems.map((account, index) => {
           const assignedClient = clients.find((client) => client.accountIds.includes(account.id));
@@ -2850,7 +2847,7 @@ function ClientsView({ clients, cards, maxCardsPerClient, onOpen, onToggleBan, a
   );
 }
 
-function RequestsView({ fundingRequests, cardRequests, clients, cards, clientName, maxCardsPerClient, search, onOpenRequest, onCardRequestAction, onCardRequestIssue, kycPendingCount }: { fundingRequests: FundingRequest[]; cardRequests: CardRequest[]; clients: Client[]; cards: ClientCard[]; clientName: (id: string | null) => string; maxCardsPerClient: number; search: string; onOpenRequest: (id: string) => void; onCardRequestAction: (id: string, action: "approve" | "reject", selectedAccountId?: string | null) => void | Promise<void>; onCardRequestIssue: (id: string, mode: "issue" | "reconcile") => void | Promise<void>; kycPendingCount: number }) {
+function RequestsView({ fundingRequests, cardRequests, clients, cards, clientName, maxCardsPerClient, search, onOpenRequest, onCardRequestAction, onCardRequestIssue, kycPendingCount, transactions, issues, onReconcileIssue }: { fundingRequests: FundingRequest[]; cardRequests: CardRequest[]; clients: Client[]; cards: ClientCard[]; clientName: (id: string | null) => string; maxCardsPerClient: number; search: string; onOpenRequest: (id: string) => void; onCardRequestAction: (id: string, action: "approve" | "reject", selectedAccountId?: string | null) => void | Promise<void>; onCardRequestIssue: (id: string, mode: "issue" | "reconcile") => void | Promise<void>; kycPendingCount: number; transactions: Transaction[]; issues: TransactionNotificationIssue[]; onReconcileIssue: (id: string, action: "acknowledge" | "retry") => void | Promise<void> }) {
   const needle = search.trim().toLowerCase();
   const [selectedAccounts, setSelectedAccounts] = useState<Record<string, string>>({});
   const [pendingRequestId, setPendingRequestId] = useState<string | null>(null);
@@ -2890,6 +2887,7 @@ function RequestsView({ fundingRequests, cardRequests, clients, cards, clientNam
           <TabsTrigger className="rounded-[10px] px-4 data-[state=active]:bg-[#eeecff] data-[state=active]:text-[#5146ca]" value="cards">New cards <Badge variant="outline" className="ml-1.5 rounded-full">{cardRequests.filter((item) => item.status === "New").length}</Badge></TabsTrigger>
           <TabsTrigger className="rounded-[10px] px-4 data-[state=active]:bg-[#eeecff] data-[state=active]:text-[#5146ca]" value="funding">Funding <Badge className="ml-1.5 rounded-full bg-[#6157e7] text-white">{fundingRequests.filter((item) => !["completed", "rejected", "cancelled"].includes(item.status)).length}</Badge></TabsTrigger>
           <TabsTrigger className="rounded-[10px] px-4 data-[state=active]:bg-[#eeecff] data-[state=active]:text-[#5146ca]" value="kyc">KYC <Badge className="ml-1.5 rounded-full bg-[#6157e7] text-white">{kycPendingCount}</Badge></TabsTrigger>
+          <TabsTrigger className="rounded-[10px] px-4 data-[state=active]:bg-[#eeecff] data-[state=active]:text-[#5146ca]" value="transactions">Transactions <Badge variant="outline" className="ml-1.5 rounded-full">{transactions.length}</Badge></TabsTrigger>
         </TabsList>
         <TabsContent value="cards">
           <Card className="data-table overflow-hidden surface-card rounded-[24px]">
@@ -2951,6 +2949,9 @@ function RequestsView({ fundingRequests, cardRequests, clients, cards, clientNam
         </TabsContent>
         <TabsContent value="kyc">
           <KycView />
+        </TabsContent>
+        <TabsContent value="transactions">
+          <TransactionsView transactions={transactions} clientName={clientName} search={search} issues={issues} onReconcileIssue={onReconcileIssue} />
         </TabsContent>
       </Tabs>
     </>

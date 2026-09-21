@@ -123,6 +123,43 @@ async function setUserLang(userId: string, lang: string) {
   await getPool().query(`UPDATE telegram_users SET lang = $2, updated_at = now() WHERE id = $1::uuid`, [userId, lang]);
 }
 
+async function isPaymentDeclared(userId: string): Promise<boolean> {
+  const r = await getPool().query<{ payment_declared_at: Date | null }>(
+    `SELECT payment_declared_at FROM telegram_users WHERE id = $1::uuid`,
+    [userId],
+  );
+  return Boolean(r.rows[0]?.payment_declared_at);
+}
+
+async function setPaymentDeclared(userId: string) {
+  await getPool().query(`UPDATE telegram_users SET payment_declared_at = now(), updated_at = now() WHERE id = $1::uuid`, [userId]);
+}
+
+// Payment screen shown to KYC-approved users who haven't paid yet (menu stays locked).
+async function sendPaymentScreen(client: TelegramClient, user: BotUser, chatId: number) {
+  const pc = await getPaymentCard();
+  const paid = await createCallbackToken({ userId: user.id, action: "menu.paid" });
+  const support = await createCallbackToken({ userId: user.id, action: "support.start" });
+  const text = pc.cardNumber
+    ? pick(PAYMENT.info, user.lang).replace("{card}", escapeHtml(pc.cardNumber)).replace("{holder}", escapeHtml(pc.cardHolder || "—"))
+    : pick(PAYMENT.notConfigured, user.lang);
+  await client.sendMessage({
+    chatId,
+    text,
+    replyMarkup: { inline_keyboard: [[{ text: pick(MENU.paidBtn, user.lang), callback_data: paid }], [{ text: pick(MENU.support, user.lang), callback_data: support }]] },
+  });
+}
+
+// Shown after the user declared payment, until an admin activates the account.
+async function sendWaitingScreen(client: TelegramClient, user: BotUser, chatId: number) {
+  const support = await createCallbackToken({ userId: user.id, action: "support.start" });
+  await client.sendMessage({
+    chatId,
+    text: pick(FLOW.waitingActivation, user.lang),
+    replyMarkup: { inline_keyboard: [[{ text: pick(MENU.support, user.lang), callback_data: support }]] },
+  });
+}
+
 // Append a message to the user's conversation so the admin Inbox shows the FULL
 // bot<->user chat (not only support). Used for inbound user messages and, via
 // withChatLog, every outbound bot reply.
@@ -268,11 +305,10 @@ async function mainKeyboard(userId: string, lang: string | null): Promise<Telegr
     [L(MENU.requests), "menu.requests"],
     [L(MENU.addFunds), "menu.add_funds"],
     [L(MENU.requestCard), "menu.request_card"],
-    [L(MENU.verify), "menu.kyc"],
     [L(MENU.support), "support.start"],
     [L(MENU.language), "menu.lang"],
   ].map(async ([text, action]) => ({ text, callback_data: await createCallbackToken({ userId, action }) })));
-  return { inline_keyboard: [[pairs[0], pairs[1]], [pairs[2], pairs[3]], [pairs[4], pairs[5]], [pairs[6]]] };
+  return { inline_keyboard: [[pairs[0], pairs[1]], [pairs[2], pairs[3]], [pairs[4], pairs[5]]] };
 }
 
 async function sendLangPicker(client: TelegramClient, user: BotUser, chatId: number) {
@@ -301,13 +337,14 @@ async function sendPaymentInfo(client: TelegramClient, user: BotUser, chatId: nu
 // messaging that reflects their real KYC / account state instead of a generic error.
 async function routeHome(client: TelegramClient, user: BotUser, chatId: number) {
   if (user.lang === null) { await sendLangPicker(client, user, chatId); return; }
+  if (user.bannedAt) { await client.sendMessage({ chatId, text: pick(KYC.accessDisabled, user.lang) }); return; }
   const st = await getKycStatusForUser(user.id);
   if (st === "none" || st === "rejected") { await sendKycInvite(client, user, chatId); return; }
   if (st === "pending") { await client.sendMessage({ chatId, text: pick(KYC.alreadyPending, user.lang) }); return; }
-  if (user.bannedAt) { await client.sendMessage({ chatId, text: pick(KYC.accessDisabled, user.lang) }); return; }
-  const cards = await userCards(user.id);
-  if (!cards.length) await sendPaymentInfo(client, user, chatId);
-  await sendMainMenu(client, user, chatId);
+  // KYC approved: menu unlocks only once an admin has assigned an account (approval).
+  if ((await accountCount(user.id)) > 0) { await sendMainMenu(client, user, chatId); return; }
+  if (!(await isPaymentDeclared(user.id))) { await sendPaymentScreen(client, user, chatId); return; }
+  await sendWaitingScreen(client, user, chatId);
 }
 
 async function sendMainMenu(client: TelegramClient, user: BotUser, chatId: number) {
@@ -906,6 +943,21 @@ async function handleCallback(client: TelegramClient, callback: z.infer<typeof c
     await routeHome(client, user, chatId);
     return;
   }
+  if (resolved.action === "menu.home") { await routeHome(client, user, chatId); return; }
+  if (resolved.action === "menu.paid") {
+    if (user.bannedAt) { await client.sendMessage({ chatId, text: pick(KYC.accessDisabled, user.lang) }); return; }
+    await setPaymentDeclared(user.id);
+    await auditTelegramEvent({ userId: user.id, action: "telegram.payment.declared", entityType: "telegram_user", entityId: user.id });
+    await sendWaitingScreen(client, user, chatId);
+    return;
+  }
+  // Menu/card/request actions stay locked until an admin assigns an account (approval).
+  const gated =
+    resolved.action === "menu.cards" || resolved.action === "menu.requests" ||
+    resolved.action === "menu.add_funds" || resolved.action === "menu.request_card" ||
+    resolved.action.startsWith("card.") || resolved.action.startsWith("request.") ||
+    resolved.action.startsWith("fundreq.");
+  if (gated && (await accountCount(user.id)) < 1) { await routeHome(client, user, chatId); return; }
   // KYC callbacks run before the account/membership gate so new customers can verify first.
   if (resolved.action === "menu.kyc" || resolved.action === "kyc.submit" || resolved.action === "kyc.cancel") {
     if (user.bannedAt) {

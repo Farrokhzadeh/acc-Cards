@@ -70,6 +70,7 @@ export const MENU = {
   support: m("💬 Support", "💬 پشتیبانی"),
   language: m("🌐 Language", "🌐 زبان"),
   payment: m("💳 Payment info", "💳 اطلاعات پرداخت"),
+  paidBtn: m("✅ I've made the payment", "✅ پرداخت را انجام داده‌ام"),
   back: m("← Menu", "← منو"),
 };
 
@@ -114,6 +115,7 @@ export const FLOW = {
   requestsHeader: m("<b>My requests</b>\nTap a request to see its status and timeline.", "<b>درخواست‌های من</b>\nبرای وضعیت و زمان‌بندی روی یک درخواست بزنید."),
   emptyTransactions: m("No transactions yet. Once you use your card, its activity appears here.", "هنوز تراکنشی نیست. پس از استفاده از کارت، فعالیت‌ها اینجا نمایش می‌گیرد."),
   waitPayment: m("⏳ Payment received. Our team is reviewing it — please wait. We'll message you here as soon as your card is ready.", "⏳ پرداخت دریافت شد. تیم ما در حال بررسی است — لطفاً صبر کنید. به محض آماده شدن کارت، اینجا پیام می‌دهیم."),
+  waitingActivation: m("⏳ Thank you! We've received your payment notice. An administrator is verifying it now — your account will be activated shortly. We'll message you here as soon as it's ready.", "⏳ سپاس! اعلام پرداخت شما دریافت شد. مدیر در حال بررسی است — حساب شما به‌زودی فعال می‌شود. وقتی آماده شد اینجا پیام می‌گیرید."),
 };
 
 export const NOTIFY = {

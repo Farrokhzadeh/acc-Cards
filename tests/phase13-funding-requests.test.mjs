@@ -119,7 +119,7 @@ test("admin UI loads database funding requests and never exposes raw receipt obj
   assert.match(dashboard, /reviewFundingRequest/);
   assert.match(dashboard, /fundingReceiptDownloadUrl/);
   assert.doesNotMatch(dashboard, /objectKey/);
-  assert.match(dashboard, /Provider funding disabled/);
+  assert.match(dashboard, /Add account/);
 });
 
 
