@@ -23,9 +23,11 @@ export const KYC = {
     "⏳ درخواست احراز هویت شما در حال بررسی است. پس از تأیید مدیر به شما اطلاع می‌دهیم.",
   ),
   invite: m(
-    "🪪 <b>Identity verification</b>\nBefore we can activate your account, please verify your identity. It takes about a minute.",
-    "🪪 <b>احراز هویت</b>\nپیش از فعال‌سازی حساب، لطفاً هویت خود را تأیید کنید. حدود یک دقیقه طول می‌کشد.",
+    "🪪 <b>Identity verification (KYC)</b>\nTo verify, please have these ready:\n• Full legal name (as on ID)\n• Date of birth (Shamsi, e.g. 1374-02-03)\n• Country of residence\n• National ID / passport number\n• Phone number (with country code)\n• A clear photo of your ID (passport or national card)\n\n⏱ Takes about a minute. Your information is encrypted and used only for verification.",
+    "🪪 <b>احراز هویت</b>\nبرای احراز، این موارد را آماده داشته باشید:\n• نام و نام خانوادگی (مانند مدرک)\n• تاریخ تولد (شمسی، مثلاً 1374-02-03)\n• کشور محل سکونت\n• کد ملی / شماره گذرنامه\n• شماره تلفن با کد کشور\n• عکس واضح از مدرک (گذرنامه یا کارت ملی)\n\n⏱ حدود یک دقیقه. اطلاعات شما رمزنگاری شده و فقط برای احراز استفاده می‌شود.",
   ),
+  startKyc: m("✅ Start KYC", "✅ شروع احراز هویت"),
+  cancelBtn: m("Cancel", "انصراف"),
   inviteButton: m("🪪 Start verification", "🪪 شروع احراز هویت"),
   intro: m(
     "🪪 <b>Identity verification (KYC)</b>\nI'll ask a few questions. Send /cancel at any time to stop.\n\nEnter your <b>full legal name</b> exactly as it appears on your ID.",
@@ -33,8 +35,8 @@ export const KYC = {
   ),
   askFullName: m("Enter your full legal name (as on your ID).", "نام و نام خانوادگی کامل خود را وارد کنید (مانند مدرک شناسایی)."),
   errFullName: m("Please enter a name between 3 and 120 characters.", "لطفاً نامی بین ۳ تا ۱۲۰ نویسه وارد کنید."),
-  askDob: m("Enter your date of birth as <code>YYYY-MM-DD</code> (for example <code>1995-04-23</code>).", "تاریخ تولد را به قالب <code>YYYY-MM-DD</code> وارد کنید (مثلاً <code>1995-04-23</code>)."),
-  errDob: m("Enter a valid past date in <code>YYYY-MM-DD</code> format.", "یک تاریخ معتبر و گذشته در قالب <code>YYYY-MM-DD</code> وارد کنید."),
+  askDob: m("Enter your date of birth in Shamsi (Jalali) as <code>YYYY-MM-DD</code> (for example <code>1374-02-03</code>).", "تاریخ تولد را به شمسی (جلالی) با قالب <code>YYYY-MM-DD</code> وارد کنید (مثلاً <code>1374-02-03</code>)."),
+  errDob: m("Enter a valid Shamsi date as <code>YYYY-MM-DD</code> (for example <code>1374-02-03</code>).", "یک تاریخ شمسی معتبر با قالب <code>YYYY-MM-DD</code> وارد کنید (مثلاً <code>1374-02-03</code>)."),
   askCountry: m("Enter your country of residence.", "کشور محل سکونت خود را وارد کنید."),
   errCountry: m("Please enter a country between 2 and 80 characters.", "لطفاً کشوری بین ۲ تا ۸۰ نویسه وارد کنید."),
   askNationalId: m("Enter your national ID or passport number.", "کد ملی یا شماره گذرنامه خود را وارد کنید."),
@@ -111,6 +113,12 @@ export const FLOW = {
   ),
   requestsHeader: m("<b>My requests</b>\nTap a request to see its status and timeline.", "<b>درخواست‌های من</b>\nبرای وضعیت و زمان‌بندی روی یک درخواست بزنید."),
   emptyTransactions: m("No transactions yet. Once you use your card, its activity appears here.", "هنوز تراکنشی نیست. پس از استفاده از کارت، فعالیت‌ها اینجا نمایش می‌گیرد."),
+  waitPayment: m("⏳ Payment received. Our team is reviewing it — please wait. We'll message you here as soon as your card is ready.", "⏳ پرداخت دریافت شد. تیم ما در حال بررسی است — لطفاً صبر کنید. به محض آماده شدن کارت، اینجا پیام می‌دهیم."),
+};
+
+export const NOTIFY = {
+  cardReady: m("✅ Your card is ready ••{last4}. Open the menu to start using it.", "✅ کارت شما آماده است ••{last4}. منو را باز کنید و استفاده را شروع کنید."),
+  accountReady: m("✅ Your account is active. Open the menu to request your card.", "✅ حساب شما فعال است. منو را باز کنید و کارت درخواست کنید."),
 };
 
 // Confirmation summary for the KYC review step (single language).

@@ -46,7 +46,7 @@ import {
   XCircle,
 } from "lucide-react";
 import { toast } from "sonner";
-import { AdminApiError, createAccount, fetchDashboardSnapshot, reauthenticateAdmin, revealAccountSecrets, updateAccount, verifyAccountConnection, syncAccountCards, revealLiveCardDetails, syncCardTransactions, fetchCardTransactions, fetchTransactions, fetchTransactionNotificationIssues, reconcileTransactionNotification, setCardFrozenState, refreshCardStatus, connectOutlookMailbox, syncOutlookMailbox, disconnectOutlookMailbox, connectGmailMailbox, syncGmailMailbox, disconnectGmailMailbox, fetchAccountEmailMessages, fetchTelegramBotStatus, configureTelegramWebhook, setTelegramBotToken, clearTelegramBotToken, fetchPaymentCard, updatePaymentCard, fetchForceJoinChannels, upsertForceJoinChannel, deleteForceJoinChannel, fetchSupportConversations, updateSupportConversation, retrySupportMessage, fetchClientSupportMessages, sendClientSupportMessage, fetchClientAssignableAccounts, assignClientAccount, unassignClientAccount, unassignAllClientAccounts, fetchCardRequests, reviewCardRequest, issueCardRequest, reconcileCardRequest, fetchFundingRequests, reviewFundingRequest, executeFundingRequest, reconcileFundingRequest, resolveFundingRequest, fundingReceiptDownloadUrl, fetchFundingSettings, updateFundingSettings, type ApiCardRequest, type ApiFundingRequest, type AssignableClientAccount, type LiveCardDetails, type StoredCardTransaction, type StoredEmailMessage, type TelegramBotStatus, fetchProviderReadiness, type ProviderReadinessSnapshot, type TransactionNotificationIssue, type SupportConversationSummary, fetchOperationalSnapshot, updateOperationalAlert, updateRuntimeControl, type OperationalSnapshot, fetchKycSubmissions, reviewKycSubmission, kycDocumentUrl, type ApiKycSubmission } from "@/lib/admin-api";
+import { AdminApiError, createAccount, fetchDashboardSnapshot, reauthenticateAdmin, revealAccountSecrets, updateAccount, verifyAccountConnection, syncAccountCards, revealLiveCardDetails, syncCardTransactions, fetchCardTransactions, fetchTransactions, fetchTransactionNotificationIssues, reconcileTransactionNotification, setCardFrozenState, refreshCardStatus, connectOutlookMailbox, syncOutlookMailbox, disconnectOutlookMailbox, connectGmailMailbox, syncGmailMailbox, disconnectGmailMailbox, fetchAccountEmailMessages, fetchTelegramBotStatus, configureTelegramWebhook, setTelegramBotToken, clearTelegramBotToken, fetchPaymentCard, updatePaymentCard, notifyClient, fetchForceJoinChannels, upsertForceJoinChannel, deleteForceJoinChannel, fetchSupportConversations, updateSupportConversation, retrySupportMessage, fetchClientSupportMessages, sendClientSupportMessage, fetchClientAssignableAccounts, assignClientAccount, unassignClientAccount, unassignAllClientAccounts, fetchCardRequests, reviewCardRequest, issueCardRequest, reconcileCardRequest, fetchFundingRequests, reviewFundingRequest, executeFundingRequest, reconcileFundingRequest, resolveFundingRequest, fundingReceiptDownloadUrl, fetchFundingSettings, updateFundingSettings, type ApiCardRequest, type ApiFundingRequest, type AssignableClientAccount, type LiveCardDetails, type StoredCardTransaction, type StoredEmailMessage, type TelegramBotStatus, fetchProviderReadiness, type ProviderReadinessSnapshot, type TransactionNotificationIssue, type SupportConversationSummary, fetchOperationalSnapshot, updateOperationalAlert, updateRuntimeControl, type OperationalSnapshot, fetchKycSubmissions, reviewKycSubmission, kycDocumentUrl, type ApiKycSubmission } from "@/lib/admin-api";
 import { disableAdminMfa, enableAdminMfa, fetchCurrentAdmin, logoutAdmin, setupAdminMfa, type CurrentAdmin } from "@/lib/auth-client";
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -143,7 +143,6 @@ type View =
   | "overview"
   | "accounts"
   | "clients"
-  | "kyc"
   | "requests"
   | "transactions"
   | "inbox"
@@ -269,203 +268,13 @@ type Message = {
   attachment?: { filename: string; downloadUrl?: string | null; mimeType?: string | null } | null;
 };
 
-const initialAccounts: Account[] = [
-  {
-    id: "acc-primary",
-    name: "Primary Cards",
-    owner: "accabad.primary.demo@outlook.com",
-    mailbox: "accabad.primary.demo@outlook.com",
-    password: "••••••••",
-    keyHint: "••••••••7KQ9",
-    mailProvider: "Outlook / Hotmail",
-    accountBalance: 0,
-    cardBalance: 230.5,
-    cards: 2,
-    status: "Connected",
-    lastSync: "1 min ago",
-    emailConnectionStatus: "not_connected",
-    emailProviderIdentity: null,
-    emailLastSyncedAt: null,
-    emailError: null,
-  },
-  {
-    id: "acc-media",
-    name: "Media Operations",
-    owner: "accabad.media.demo@gmail.com",
-    mailbox: "accabad.media.demo@gmail.com",
-    password: "••••••••",
-    keyHint: "••••••••2PA4",
-    mailProvider: "Gmail",
-    accountBalance: 0,
-    cardBalance: 1205.2,
-    cards: 3,
-    status: "Connected",
-    lastSync: "4 min ago",
-    emailConnectionStatus: "not_connected",
-    emailProviderIdentity: null,
-    emailLastSyncedAt: null,
-    emailError: null,
-  },
-  {
-    id: "acc-reserve",
-    name: "Reserve Pool",
-    owner: "accabad.reserve.demo@hotmail.com",
-    mailbox: "accabad.reserve.demo@hotmail.com",
-    password: "••••••••",
-    keyHint: "••••••••8DW1",
-    mailProvider: "Outlook / Hotmail",
-    accountBalance: 0,
-    cardBalance: 16.4,
-    cards: 1,
-    status: "Attention",
-    lastSync: "2 hr ago",
-    emailConnectionStatus: "not_connected",
-    emailProviderIdentity: null,
-    emailLastSyncedAt: null,
-    emailError: null,
-  },
-];
 
-const initialClients: Client[] = [
-  {
-    id: "usr-amir",
-    name: "Amir Karimi",
-    username: "@amir_k",
-    telegramId: "7421083921",
-    accountIds: ["acc-primary"],
-    joined: "Aug 12, 2026",
-    banned: false,
-    totalFunded: 1260,
-  },
-  {
-    id: "usr-sara",
-    name: "Sara Mirzaei",
-    username: "@sara_media",
-    telegramId: "6049032158",
-    accountIds: ["acc-media"],
-    joined: "Aug 18, 2026",
-    banned: false,
-    totalFunded: 2840,
-  },
-  {
-    id: "usr-nima",
-    name: "Nima Rahimi",
-    username: "@nimarah",
-    telegramId: "7832140097",
-    accountIds: [],
-    joined: "Aug 29, 2026",
-    banned: false,
-    totalFunded: 0,
-  },
-  {
-    id: "usr-parsa",
-    name: "Parsa Ahmadi",
-    username: "@parsaa",
-    telegramId: "5218004926",
-    accountIds: ["acc-reserve"],
-    joined: "Jul 30, 2026",
-    banned: true,
-    totalFunded: 450,
-  },
-];
 
-const initialCards: ClientCard[] = [
-  { id: "MR_A1B2C3D4", accountId: "acc-primary", bin: "539502", cardholder: "Amir Karimi", email: "card-4321@3ds.company.co", last4: "4321", label: "Subscriptions", balance: 188.5, frozen: false, expiry: "12/27" },
-  { id: "VC_X9Y8Z7W6", accountId: "acc-primary", bin: "525847", cardholder: "Amir Karimi", email: "card-7890@3ds.company.co", last4: "7890", label: "Advertising", balance: 42, frozen: true, expiry: "09/28" },
-  { id: "MR_N8A1H55P", accountId: "acc-media", bin: "537872", cardholder: "Sara Mirzaei", email: "card-1188@3ds.company.co", last4: "1188", label: "Meta Ads", balance: 820, frozen: false, expiry: "02/29" },
-  { id: "MR_R5P2L90Q", accountId: "acc-media", bin: "533171", cardholder: "Sara Mirzaei", email: "card-6134@3ds.company.co", last4: "6134", label: "Google Ads", balance: 310.2, frozen: false, expiry: "06/29" },
-  { id: "MR_T2N4D70L", accountId: "acc-media", bin: "539502", cardholder: "Sara Mirzaei", email: "card-9044@3ds.company.co", last4: "9044", label: "Tools", balance: 75, frozen: false, expiry: "01/29" },
-  { id: "MR_P3A9Q22V", accountId: "acc-reserve", bin: "246001", cardholder: "Parsa Ahmadi", email: "card-2207@3ds.company.co", last4: "2207", label: "General", balance: 16.4, frozen: true, expiry: "11/28" },
-];
 
-const initialAccountEmails: AccountEmail[] = [
-  { id: "em-1006", accountId: "acc-primary", category: "3DS", sender: "card-security@issuer.example", subject: "Your verification code", preview: "Use 384921 to complete your card payment.", body: "Your one-time verification code is 384921. It expires shortly. Do not share this code with anyone outside the payment you initiated.", received: "2 min ago", cardLast4: "4321", unread: true },
-  { id: "em-1005", accountId: "acc-primary", category: "Security", sender: "security@kripicard.example", subject: "New account sign-in", preview: "A new sign-in was detected for this account.", body: "A new administrator sign-in was detected. If this was not you, reset the account password and rotate the API key.", received: "Yesterday", unread: false },
-  { id: "em-1004", accountId: "acc-media", category: "3DS", sender: "authentication@issuer.example", subject: "Confirm online purchase", preview: "Verification code 710044 for card ending 1188.", body: "Enter verification code 710044 to confirm the online purchase made with card ending 1188.", received: "18 min ago", cardLast4: "1188", unread: true },
-  { id: "em-1003", accountId: "acc-media", category: "Account", sender: "support@kripicard.example", subject: "Card funding completed", preview: "An administrator-funded card top-up was confirmed.", body: "Legacy prototype-only funding example. Production AccAbad executes card funding only from an accepted funding request through the guarded Phase 16 workflow.", received: "3 hr ago", unread: false },
-  { id: "em-1002", accountId: "acc-reserve", category: "Security", sender: "security@kripicard.example", subject: "API connection needs attention", preview: "Reconnect this account to resume synchronization.", body: "The API connection could not be verified. Review the API key in Account connections and try syncing again.", received: "2 hr ago", unread: true },
-];
 
-const initialFundingRequests: FundingRequest[] = [
-  {
-    id: "FR-1048",
-    clientId: "usr-amir",
-    cardLast4: "4321",
-    amount: 300,
-    providerFee: 13,
-    serviceFee: 7.5,
-    rialTotal: 708_946_000,
-    receipt: "receipt-1048.jpg",
-    receiptType: "image",
-    status: "pending_review",
-    submitted: "8 min ago",
-  },
-  {
-    id: "FR-1047",
-    clientId: "usr-sara",
-    cardLast4: "1188",
-    amount: 500,
-    providerFee: 21,
-    serviceFee: 12.5,
-    rialTotal: 1_180_102_000,
-    receipt: "bank-slip.pdf",
-    receiptType: "pdf",
-    status: "accepted",
-    submitted: "26 min ago",
-  },
-  {
-    id: "FR-1046",
-    clientId: "usr-amir",
-    cardLast4: "7890",
-    amount: 100,
-    providerFee: 5,
-    serviceFee: 2.5,
-    rialTotal: 237_790_000,
-    receipt: "payment-video.mp4",
-    receiptType: "video",
-    status: "funding",
-    submitted: "1 hr ago",
-  },
-  {
-    id: "FR-1045",
-    clientId: "usr-sara",
-    cardLast4: "6134",
-    amount: 200,
-    providerFee: 9,
-    serviceFee: 5,
-    rialTotal: 473_368_000,
-    receipt: "Transfer ref: 8830941",
-    receiptType: "text",
-    status: "completed",
-    submitted: "Yesterday",
-  },
-];
 
-const initialCardRequests: CardRequest[] = [
-  { id: "CR-221", reference: "CR-221", clientId: "usr-nima", bin: "537872", initialAmount: 20, nameOnCard: "Nima Rahimi", email: "nima@example.com", dateOfBirth: "1990-01-15", selectedAccountId: null, eligibleAccounts: [], adminNote: null, status: "New", submitted: "14 min ago" },
-  { id: "CR-220", reference: "CR-220", clientId: "usr-amir", bin: "539502", initialAmount: 50, nameOnCard: "Amir Karimi", email: "amir@example.com", dateOfBirth: null, selectedAccountId: null, eligibleAccounts: [], adminNote: null, status: "Approved", submitted: "2 hr ago" },
-  { id: "CR-219", reference: "CR-219", clientId: "usr-sara", bin: "525847", initialAmount: 100, nameOnCard: "Sara Mirzaei", email: "sara@example.com", dateOfBirth: null, selectedAccountId: null, eligibleAccounts: [], adminNote: null, status: "Issued", submitted: "Yesterday" },
-];
 
-const initialTransactions: Transaction[] = [
-  { id: "TX-8901", clientId: "usr-amir", accountId: "acc-primary", cardLast4: "4321", merchant: "AMAZON.COM", amount: -14.99, type: "Authorize", status: "Success", date: "Sep 4 · 10:44" },
-  { id: "TX-8900", clientId: "usr-sara", accountId: "acc-media", cardLast4: "1188", merchant: "META *ADS", amount: -124, type: "Authorize", status: "Success", date: "Sep 4 · 09:12" },
-  { id: "TX-8899", clientId: "usr-amir", accountId: "acc-primary", cardLast4: "4321", merchant: "SPOTIFY", amount: -9.99, type: "Authorize", status: "Failed", date: "Sep 3 · 18:02" },
-  { id: "TX-8898", clientId: "usr-sara", accountId: "acc-media", cardLast4: "6134", merchant: "Card funding", amount: 200, type: "Funding", status: "Success", date: "Sep 3 · 16:44" },
-  { id: "TX-8897", clientId: "usr-amir", accountId: "acc-primary", cardLast4: "7890", merchant: "GOOGLE *TEMPORARY HOLD", amount: 0, type: "OTP", status: "Success", date: "Sep 3 · 14:07" },
-];
 
-const initialMessages: Record<string, Message[]> = {
-  "usr-amir": [
-    { id: "m1", from: "client", body: "Hi, I uploaded the receipt for my $300 funding request.", time: "10:18" },
-    { id: "m2", from: "admin", body: "Thanks. We are checking it now and you will see each status update in the bot.", time: "10:20" },
-    { id: "m3", from: "client", body: "Perfect, thank you.", time: "10:21", attachment: { filename: "receipt-1048.jpg" } },
-  ],
-  "usr-sara": [
-    { id: "m4", from: "client", body: "Can you tell me when the Meta card is ready?", time: "09:42" },
-    { id: "m5", from: "admin", body: "It is approved and waiting for provider funding.", time: "09:45" },
-  ],
-};
 
 const fundingMeta: Record<FundingStatus, { label: string; color: string; step: number }> = {
   pending_receipt: { label: "Waiting for receipt", color: "amber", step: 0 },
@@ -497,7 +306,6 @@ const navItems: { view: View; label: string; icon: typeof LayoutDashboard; badge
   { view: "overview", label: "Overview", icon: LayoutDashboard },
   { view: "accounts", label: "Accounts", icon: WalletCards },
   { view: "clients", label: "Clients", icon: Users },
-  { view: "kyc", label: "KYC", icon: UserRoundCheck },
   { view: "requests", label: "Requests", icon: ReceiptText },
   { view: "transactions", label: "Transactions", icon: ArrowLeftRight },
   { view: "inbox", label: "Inbox", icon: MessagesSquare },
@@ -509,7 +317,6 @@ const viewCopy: Record<View, { title: string; description: string }> = {
   overview: { title: "Overview", description: "Card operations across every connected account." },
   accounts: { title: "Kripicard accounts", description: "API connections, card funding, and card exposure." },
   clients: { title: "Telegram clients", description: "Account assignments, cards, access, and activity." },
-  kyc: { title: "Customer KYC", description: "Identity verifications submitted through the Telegram bot." },
   requests: { title: "Requests", description: "Review client payments and new card requests." },
   transactions: { title: "Transactions", description: "Provider activity across every client card." },
   inbox: { title: "Client inbox", description: "Handle Telegram support without leaving the console." },
@@ -822,6 +629,7 @@ export default function DashboardApp() {
   const [messages, setMessages] = useState<Record<string, Message[]>>({});
   const [supportConversations, setSupportConversations] = useState<SupportConversationSummary[]>([]);
   const [kycStatusByUser, setKycStatusByUser] = useState<Record<string, "approved" | "pending" | "rejected">>({});
+  const [kycPendingCount, setKycPendingCount] = useState(0);
   const [supportAttachment, setSupportAttachment] = useState<File | null>(null);
   const [operationalSnapshot, setOperationalSnapshot] = useState<OperationalSnapshot | null>(null);
   const [activeClientId, setActiveClientId] = useState<string | null>(null);
@@ -1055,6 +863,7 @@ export default function DashboardApp() {
           if (!cur || rank[item.status] > rank[cur]) map[key] = item.status;
         }
         setKycStatusByUser(map);
+        setKycPendingCount(res.items.filter((i) => i.status === "pending").length);
       })
       .catch(() => {});
     return () => { cancelled = true; };
@@ -1944,7 +1753,7 @@ export default function DashboardApp() {
   const badgeFor = (view: View): number => (view === "requests" ? pendingRequestCount : view === "inbox" ? unreadInboxCount : 0);
 
   useEffect(() => {
-    const valid: View[] = ["overview", "accounts", "clients", "kyc", "requests", "transactions", "inbox", "operations", "settings"];
+    const valid: View[] = ["overview", "accounts", "clients", "requests", "transactions", "inbox", "operations", "settings"];
     const applyHash = () => {
       const hash = window.location.hash.replace(/^#/, "") as View;
       if (valid.includes(hash)) setView(hash);
@@ -2089,9 +1898,12 @@ export default function DashboardApp() {
                 onToggleBan={toggleBan}
                 accountName={accountName}
                 kycStatusByUser={kycStatusByUser}
+                onNotify={async (id) => {
+                  try { await notifyClient(id); toast.success("Notification queued to the customer."); }
+                  catch (error) { toast.error(error instanceof Error ? error.message : "Could not notify the customer."); }
+                }}
               />
             )}
-            {view === "kyc" && <KycView />}
             {view === "requests" && (
               <RequestsView
                 fundingRequests={fundingRequests}
@@ -2101,6 +1913,7 @@ export default function DashboardApp() {
                 clientName={clientName}
                 maxCardsPerClient={maxCardsPerClient}
                 search={search}
+                kycPendingCount={kycPendingCount}
                 onOpenRequest={setActiveRequestId}
                 onCardRequestAction={async (id, action, selectedAccountId) => {
                   try {
@@ -2745,7 +2558,7 @@ function KycView() {
                     <p className="truncate text-sm font-semibold text-[#2c2940]">{item.fullName}</p>
                     <p className="truncate text-xs text-[#8f8b9c]">{item.country} · {item.customer.username ? `@${item.customer.username}` : item.customer.displayName ?? `TG ${item.customer.telegramUserId}`}</p>
                   </div>
-                  <Badge variant="outline" className={`shrink-0 rounded-full ${badgeClass(item.status)}`}>{item.status}</Badge>
+                  {item.hasDocument && <Paperclip className="size-3.5 shrink-0 text-[#9692a3]" />}<Badge variant="outline" className={`shrink-0 rounded-full ${badgeClass(item.status)}`}>{item.status}</Badge>
                 </button>
               ))
             )}
@@ -2780,7 +2593,11 @@ function KycView() {
                     <p className="text-sm text-[#9692a3]">No document attached.</p>
                   )}
                 </div>
-
+                {selected.hasDocument && (
+                  <a href={kycDocumentUrl(selected.id)} download className="inline-block">
+                    <Button variant="outline" size="sm" className="rounded-xl"><Paperclip className="size-4" />Download document</Button>
+                  </a>
+                )}
                 <div>
                   <Label htmlFor="kyc-note">Review note (optional)</Label>
                   <Textarea id="kyc-note" value={note} onChange={(event) => setNote(event.target.value)} placeholder="Add a note for the record…" className="mt-1 min-h-20 rounded-[14px]" />
@@ -2997,7 +2814,7 @@ function AccountsView({ accounts, clients, cards, accountEmails, onAdd, onOpen, 
   );
 }
 
-function ClientsView({ clients, cards, maxCardsPerClient, onOpen, onToggleBan, accountName, kycStatusByUser }: { clients: Client[]; cards: ClientCard[]; maxCardsPerClient: number; onOpen: (id: string) => void; onToggleBan: (id: string) => void; accountName: (id: string | null) => string; kycStatusByUser: Record<string, "approved" | "pending" | "rejected"> }) {
+function ClientsView({ clients, cards, maxCardsPerClient, onOpen, onToggleBan, accountName, kycStatusByUser, onNotify }: { clients: Client[]; cards: ClientCard[]; maxCardsPerClient: number; onOpen: (id: string) => void; onToggleBan: (id: string) => void; accountName: (id: string | null) => string; kycStatusByUser: Record<string, "approved" | "pending" | "rejected">; onNotify: (id: string) => void | Promise<void> }) {
   const kycBadge = (telegramId: string) => {
     const s = kycStatusByUser[telegramId];
     if (!s) return <Badge variant="outline" className="border-slate-200 bg-slate-50 text-slate-600">KYC —</Badge>;
@@ -3020,7 +2837,7 @@ function ClientsView({ clients, cards, maxCardsPerClient, onOpen, onToggleBan, a
                   <TableCell>{client.accountIds.length ? <div className="flex max-w-[280px] flex-wrap gap-1.5">{client.accountIds.map((id) => <Badge key={id} variant="outline" className="rounded-full border-[#d8d3ff] bg-[#f2f0ff] text-[#5549ca]">{accountName(id)}</Badge>)}</div> : <Badge variant="outline" className="border-amber-200 bg-amber-50 text-amber-800">Contact admin</Badge>}</TableCell>
                   <TableCell><span className="font-semibold">{accessibleCards.length}</span><span className="mt-1 block text-xs text-[#9692a3]">{Math.max(maxCardsPerClient - accessibleCards.length, 0)} remaining</span></TableCell><TableCell className="font-medium">{formatUsd(client.totalFunded)}</TableCell>
                   <TableCell><Badge variant="outline" className={client.banned ? "border-red-200 bg-red-50 text-red-700" : "border-emerald-200 bg-emerald-50 text-emerald-700"}>{client.banned ? "Banned" : "Active"}</Badge></TableCell>
-                  <TableCell><div className="flex items-center justify-end gap-3"><Button variant="ghost" size="sm" onClick={() => onOpen(client.id)}>View</Button><Switch checked={!client.banned} onCheckedChange={() => onToggleBan(client.id)} aria-label={`${client.banned ? "Unban" : "Ban"} ${client.name}`} /></div></TableCell>
+                  <TableCell><div className="flex items-center justify-end gap-3"><Button variant="ghost" size="sm" onClick={() => void onNotify(client.id)}><Bell className="size-4" /><span className="sr-only">Notify {client.name}</span></Button><Button variant="ghost" size="sm" onClick={() => onOpen(client.id)}>View</Button><Switch checked={!client.banned} onCheckedChange={() => onToggleBan(client.id)} aria-label={`${client.banned ? "Unban" : "Ban"} ${client.name}`} /></div></TableCell>
                 </TableRow>;
               })}
             </TableBody>
@@ -3033,7 +2850,7 @@ function ClientsView({ clients, cards, maxCardsPerClient, onOpen, onToggleBan, a
   );
 }
 
-function RequestsView({ fundingRequests, cardRequests, clients, cards, clientName, maxCardsPerClient, search, onOpenRequest, onCardRequestAction, onCardRequestIssue }: { fundingRequests: FundingRequest[]; cardRequests: CardRequest[]; clients: Client[]; cards: ClientCard[]; clientName: (id: string | null) => string; maxCardsPerClient: number; search: string; onOpenRequest: (id: string) => void; onCardRequestAction: (id: string, action: "approve" | "reject", selectedAccountId?: string | null) => void | Promise<void>; onCardRequestIssue: (id: string, mode: "issue" | "reconcile") => void | Promise<void> }) {
+function RequestsView({ fundingRequests, cardRequests, clients, cards, clientName, maxCardsPerClient, search, onOpenRequest, onCardRequestAction, onCardRequestIssue, kycPendingCount }: { fundingRequests: FundingRequest[]; cardRequests: CardRequest[]; clients: Client[]; cards: ClientCard[]; clientName: (id: string | null) => string; maxCardsPerClient: number; search: string; onOpenRequest: (id: string) => void; onCardRequestAction: (id: string, action: "approve" | "reject", selectedAccountId?: string | null) => void | Promise<void>; onCardRequestIssue: (id: string, mode: "issue" | "reconcile") => void | Promise<void>; kycPendingCount: number }) {
   const needle = search.trim().toLowerCase();
   const [selectedAccounts, setSelectedAccounts] = useState<Record<string, string>>({});
   const [pendingRequestId, setPendingRequestId] = useState<string | null>(null);
@@ -3072,6 +2889,7 @@ function RequestsView({ fundingRequests, cardRequests, clients, cards, clientNam
         <TabsList className="mb-4 h-11 rounded-[14px] border border-[#e7e5ef] bg-white p-1 shadow-[0_4px_18px_rgba(26,24,48,.04)]">
           <TabsTrigger className="rounded-[10px] px-4 data-[state=active]:bg-[#eeecff] data-[state=active]:text-[#5146ca]" value="cards">New cards <Badge variant="outline" className="ml-1.5 rounded-full">{cardRequests.filter((item) => item.status === "New").length}</Badge></TabsTrigger>
           <TabsTrigger className="rounded-[10px] px-4 data-[state=active]:bg-[#eeecff] data-[state=active]:text-[#5146ca]" value="funding">Funding <Badge className="ml-1.5 rounded-full bg-[#6157e7] text-white">{fundingRequests.filter((item) => !["completed", "rejected", "cancelled"].includes(item.status)).length}</Badge></TabsTrigger>
+          <TabsTrigger className="rounded-[10px] px-4 data-[state=active]:bg-[#eeecff] data-[state=active]:text-[#5146ca]" value="kyc">KYC <Badge className="ml-1.5 rounded-full bg-[#6157e7] text-white">{kycPendingCount}</Badge></TabsTrigger>
         </TabsList>
         <TabsContent value="cards">
           <Card className="data-table overflow-hidden surface-card rounded-[24px]">
@@ -3131,6 +2949,9 @@ function RequestsView({ fundingRequests, cardRequests, clients, cards, clientNam
             <ListPagination page={fundingPaging.page} pageSize={fundingPaging.pageSize} totalItems={fundingPaging.totalItems} totalPages={fundingPaging.totalPages} onPageChange={fundingPaging.setPage} />
           </Card>
         </TabsContent>
+        <TabsContent value="kyc">
+          <KycView />
+        </TabsContent>
       </Tabs>
     </>
   );
@@ -3169,7 +2990,7 @@ function InboxView({ clients, activeClient, activeClientId, messages, draft, sea
   const summaryByUser = new Map(conversations.map((item) => [item.userId, item]));
   const matchingClients = clients.filter((client) => {
     const summary = summaryByUser.get(client.id);
-    const preview = summary?.lastMessage?.text ?? messagesForPreview(client.id);
+    const preview = summary?.lastMessage?.text ?? "";
     return !needle || `${client.name} ${client.username} ${client.telegramId} ${preview}`.toLowerCase().includes(needle);
   }).sort((a, b) => (summaryByUser.get(b.id)?.unreadAdminCount ?? 0) - (summaryByUser.get(a.id)?.unreadAdminCount ?? 0));
   const paging = usePaginatedItems(matchingClients);
@@ -3180,7 +3001,7 @@ function InboxView({ clients, activeClient, activeClientId, messages, draft, sea
       <Card className="grid min-h-[650px] overflow-hidden surface-card rounded-[26px] lg:grid-cols-[320px_1fr]">
         <aside className="border-b border-[#e9e7f0] bg-[#f8f7fb] lg:border-b-0 lg:border-r">
           <div className="border-b border-[#e9e7f0] p-4"><p className="text-xs font-semibold uppercase tracking-[.12em] text-[#9692a3]">Conversations</p><p className="mt-1 text-sm text-[#777287]">Unread conversations are prioritized automatically.</p></div>
-          <div className="p-2.5">{paging.pageItems.map((client) => { const summary = summaryByUser.get(client.id); const preview = summary?.lastMessage?.text || messagesForPreview(client.id); return <button key={client.id} onClick={() => onSelect(client.id)} className={`flex w-full items-center gap-3 rounded-[16px] p-3 text-left transition ${activeClientId === client.id ? "bg-white shadow-[0_6px_20px_rgba(26,24,48,.06)] ring-1 ring-[#e2dff1]" : "hover:bg-white/70"}`}><Avatar className="size-10"><AvatarFallback className="bg-[#eeecff] text-xs font-bold text-[#5b50d6]">{initials(client.name)}</AvatarFallback></Avatar><span className="min-w-0 flex-1"><span className="flex items-center justify-between"><span className="font-semibold text-[#353146]">{client.name}</span><span className="text-xs text-[#aaa6b8]">{summary?.lastMessageAt ? new Date(summary.lastMessageAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : ""}</span></span><span className="mt-0.5 block truncate text-sm text-[#8c8899]">{preview}</span></span>{Boolean(summary?.unreadAdminCount) && <span className="min-w-5 rounded-full bg-[#6157e7] px-1.5 py-0.5 text-center text-[10px] font-bold text-white">{summary?.unreadAdminCount}</span>}</button>; })}</div>
+          <div className="p-2.5">{paging.pageItems.map((client) => { const summary = summaryByUser.get(client.id); const preview = summary?.lastMessage?.text || ""; return <button key={client.id} onClick={() => onSelect(client.id)} className={`flex w-full items-center gap-3 rounded-[16px] p-3 text-left transition ${activeClientId === client.id ? "bg-white shadow-[0_6px_20px_rgba(26,24,48,.06)] ring-1 ring-[#e2dff1]" : "hover:bg-white/70"}`}><Avatar className="size-10"><AvatarFallback className="bg-[#eeecff] text-xs font-bold text-[#5b50d6]">{initials(client.name)}</AvatarFallback></Avatar><span className="min-w-0 flex-1"><span className="flex items-center justify-between"><span className="font-semibold text-[#353146]">{client.name}</span><span className="text-xs text-[#aaa6b8]">{summary?.lastMessageAt ? new Date(summary.lastMessageAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : ""}</span></span><span className="mt-0.5 block truncate text-sm text-[#8c8899]">{preview}</span></span>{Boolean(summary?.unreadAdminCount) && <span className="min-w-5 rounded-full bg-[#6157e7] px-1.5 py-0.5 text-center text-[10px] font-bold text-white">{summary?.unreadAdminCount}</span>}</button>; })}</div>
           <ListPagination page={paging.page} pageSize={paging.pageSize} totalItems={paging.totalItems} totalPages={paging.totalPages} onPageChange={paging.setPage} />
         </aside>
         <section className="flex min-w-0 flex-col bg-white">
@@ -3193,9 +3014,6 @@ function InboxView({ clients, activeClient, activeClientId, messages, draft, sea
       </Card>
     </>
   );
-}
-function messagesForPreview(clientId: string) {
-  return clientId === "usr-amir" ? "Perfect, thank you." : "It is approved and waiting…";
 }
 
 

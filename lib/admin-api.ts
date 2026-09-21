@@ -347,6 +347,10 @@ export async function updatePaymentCard(input: { cardNumber: string; cardHolder:
   return apiJson<{ ok: true }>("/api/v1/settings/payment-card", { method: "PUT", body: JSON.stringify(input) });
 }
 
+export async function notifyClient(id: string) {
+  return apiJson<{ ok: true }>(`/api/v1/clients/${encodeURIComponent(id)}/notify`, { method: "POST", body: "{}" });
+}
+
 export async function fetchForceJoinChannels() {
   return apiJson<{ items: Array<{ id: string; chatId: string; title: string; inviteUrl: string | null; enabled: boolean; sortOrder: number }> }>("/api/v1/telegram/force-join-channels", { method: "GET" });
 }

@@ -123,6 +123,45 @@ async function setUserLang(userId: string, lang: string) {
   await getPool().query(`UPDATE telegram_users SET lang = $2, updated_at = now() WHERE id = $1::uuid`, [userId, lang]);
 }
 
+// Append a message to the user's conversation so the admin Inbox shows the FULL
+// bot<->user chat (not only support). Used for inbound user messages and, via
+// withChatLog, every outbound bot reply.
+export async function logChatMessage(user: { id: string }, direction: "client_to_admin" | "admin_to_client", text: string) {
+  const conv = await getPool().query<{ id: string }>(
+    `INSERT INTO conversations(user_id, status, closed_at, updated_at) VALUES ($1::uuid,'open',NULL,now())
+     ON CONFLICT (user_id) DO UPDATE SET updated_at=now() RETURNING id`,
+    [user.id],
+  );
+  const conversationId = conv.rows[0]!.id;
+  await getPool().query(
+    `INSERT INTO messages(conversation_id, direction, text_body, status, delivered_at) VALUES ($1::uuid,$2,NULLIF($3,''),'delivered',now())`,
+    [conversationId, direction, text.slice(0, 4000)],
+  );
+  await getPool().query(
+    direction === "client_to_admin"
+      ? `UPDATE conversations SET unread_admin_count=unread_admin_count+1, last_message_at=now(), updated_at=now() WHERE id=$1::uuid`
+      : `UPDATE conversations SET last_message_at=now(), updated_at=now() WHERE id=$1::uuid`,
+    [conversationId],
+  );
+}
+
+// Wraps a TelegramClient so every sendMessage is also written to the chat log.
+function withChatLog(client: TelegramClient, user: { id: string }): TelegramClient {
+  return new Proxy(client, {
+    get(target, prop, receiver) {
+      const value = Reflect.get(target, prop, receiver);
+      if (prop === "sendMessage" && typeof value === "function") {
+        return async (args: { chatId: number; text: string; replyMarkup?: unknown }) => {
+          const result = await (value as (a: unknown) => Promise<unknown>).call(target, args);
+          logChatMessage(user, "admin_to_client", args.text).catch(() => {});
+          return result;
+        };
+      }
+      return value;
+    },
+  }) as TelegramClient;
+}
+
 async function accountCount(userId: string) {
   const result = await getPool().query<{ count: number }>(
     `SELECT COUNT(*)::int AS count FROM telegram_account_assignments WHERE telegram_user_id = $1::uuid`,
@@ -466,6 +505,42 @@ function validDob(input: string) {
   return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === input && date.getTime() < Date.now();
 }
 
+// Jalali (Shamsi) -> Gregorian conversion (jalaali-js algorithm).
+function jalaliToGregorian(jy: number, jm: number, jd: number): { y: number; m: number; d: number } | null {
+  if (jm < 1 || jm > 12 || jd < 1 || jd > 31) return null;
+  const jy2 = jy + 1595;
+  let days = -355668 + 365 * jy2 + Math.floor(jy2 / 33) * 8 + Math.floor(((jy2 % 33) + 3) / 4) + jd + (jm < 7 ? (jm - 1) * 31 : (jm - 7) * 30 + 186);
+  let gy = 400 * Math.floor(days / 146097);
+  days %= 146097;
+  if (days > 36524) { gy += 100 * Math.floor(--days / 36524); days %= 36524; if (days >= 365) days++; }
+  gy += 4 * Math.floor(days / 1461);
+  days %= 1461;
+  if (days > 365) { gy += Math.floor((days - 1) / 365); days = (days - 1) % 365; }
+  const gd = days + 1;
+  const leap = (gy % 4 === 0 && gy % 100 !== 0) || gy % 400 === 0;
+  const monthLengths = [0, 31, leap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+  let rem = gd;
+  let gm = 0;
+  for (gm = 0; gm < 13 && rem > monthLengths[gm]; gm++) rem -= monthLengths[gm];
+  if (gm < 1 || gm > 12) return null;
+  return { y: gy, m: gm, d: rem };
+}
+
+// Accepts Shamsi (Jalali) YYYY-MM-DD (converts to Gregorian) or Gregorian as fallback.
+function parseDobToGregorian(value: string): string | null {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  if (!match) return null;
+  const y = Number(match[1]);
+  const mo = Number(match[2]);
+  const d = Number(match[3]);
+  if (y >= 1250 && y <= 1420) {
+    const c = jalaliToGregorian(y, mo, d);
+    if (!c) return null;
+    return `${c.y}-${String(c.m).padStart(2, "0")}-${String(c.d).padStart(2, "0")}`;
+  }
+  return validDob(value) ? value : null;
+}
+
 async function beginCardRequest(client: TelegramClient, user: BotUser, chatId: number) {
   const capacity = await getTelegramCardRequestCapacity(user.id);
   if (capacity.assigned_accounts < 1) {
@@ -681,7 +756,7 @@ async function handleFundingReceiptMedia(client: TelegramClient, user: BotUser, 
     declaredMimeType: document?.mime_type ?? "image/jpeg",
   });
   await getPool().query(`DELETE FROM telegram_bot_states WHERE user_id=$1::uuid`,[user.id]);
-  await client.sendMessage({ chatId, text: `Receipt received for <b>${escapeHtml(attached.request.reference)}</b>. The request is now awaiting admin review. No card funding has been executed.` });
+  await client.sendMessage({ chatId, text: `Receipt received for <b>${escapeHtml(attached.request.reference)}</b>. The request is now awaiting admin review. No card funding has been executed.\n${pick(FLOW.waitPayment, user.lang)}` });
   return true;
 }
 
@@ -1023,10 +1098,11 @@ async function shouldAutoPromptKyc(userId: string): Promise<boolean> {
 
 async function sendKycInvite(client: TelegramClient, user: BotUser, chatId: number) {
   const start = await createCallbackToken({ userId: user.id, action: "menu.kyc", ttlMinutes: 30 });
+  const cancel = await createCallbackToken({ userId: user.id, action: "menu.home", ttlMinutes: 30 });
   await client.sendMessage({
     chatId,
     text: pick(KYC.invite, user.lang),
-    replyMarkup: { inline_keyboard: [[{ text: pick(KYC.inviteButton, user.lang), callback_data: start }]] },
+    replyMarkup: { inline_keyboard: [[{ text: pick(KYC.startKyc, user.lang), callback_data: start }], [{ text: pick(KYC.cancelBtn, user.lang), callback_data: cancel }]] },
   });
 }
 
@@ -1054,8 +1130,9 @@ async function handleKycText(client: TelegramClient, user: BotUser, chatId: numb
     return true;
   }
   if (state.mode === "kyc_dob") {
-    if (!validDob(value)) { await client.sendMessage({ chatId, text: pick(KYC.errDob, user.lang) }); return true; }
-    draft.dateOfBirth = value;
+    const greg = parseDobToGregorian(value);
+    if (!greg) { await client.sendMessage({ chatId, text: pick(KYC.errDob, user.lang) }); return true; }
+    draft.dateOfBirth = greg;
     await setKycState(user.id, "kyc_country", draft);
     await client.sendMessage({ chatId, text: pick(KYC.askCountry, user.lang) });
     return true;
@@ -1199,6 +1276,9 @@ async function handleMessage(client: TelegramClient, message: z.infer<typeof mes
     await client.sendMessage({ chatId, text: pick(KYC.accessDisabled, user.lang) });
     return;
   }
+  if ((text || message.photo || message.document) && !(await supportMode(user.id))) {
+    await logChatMessage(user, "client_to_admin", text || (message.photo ? "[photo]" : "[document]")).catch(() => {});
+  }
 
   if (text === "/cancel") {
     const state = await getBotState(user.id);
@@ -1241,7 +1321,6 @@ async function handleMessage(client: TelegramClient, message: z.infer<typeof mes
 
 export async function processTelegramUpdate(updateInput: unknown, payloadHash: string, requestId: string) {
   const update = telegramUpdateSchema.parse(updateInput);
-  const client = await getTelegramClient();
   const inserted = await getPool().query<{ id: string }>(
     `INSERT INTO webhook_events(source, external_id, payload_hash, status)
      VALUES ('telegram', $1, $2, 'processing')
@@ -1262,6 +1341,7 @@ export async function processTelegramUpdate(updateInput: unknown, payloadHash: s
       return { ok: true, ignored: true };
     }
     const user = await upsertTelegramUser(actor);
+    const client = withChatLog(await getTelegramClient(), user);
     await getPool().query(`UPDATE conversations SET unread_client_count=0, last_client_ack_at=now(), updated_at=now() WHERE user_id=$1::uuid AND unread_client_count > 0`, [user.id]);
     if (update.callback_query) await handleCallback(client, update.callback_query, user, requestId);
     else if (update.message) await handleMessage(client, update.message, user);

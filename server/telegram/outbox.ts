@@ -3,8 +3,8 @@ import { getPool, withTransaction } from "@/server/database/pool";
 import { decryptSecret } from "@/server/security/crypto";
 import { TelegramClient } from "@/server/providers/telegram/client";
 import { readPrivateSupportAttachment } from "@/server/support/storage";
-import { createCallbackToken } from "@/server/telegram/bot";
-import { pick, KYC, MENU } from "@/server/kyc/messages";
+import { createCallbackToken, logChatMessage } from "@/server/telegram/bot";
+import { pick, KYC, MENU, NOTIFY } from "@/server/kyc/messages";
 
 const MAX_ATTEMPTS = 5;
 
@@ -330,6 +330,41 @@ async function deliverKycDecision(client: TelegramClient, row: Awaited<ReturnTyp
     };
   }
   await client.sendMessage({ chatId, text, replyMarkup });
+  logChatMessage({ id: payload.userId }, "admin_to_client", text).catch(() => {});
+}
+
+async function deliverClientNotify(client: TelegramClient, row: Awaited<ReturnType<typeof claimOne>>) {
+  if (!row) return;
+  const payload = row.payload as { userId?: string };
+  if (!payload.userId) return;
+  const lookup = await getPool().query<{ telegram_user_id: string | bigint; lang: string | null }>(
+    `SELECT telegram_user_id, lang FROM telegram_users WHERE id = $1::uuid`,
+    [payload.userId],
+  );
+  const u = lookup.rows[0];
+  if (!u) return;
+  const chatId = Number(u.telegram_user_id);
+  const card = await getPool().query<{ last4: string | null }>(
+    `SELECT c.last4 FROM cards c JOIN telegram_account_assignments taa ON taa.account_id = c.account_id
+      WHERE taa.telegram_user_id = $1::uuid ORDER BY c.created_at DESC LIMIT 1`,
+    [payload.userId],
+  );
+  const last4 = card.rows[0]?.last4;
+  const text = last4
+    ? pick(NOTIFY.cardReady, u.lang).replace("{last4}", escapeHtml(last4))
+    : pick(NOTIFY.accountReady, u.lang);
+  const L = (mm: { en: string; fa: string }) => pick(mm, u.lang);
+  const mk = async (label: string, action: string) => ({ text: label, callback_data: await createCallbackToken({ userId: payload.userId!, action }) });
+  const replyMarkup = {
+    inline_keyboard: [
+      [await mk(L(MENU.cards), "menu.cards"), await mk(L(MENU.requests), "menu.requests")],
+      [await mk(L(MENU.addFunds), "menu.add_funds"), await mk(L(MENU.requestCard), "menu.request_card")],
+      [await mk(L(MENU.verify), "menu.kyc"), await mk(L(MENU.support), "support.start")],
+      [await mk(L(MENU.language), "menu.lang")],
+    ],
+  };
+  await client.sendMessage({ chatId, text, replyMarkup });
+  logChatMessage({ id: payload.userId }, "admin_to_client", text).catch(() => {});
 }
 
 export async function processTelegramOutbox(limit = 100) {
@@ -349,6 +384,7 @@ export async function processTelegramOutbox(limit = 100) {
       else if (row.event_type === "card_request.status_changed") await deliverCardRequestStatus(client, row);
       else if (row.event_type === "funding_request.status_changed") await deliverFundingRequestStatus(client, row);
       else if (row.event_type === "kyc.decision") await deliverKycDecision(client, row);
+      else if (row.event_type === "client.notify") await deliverClientNotify(client, row);
       else await finish(row.id);
       summary.sent += 1;
     } catch (error) {
