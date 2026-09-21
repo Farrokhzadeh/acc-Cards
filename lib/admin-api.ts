@@ -340,7 +340,7 @@ export async function clearTelegramBotToken() {
 }
 
 export async function fetchPaymentCard() {
-  return apiJson<{ cardNumber: string; cardHolder: string }>("/api/v1/settings/payment-card", { method: "GET" });
+  return apiJson<{ cardNumber: string; cardHolder: string; minLoadUsd?: number }>("/api/v1/settings/payment-card", { method: "GET" });
 }
 
 export async function updatePaymentCard(input: { cardNumber: string; cardHolder: string }) {
