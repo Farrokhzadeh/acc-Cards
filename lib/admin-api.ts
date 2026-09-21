@@ -352,7 +352,7 @@ export async function notifyClient(id: string) {
 }
 
 export async function fetchClientPipeline() {
-  return apiJson<{ items: Array<{ id: string; declared: boolean }> }>("/api/v1/clients/pipeline", { method: "GET" });
+  return apiJson<{ items: Array<{ id: string; declared: boolean; status: string | null }> }>("/api/v1/clients/pipeline", { method: "GET" });
 }
 
 export type ClientKyc = {

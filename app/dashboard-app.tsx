@@ -630,6 +630,7 @@ export default function DashboardApp() {
   const [kycStatusByUser, setKycStatusByUser] = useState<Record<string, "approved" | "pending" | "rejected">>({});
   const [kycPendingCount, setKycPendingCount] = useState(0);
   const [paymentByUser, setPaymentByUser] = useState<Record<string, boolean>>({});
+  const [paymentStatusByUser, setPaymentStatusByUser] = useState<Record<string, string | null>>({});
   const [supportAttachment, setSupportAttachment] = useState<File | null>(null);
   const [operationalSnapshot, setOperationalSnapshot] = useState<OperationalSnapshot | null>(null);
   const [activeClientId, setActiveClientId] = useState<string | null>(null);
@@ -873,7 +874,7 @@ export default function DashboardApp() {
     if (!backendDataLoaded) return;
     let cancelled = false;
     fetchClientPipeline()
-      .then((r) => { if (!cancelled) { const m: Record<string, boolean> = {}; for (const it of r.items) m[it.id] = it.declared; setPaymentByUser(m); } })
+      .then((r) => { if (!cancelled) { const m: Record<string, boolean> = {}; const st: Record<string, string | null> = {}; for (const it of r.items) { m[it.id] = it.declared; st[it.id] = it.status; } setPaymentByUser(m); setPaymentStatusByUser(st); } })
       .catch(() => {});
     return () => { cancelled = true; };
   }, [backendDataLoaded]);
@@ -1909,6 +1910,7 @@ export default function DashboardApp() {
                 clients={clients}
                 kycByUser={kycStatusByUser}
                 paymentByUser={paymentByUser}
+                paymentStatusByUser={paymentStatusByUser}
                 cardRequests={cardRequests}
                 fundingRequests={fundingRequests}
                 telegramStatus={telegramStatus}
@@ -3270,9 +3272,9 @@ function RoutingStep({ icon: Icon, title, detail }: { icon: typeof Mail; title: 
   return <div className="flex gap-3"><span className="grid size-9 shrink-0 place-items-center rounded-xl bg-slate-100 text-slate-600"><Icon className="size-4" /></span><div><p className="text-sm font-medium">{title}</p><p className="mt-0.5 text-sm leading-5 text-slate-500">{detail}</p></div></div>;
 }
 
-function OverviewV2({ clients, kycByUser, paymentByUser, cardRequests, fundingRequests, telegramStatus, onViewChange, onOpenClient }: { clients: Client[]; kycByUser: Record<string, "approved" | "pending" | "rejected">; paymentByUser: Record<string, boolean>; cardRequests: CardRequest[]; fundingRequests: FundingRequest[]; telegramStatus: TelegramBotStatus | null; onViewChange: (v: View) => void; onOpenClient: (id: string) => void }) {
+function OverviewV2({ clients, kycByUser, paymentByUser, paymentStatusByUser, cardRequests, fundingRequests, telegramStatus, onViewChange, onOpenClient }: { clients: Client[]; kycByUser: Record<string, "approved" | "pending" | "rejected">; paymentByUser: Record<string, boolean>; paymentStatusByUser: Record<string, string | null>; cardRequests: CardRequest[]; fundingRequests: FundingRequest[]; telegramStatus: TelegramBotStatus | null; onViewChange: (v: View) => void; onOpenClient: (id: string) => void }) {
   const kycPending = clients.filter((c) => kycByUser[c.telegramId] === "pending").length;
-  const awaiting = clients.filter((c) => kycByUser[c.telegramId] === "approved" && paymentByUser[c.id] && c.accountIds.length === 0).length;
+  const awaiting = clients.filter((c) => ["pending", "accepted"].includes(paymentStatusByUser[c.id] ?? "")).length;
   const cardsNew = cardRequests.filter((r) => r.status === "New").length;
   const fundingOpen = fundingRequests.filter((r) => !["completed", "rejected", "cancelled"].includes(r.status)).length;
   const attention = kycPending + awaiting + cardsNew + fundingOpen;
@@ -3293,7 +3295,7 @@ function OverviewV2({ clients, kycByUser, paymentByUser, cardRequests, fundingRe
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         {[
           { label: "KYC to review", count: kycPending, hint: "identity submissions", go: () => onViewChange("requests") },
-          { label: "Payments to verify", count: awaiting, hint: "paid, awaiting activation", go: () => onViewChange("clients") },
+          { label: "Payments to process", count: awaiting, hint: "receipt/activation incomplete", go: () => onViewChange("clients") },
           { label: "Cards to issue", count: cardsNew, hint: "approved, not issued", go: () => onViewChange("requests") },
           { label: "Funding open", count: fundingOpen, hint: "open funding requests", go: () => onViewChange("requests") },
         ].map((card) => (

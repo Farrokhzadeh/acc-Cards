@@ -9,8 +9,8 @@ export const runtime = "nodejs";
 export async function GET(request: Request) {
   return apiRoute(request, async () => {
     await requireAdmin(request);
-    const result = await getPool().query<{ id: string; declared: boolean }>(
-      `SELECT id, (payment_declared_at IS NOT NULL) AS declared FROM telegram_users`,
+    const result = await getPool().query<{ id: string; declared: boolean; status: string | null }>(
+      `SELECT id, (payment_declared_at IS NOT NULL) AS declared, payment_status AS status FROM telegram_users`,
     );
     return { items: result.rows };
   });
