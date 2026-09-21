@@ -2353,8 +2353,8 @@ export default function DashboardApp() {
         <SheetContent className="w-full overflow-y-auto border-[#e7e4ed] bg-[#fbfafc] sm:max-w-xl">
           {activeClient && (
             <>
-              <ClientPaymentSection clientId={activeClientId} />
-              <ClientKycSection clientId={activeClientId} />
+              <ClientPaymentSection key={activeClientId ?? "none"} clientId={activeClientId} />
+              <ClientKycSection key={activeClientId ?? "none"} clientId={activeClientId} />
               <SheetHeader className="border-b border-[#eceaf2] bg-white px-6 py-5">
                 <div className="flex items-center gap-3 pr-8">
                   <Avatar className="size-11"><AvatarFallback className="bg-[#eeecff] font-bold text-[#5b50d6]">{initials(activeClient.name)}</AvatarFallback></Avatar>
@@ -2529,7 +2529,6 @@ function KycView() {
 
   useEffect(() => {
     const controller = new AbortController();
-    setLoading(true);
     fetchKycSubmissions({ status: filter, search: search || undefined, limit: 50 }, controller.signal)
       .then((res) => setItems(res.items))
       .catch((error) => {
@@ -2580,11 +2579,11 @@ function KycView() {
 
       <div className="mb-4 flex flex-wrap items-center gap-2">
         {filters.map((f) => (
-          <Button key={f.id} variant={filter === f.id ? "default" : "outline"} className="rounded-full" onClick={() => setFilter(f.id)}>{f.label}</Button>
+          <Button key={f.id} variant={filter === f.id ? "default" : "outline"} className="rounded-full" onClick={() => { setFilter(f.id); setLoading(true); }}>{f.label}</Button>
         ))}
         <div className="relative ml-auto w-full sm:w-72">
           <Search className="absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-[#9d99aa]" />
-          <Input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search name, ID, phone…" className="h-11 rounded-[14px] border-[#e5e3ec] bg-white pl-10 shadow-sm" />
+          <Input value={search} onChange={(event) => { setSearch(event.target.value); setLoading(true); }} placeholder="Search name, ID, phone…" className="h-11 rounded-[14px] border-[#e5e3ec] bg-white pl-10 shadow-sm" />
         </div>
       </div>
 
@@ -3025,20 +3024,6 @@ function TransactionsView({ transactions, clientName, search, issues, onReconcil
 }
 
 function InboxView({ clients, activeClient, activeClientId, messages, draft, search, conversations, attachment, onAttachment, onDraftChange, onSelect, onSend, onConversationAction, onRetry, hasMore, onLoadOlder }: { clients: Client[]; activeClient: Client; activeClientId: string; messages: Message[]; draft: string; search: string; conversations: SupportConversationSummary[]; attachment: File | null; onAttachment: (file: File | null) => void; onDraftChange: (value: string) => void; onSelect: (id: string) => void; onSend: () => void; onConversationAction: (action: "open" | "pending" | "closed" | "assign_me") => void | Promise<void>; onRetry: (messageId: string) => void | Promise<void>; hasMore: boolean; onLoadOlder: () => void }) {
-  if (!activeClient) {
-    return (
-      <>
-        <PageIntro title="Telegram inbox" description="Persistent support conversations with private attachments, unread state, delivery tracking, and durable Telegram retries." />
-        <Card className="surface-card rounded-[26px]">
-          <CardContent className="p-12 text-center">
-            <MessagesSquare className="mx-auto size-8 text-[#c9c5d6]" />
-            <p className="mt-3 text-sm font-medium text-[#777287]">No support conversations yet</p>
-            <p className="mt-1 text-xs text-[#9692a3]">When Telegram users message your bot, their conversations will appear here.</p>
-          </CardContent>
-        </Card>
-      </>
-    );
-  }
   const needle = search.trim().toLowerCase();
   const summaryByUser = new Map(conversations.map((item) => [item.userId, item]));
   const matchingClients = clients.filter((client) => {
@@ -3084,6 +3069,20 @@ function InboxView({ clients, activeClient, activeClientId, messages, draft, sea
       onLoadOlder();
     }
   };
+  if (!activeClient) {
+    return (
+      <>
+        <PageIntro title="Telegram inbox" description="Persistent support conversations with private attachments, unread state, delivery tracking, and durable Telegram retries." />
+        <Card className="surface-card rounded-[26px]">
+          <CardContent className="p-12 text-center">
+            <MessagesSquare className="mx-auto size-8 text-[#c9c5d6]" />
+            <p className="mt-3 text-sm font-medium text-[#777287]">No support conversations yet</p>
+            <p className="mt-1 text-xs text-[#9692a3]">When Telegram users message your bot, their conversations will appear here.</p>
+          </CardContent>
+        </Card>
+      </>
+    );
+  }
   return (
     <>
       <PageIntro title="Telegram inbox" description="Persistent support conversations with private attachments, unread state, delivery tracking, and durable Telegram retries." />
@@ -3332,7 +3331,7 @@ function OverviewV2({ clients, kycByUser, paymentByUser, paymentStatusByUser, ca
 function ClientKycSection({ clientId }: { clientId: string | null }) {
   const [kyc, setKyc] = useState<ClientKyc>(null);
   useEffect(() => {
-    if (!clientId) { setKyc(null); return; }
+    if (!clientId) return;
     let cancelled = false;
     fetchClientKyc(clientId).then((r) => { if (!cancelled) setKyc(r.kyc); }).catch(() => { if (!cancelled) setKyc(null); });
     return () => { cancelled = true; };
@@ -3367,7 +3366,7 @@ function ClientPaymentSection({ clientId }: { clientId: string | null }) {
   const [busy, setBusy] = useState(false);
   const [tick, setTick] = useState(0);
   useEffect(() => {
-    if (!clientId) { setPayment(null); return; }
+    if (!clientId) return;
     let cancelled = false;
     fetchClientKyc(clientId).then((r) => { if (!cancelled) setPayment(r.payment ?? null); }).catch(() => { if (!cancelled) setPayment(null); });
     fetchClientAssignableAccounts(clientId).then((r) => { if (!cancelled) setAccounts(r.items); }).catch(() => {});
