@@ -96,6 +96,8 @@ export const PAYMENT = {
     "💳 <b>پرداخت خود را انجام دهید</b>\nمبلغ را به کارت زیر واریز کنید؛ پس از تأیید، تیم ما کارت شما را فعال می‌کند.\nشماره کارت: <code>{card}</code>\nبه نام: <b>{holder}</b>",
   ),
   notConfigured: m("Payment card is not configured yet. Please contact support.", "کارت پرداخت هنوز تنظیم نشده است. لطفاً با پشتیبانی تماس بگیرید."),
+  askReceipt: m("🧾 Please send your <b>payment receipt</b> (screenshot or PDF) so we can verify your payment. This speeds up activation.", "🧾 لطفاً <b>رسید پرداخت</b> خود را (اسکرین‌شات یا PDF) بفرستید تا پرداخت شما را تأیید کنیم. این کار فعال‌سازی را سریع‌تر می‌کند."),
+  skipReceipt: m("I don't have a receipt", "رسید ندارم"),
 };
 
 export const FLOW = {

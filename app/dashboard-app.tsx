@@ -46,7 +46,7 @@ import {
   XCircle,
 } from "lucide-react";
 import { toast } from "sonner";
-import { AdminApiError, createAccount, fetchDashboardSnapshot, reauthenticateAdmin, revealAccountSecrets, updateAccount, verifyAccountConnection, syncAccountCards, revealLiveCardDetails, syncCardTransactions, fetchCardTransactions, fetchTransactions, fetchTransactionNotificationIssues, reconcileTransactionNotification, setCardFrozenState, refreshCardStatus, connectOutlookMailbox, syncOutlookMailbox, disconnectOutlookMailbox, connectGmailMailbox, syncGmailMailbox, disconnectGmailMailbox, fetchAccountEmailMessages, fetchTelegramBotStatus, configureTelegramWebhook, setTelegramBotToken, clearTelegramBotToken, fetchPaymentCard, updatePaymentCard, notifyClient, fetchClientPipeline, fetchClientKyc, type ClientKyc, fetchForceJoinChannels, upsertForceJoinChannel, deleteForceJoinChannel, fetchSupportConversations, updateSupportConversation, retrySupportMessage, fetchClientSupportMessages, sendClientSupportMessage, fetchClientAssignableAccounts, assignClientAccount, unassignClientAccount, unassignAllClientAccounts, fetchCardRequests, reviewCardRequest, issueCardRequest, reconcileCardRequest, fetchFundingRequests, reviewFundingRequest, executeFundingRequest, reconcileFundingRequest, resolveFundingRequest, fundingReceiptDownloadUrl, fetchFundingSettings, updateFundingSettings, type ApiCardRequest, type ApiFundingRequest, type AssignableClientAccount, type LiveCardDetails, type StoredCardTransaction, type StoredEmailMessage, type TelegramBotStatus, fetchProviderReadiness, type ProviderReadinessSnapshot, type TransactionNotificationIssue, type SupportConversationSummary, fetchOperationalSnapshot, updateOperationalAlert, updateRuntimeControl, type OperationalSnapshot, fetchKycSubmissions, reviewKycSubmission, kycDocumentUrl, type ApiKycSubmission } from "@/lib/admin-api";
+import { AdminApiError, createAccount, fetchDashboardSnapshot, reauthenticateAdmin, revealAccountSecrets, updateAccount, verifyAccountConnection, syncAccountCards, revealLiveCardDetails, syncCardTransactions, fetchCardTransactions, fetchTransactions, fetchTransactionNotificationIssues, reconcileTransactionNotification, setCardFrozenState, refreshCardStatus, connectOutlookMailbox, syncOutlookMailbox, disconnectOutlookMailbox, connectGmailMailbox, syncGmailMailbox, disconnectGmailMailbox, fetchAccountEmailMessages, fetchTelegramBotStatus, configureTelegramWebhook, setTelegramBotToken, clearTelegramBotToken, fetchPaymentCard, updatePaymentCard, notifyClient, fetchClientPipeline, fetchClientKyc, type ClientKyc, type ClientPayment, clientReceiptUrl, fetchForceJoinChannels, upsertForceJoinChannel, deleteForceJoinChannel, fetchSupportConversations, updateSupportConversation, retrySupportMessage, fetchClientSupportMessages, sendClientSupportMessage, fetchClientAssignableAccounts, assignClientAccount, unassignClientAccount, unassignAllClientAccounts, fetchCardRequests, reviewCardRequest, issueCardRequest, reconcileCardRequest, fetchFundingRequests, reviewFundingRequest, executeFundingRequest, reconcileFundingRequest, resolveFundingRequest, fundingReceiptDownloadUrl, fetchFundingSettings, updateFundingSettings, type ApiCardRequest, type ApiFundingRequest, type AssignableClientAccount, type LiveCardDetails, type StoredCardTransaction, type StoredEmailMessage, type TelegramBotStatus, fetchProviderReadiness, type ProviderReadinessSnapshot, type TransactionNotificationIssue, type SupportConversationSummary, fetchOperationalSnapshot, updateOperationalAlert, updateRuntimeControl, type OperationalSnapshot, fetchKycSubmissions, reviewKycSubmission, kycDocumentUrl, type ApiKycSubmission } from "@/lib/admin-api";
 import { disableAdminMfa, enableAdminMfa, fetchCurrentAdmin, logoutAdmin, setupAdminMfa, type CurrentAdmin } from "@/lib/auth-client";
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -624,6 +624,8 @@ export default function DashboardApp() {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [transactionNotificationIssues, setTransactionNotificationIssues] = useState<TransactionNotificationIssue[]>([]);
   const [messages, setMessages] = useState<Record<string, Message[]>>({});
+  const [msgHasMore, setMsgHasMore] = useState<Record<string, boolean>>({});
+  const [msgBefore, setMsgBefore] = useState<Record<string, string | null>>({});
   const [supportConversations, setSupportConversations] = useState<SupportConversationSummary[]>([]);
   const [kycStatusByUser, setKycStatusByUser] = useState<Record<string, "approved" | "pending" | "rejected">>({});
   const [kycPendingCount, setKycPendingCount] = useState(0);
@@ -897,7 +899,7 @@ export default function DashboardApp() {
   useEffect(() => {
     if (!backendDataLoaded || !activeChatId) return;
     let cancelled = false;
-    fetchClientSupportMessages(activeChatId)
+    fetchClientSupportMessages(activeChatId, { limit: 50 })
       .then((result) => {
         if (cancelled) return;
         const mapped: Message[] = result.items.map((item) => ({
@@ -910,11 +912,33 @@ export default function DashboardApp() {
           attachment: item.attachment ? { filename: item.attachment.filename, downloadUrl: item.attachment.downloadUrl, mimeType: item.attachment.mimeType } : null,
         }));
         setMessages((current) => ({ ...current, [activeChatId]: mapped }));
+        setMsgHasMore((current) => ({ ...current, [activeChatId]: result.hasMore }));
+        setMsgBefore((current) => ({ ...current, [activeChatId]: result.nextBefore }));
         void fetchSupportConversations().then((summary) => setSupportConversations(summary.items)).catch(() => {});
       })
       .catch(() => { if (!cancelled) setMessages((current) => ({ ...current, [activeChatId]: [] })); });
     return () => { cancelled = true; };
   }, [activeChatId, backendDataLoaded]);
+
+  const loadOlderMessages = async (clientId: string) => {
+    const before = msgBefore[clientId];
+    if (!before) return;
+    try {
+      const res = await fetchClientSupportMessages(clientId, { limit: 50, before });
+      const mapped: Message[] = res.items.map((item) => ({
+        id: item.id,
+        from: item.direction === "client_to_admin" ? "client" : "admin",
+        body: item.text,
+        time: new Date(item.createdAt).toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }),
+        status: item.status,
+        lastDeliveryError: item.lastDeliveryError,
+        attachment: item.attachment ? { filename: item.attachment.filename, downloadUrl: item.attachment.downloadUrl, mimeType: item.attachment.mimeType } : null,
+      }));
+      setMessages((current) => ({ ...current, [clientId]: [...mapped, ...(current[clientId] ?? [])] }));
+      setMsgHasMore((current) => ({ ...current, [clientId]: res.hasMore }));
+      setMsgBefore((current) => ({ ...current, [clientId]: res.nextBefore }));
+    } catch { /* ignore */ }
+  };
 
   useEffect(() => {
     if (!backendDataLoaded) return;
@@ -1994,6 +2018,8 @@ export default function DashboardApp() {
                 onSend={sendMessage}
                 onConversationAction={changeSupportConversation}
                 onRetry={retrySupportDelivery}
+                hasMore={msgHasMore[activeChatId] ?? false}
+                onLoadOlder={() => void loadOlderMessages(activeChatId)}
               />
             )}
             {view === "settings" && (
@@ -2313,6 +2339,7 @@ export default function DashboardApp() {
         <SheetContent className="w-full overflow-y-auto border-[#e7e4ed] bg-[#fbfafc] sm:max-w-xl">
           {activeClient && (
             <>
+              <ClientPaymentSection clientId={activeClientId} />
               <ClientKycSection clientId={activeClientId} />
               <SheetHeader className="border-b border-[#eceaf2] bg-white px-6 py-5">
                 <div className="flex items-center gap-3 pr-8">
@@ -2983,7 +3010,7 @@ function TransactionsView({ transactions, clientName, search, issues, onReconcil
   );
 }
 
-function InboxView({ clients, activeClient, activeClientId, messages, draft, search, conversations, attachment, onAttachment, onDraftChange, onSelect, onSend, onConversationAction, onRetry }: { clients: Client[]; activeClient: Client; activeClientId: string; messages: Message[]; draft: string; search: string; conversations: SupportConversationSummary[]; attachment: File | null; onAttachment: (file: File | null) => void; onDraftChange: (value: string) => void; onSelect: (id: string) => void; onSend: () => void; onConversationAction: (action: "open" | "pending" | "closed" | "assign_me") => void | Promise<void>; onRetry: (messageId: string) => void | Promise<void> }) {
+function InboxView({ clients, activeClient, activeClientId, messages, draft, search, conversations, attachment, onAttachment, onDraftChange, onSelect, onSend, onConversationAction, onRetry, hasMore, onLoadOlder }: { clients: Client[]; activeClient: Client; activeClientId: string; messages: Message[]; draft: string; search: string; conversations: SupportConversationSummary[]; attachment: File | null; onAttachment: (file: File | null) => void; onDraftChange: (value: string) => void; onSelect: (id: string) => void; onSend: () => void; onConversationAction: (action: "open" | "pending" | "closed" | "assign_me") => void | Promise<void>; onRetry: (messageId: string) => void | Promise<void>; hasMore: boolean; onLoadOlder: () => void }) {
   if (!activeClient) {
     return (
       <>
@@ -3018,6 +3045,7 @@ function InboxView({ clients, activeClient, activeClientId, messages, draft, sea
         </aside>
         <section className="flex min-w-0 flex-col bg-white">
           <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#eceaf2] px-5 py-4"><div className="flex items-center gap-3"><Avatar className="size-10"><AvatarFallback className="bg-[#eeecff] text-xs font-bold text-[#5b50d6]">{initials(activeClient.name)}</AvatarFallback></Avatar><div><p className="font-semibold text-[#353146]">{activeClient.name}</p><p className="text-xs text-[#9692a3]">{activeClient.username} · {activeConversation?.status ?? "no conversation"}{activeConversation?.assignedAdminName ? ` · ${activeConversation.assignedAdminName}` : ""}</p></div></div><div className="flex flex-wrap gap-2"><Button variant="outline" size="sm" className="rounded-xl" onClick={() => void onConversationAction("assign_me")}>Assign to me</Button><Button variant="outline" size="sm" className="rounded-xl" onClick={() => void onConversationAction("pending")}>Pending</Button><Button variant="outline" size="sm" className="rounded-xl" onClick={() => void onConversationAction(activeConversation?.status === "closed" ? "open" : "closed")}>{activeConversation?.status === "closed" ? "Reopen" : "Close"}</Button></div></div>
+          {hasMore && <div className="mb-2 text-center"><Button variant="outline" size="sm" className="rounded-xl" onClick={onLoadOlder}>Load older messages</Button></div>}
           <div className="flex flex-1 flex-col justify-end gap-3 overflow-y-auto bg-[radial-gradient(circle_at_80%_0%,rgba(97,87,231,.06),transparent_18rem),linear-gradient(180deg,#fff_0%,#faf9fc_100%)] p-5">
             {messages.map((message) => <div key={message.id} className={`max-w-[82%] ${message.from === "admin" ? "ml-auto" : "mr-auto"}`}><div className={`rounded-[18px] px-4 py-3 text-sm leading-6 ${message.from === "admin" ? "rounded-br-md bg-[#6157e7] text-white shadow-[0_8px_20px_rgba(97,87,231,.16)]" : "rounded-bl-md border border-[#e9e6f0] bg-white text-[#464254] shadow-sm"}`}>{message.body && <p>{message.body}</p>}{message.attachment && <a href={message.attachment.downloadUrl ?? undefined} className="mt-2 flex items-center gap-2 rounded-lg bg-white/10 p-2 text-xs underline-offset-2 hover:underline"><Paperclip className="size-3.5" />{message.attachment.filename}</a>}</div><div className={`mt-1 flex items-center gap-2 text-xs text-[#aaa6b8] ${message.from === "admin" ? "justify-end" : ""}`}><span>{message.time}</span>{message.from === "admin" && message.status && <span>· {message.status}</span>}{message.status === "failed" && <button className="font-semibold text-[#b53847] underline" onClick={() => void onRetry(message.id)}>Retry</button>}</div>{message.lastDeliveryError && <p className="mt-1 text-right text-[11px] text-[#b53847]">{message.lastDeliveryError}</p>}</div>)}
           </div>
@@ -3274,6 +3302,29 @@ function ClientKycSection({ clientId }: { clientId: string | null }) {
         <p><span className="text-[#9692a3]">Submitted:</span> {new Date(kyc.submittedAt).toLocaleString()}</p>
       </div>
       {kyc.reviewNote && <p className="mt-1 text-xs text-[#777287]">Note: {kyc.reviewNote}</p>}
+    </div>
+  );
+}
+
+function ClientPaymentSection({ clientId }: { clientId: string | null }) {
+  const [payment, setPayment] = useState<ClientPayment>(null);
+  useEffect(() => {
+    if (!clientId) { setPayment(null); return; }
+    let cancelled = false;
+    fetchClientKyc(clientId).then((r) => { if (!cancelled) setPayment(r.payment ?? null); }).catch(() => { if (!cancelled) setPayment(null); });
+    return () => { cancelled = true; };
+  }, [clientId]);
+  if (!clientId || !payment || (!payment.declaredAt && !payment.hasReceipt)) return null;
+  return (
+    <div className="border-b border-[#eceaf2] bg-[#efeaff] px-6 py-3">
+      <div className="flex flex-wrap items-center gap-2">
+        <p className="text-xs font-bold uppercase tracking-[.14em] text-[#8179e8]">Payment</p>
+        {payment.declaredAt && <Badge variant="outline" className="rounded-full border-indigo-200 bg-indigo-50 text-indigo-700">Declared {new Date(payment.declaredAt).toLocaleDateString()}</Badge>}
+        {payment.hasReceipt
+          ? <a href={clientReceiptUrl(clientId)} target="_blank" rel="noreferrer" className="text-xs font-semibold text-[#6157e7] underline-offset-2 hover:underline">View receipt</a>
+          : <span className="text-xs text-[#9692a3]">no receipt uploaded</span>}
+        {payment.hasReceipt && payment.receiptAt && <span className="text-xs text-[#9692a3]">{new Date(payment.receiptAt).toLocaleDateString()}</span>}
+      </div>
     </div>
   );
 }

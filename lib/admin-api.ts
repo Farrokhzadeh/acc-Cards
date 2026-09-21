@@ -361,8 +361,16 @@ export type ClientKyc = {
   reviewNote: string | null; submittedAt: string;
 } | null;
 
+export type ClientPayment = {
+  declaredAt: string | null; hasReceipt: boolean; receiptMime: string | null; receiptAt: string | null;
+} | null;
+
 export async function fetchClientKyc(id: string) {
-  return apiJson<{ kyc: ClientKyc }>(`/api/v1/clients/${encodeURIComponent(id)}/kyc`, { method: "GET" });
+  return apiJson<{ kyc: ClientKyc; payment: ClientPayment }>(`/api/v1/clients/${encodeURIComponent(id)}/kyc`, { method: "GET" });
+}
+
+export function clientReceiptUrl(id: string) {
+  return `/api/v1/clients/${encodeURIComponent(id)}/receipt`;
 }
 
 export async function fetchForceJoinChannels() {
@@ -419,8 +427,15 @@ export async function updateSupportConversation(id: string, input: { status?: "o
   return apiJson<{ status: "open" | "pending" | "closed"; assignedAdminId: string | null }>(`/api/v1/conversations/${encodeURIComponent(id)}`, { method: "PATCH", body: JSON.stringify(input) });
 }
 
-export async function fetchClientSupportMessages(clientId: string) {
-  return apiJson<{ items: StoredSupportMessage[] }>(`/api/v1/clients/${encodeURIComponent(clientId)}/messages`, { method: "GET" });
+export async function fetchClientSupportMessages(clientId: string, opts: { limit?: number; before?: string } = {}) {
+  const qs = new URLSearchParams();
+  if (opts.limit) qs.set("limit", String(opts.limit));
+  if (opts.before) qs.set("before", opts.before);
+  const suffix = qs.toString() ? `?${qs.toString()}` : "";
+  return apiJson<{ items: StoredSupportMessage[]; hasMore: boolean; nextBefore: string | null }>(
+    `/api/v1/clients/${encodeURIComponent(clientId)}/messages${suffix}`,
+    { method: "GET" },
+  );
 }
 
 export async function sendClientSupportMessage(clientId: string, text: string, attachment?: File | null) {

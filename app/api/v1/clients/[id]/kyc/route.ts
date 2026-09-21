@@ -26,7 +26,16 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
       [userId],
     );
     const row = result.rows[0];
-    if (!row) return { kyc: null };
+    const payment = await getPool().query<{
+      declared_at: Date | null; receipt_key: string | null; receipt_mime: string | null; receipt_at: Date | null;
+    }>(
+      `SELECT payment_declared_at AS declared_at, payment_receipt_object_key AS receipt_key,
+              payment_receipt_mime AS receipt_mime, payment_receipt_at AS receipt_at
+         FROM telegram_users WHERE id = $1::uuid`,
+      [userId],
+    );
+    const p = payment.rows[0];
+    if (!row) return { kyc: null, payment: p ? { declaredAt: p.declared_at ? p.declared_at.toISOString() : null, hasReceipt: Boolean(p.receipt_key), receiptMime: p.receipt_mime, receiptAt: p.receipt_at ? p.receipt_at.toISOString() : null } : null };
     return {
       kyc: {
         id: row.id,
@@ -41,6 +50,7 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
         reviewNote: row.review_note,
         submittedAt: row.submitted_at.toISOString(),
       },
+      payment: p ? { declaredAt: p.declared_at ? p.declared_at.toISOString() : null, hasReceipt: Boolean(p.receipt_key), receiptMime: p.receipt_mime, receiptAt: p.receipt_at ? p.receipt_at.toISOString() : null } : null,
     };
   });
 }

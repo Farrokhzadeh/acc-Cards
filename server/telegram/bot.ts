@@ -135,6 +135,49 @@ async function setPaymentDeclared(userId: string) {
   await getPool().query(`UPDATE telegram_users SET payment_declared_at = now(), updated_at = now() WHERE id = $1::uuid`, [userId]);
 }
 
+async function setPaymentReceipt(userId: string, objectKey: string, mime: string) {
+  await getPool().query(
+    `UPDATE telegram_users SET payment_receipt_object_key = $2, payment_receipt_mime = $3, payment_receipt_at = now(), updated_at = now() WHERE id = $1::uuid`,
+    [userId, objectKey, mime],
+  );
+}
+
+// Collects the payment receipt (photo/PDF) after the user declared payment.
+async function handlePaymentReceiptMedia(client: TelegramClient, user: BotUser, chatId: number, message: z.infer<typeof messageSchema>): Promise<boolean> {
+  const state = await getKycState(user.id);
+  if (!state || state.mode !== "payment_receipt") return false;
+  const photo = message.photo?.at(-1);
+  const document = message.document;
+  const selected = document ?? photo;
+  if (!selected) { await client.sendMessage({ chatId, text: pick(PAYMENT.askReceipt, user.lang) }); return true; }
+  if (document?.mime_type && !["application/pdf", "image/jpeg", "image/png", "image/webp"].includes(document.mime_type)) {
+    await client.sendMessage({ chatId, text: pick(KYC.errDocType, user.lang) });
+    return true;
+  }
+  const env = parseServerEnv(process.env);
+  if (selected.file_size && selected.file_size > env.SUPPORT_ATTACHMENT_MAX_BYTES) {
+    await client.sendMessage({ chatId, text: pick(KYC.errDocSize, user.lang) });
+    return true;
+  }
+  try {
+    const file = await client.getFile(selected.file_id);
+    if (!file.file_path) throw new ApiError(502, "telegram_file_missing_path", "Telegram did not provide a downloadable path.");
+    const bytes = await client.downloadFile(file.file_path, env.SUPPORT_ATTACHMENT_MAX_BYTES);
+    const stored = await storePrivateSupportAttachment({
+      conversationId: user.id,
+      bytes,
+      originalFilename: document?.file_name ?? `payment-receipt-${message.message_id}.jpg`,
+      declaredMimeType: document?.mime_type ?? "image/jpeg",
+    });
+    await setPaymentReceipt(user.id, stored.objectKey, stored.detectedMimeType);
+    await getPool().query(`DELETE FROM telegram_bot_states WHERE user_id=$1::uuid`, [user.id]);
+    await sendWaitingScreen(client, user, chatId);
+  } catch (error) {
+    await client.sendMessage({ chatId, text: error instanceof ApiError ? escapeHtml(error.message) : pick(KYC.errDocGeneric, user.lang) });
+  }
+  return true;
+}
+
 // Payment screen shown to KYC-approved users who haven't paid yet (menu stays locked).
 async function sendPaymentScreen(client: TelegramClient, user: BotUser, chatId: number) {
   const pc = await getPaymentCard();
@@ -948,6 +991,13 @@ async function handleCallback(client: TelegramClient, callback: z.infer<typeof c
     if (user.bannedAt) { await client.sendMessage({ chatId, text: pick(KYC.accessDisabled, user.lang) }); return; }
     await setPaymentDeclared(user.id);
     await auditTelegramEvent({ userId: user.id, action: "telegram.payment.declared", entityType: "telegram_user", entityId: user.id });
+    await setKycState(user.id, "payment_receipt", {}, 60);
+    const skip = await createCallbackToken({ userId: user.id, action: "menu.skipreceipt" });
+    await client.sendMessage({ chatId, text: pick(PAYMENT.askReceipt, user.lang), replyMarkup: { inline_keyboard: [[{ text: pick(PAYMENT.skipReceipt, user.lang), callback_data: skip }]] } });
+    return;
+  }
+  if (resolved.action === "menu.skipreceipt") {
+    await getPool().query(`DELETE FROM telegram_bot_states WHERE user_id=$1::uuid`, [user.id]);
     await sendWaitingScreen(client, user, chatId);
     return;
   }
@@ -1348,6 +1398,7 @@ async function handleMessage(client: TelegramClient, message: z.infer<typeof mes
   }
 
   // KYC runs before the account/membership gate so brand-new customers can verify identity first.
+  if (await handlePaymentReceiptMedia(client, user, chatId, message)) return;
   if (await handleKycMedia(client, user, chatId, message)) return;
   if (text && (await handleKycText(client, user, chatId, text))) return;
   if (text === "/kyc") { await beginKyc(client, user, chatId); return; }
