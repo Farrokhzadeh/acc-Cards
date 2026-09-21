@@ -1,0 +1,17 @@
+import { apiRoute } from "@/server/http/api";
+import { requireAdmin } from "@/server/auth/service";
+import { getPool } from "@/server/database/pool";
+
+export const dynamic = "force-dynamic";
+export const runtime = "nodejs";
+
+// Per-client onboarding pipeline flags for the Overview action-center.
+export async function GET(request: Request) {
+  return apiRoute(request, async () => {
+    await requireAdmin(request);
+    const result = await getPool().query<{ id: string; declared: boolean }>(
+      `SELECT id, (payment_declared_at IS NOT NULL) AS declared FROM telegram_users`,
+    );
+    return { items: result.rows };
+  });
+}

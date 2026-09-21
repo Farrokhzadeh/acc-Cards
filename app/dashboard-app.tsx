@@ -46,7 +46,7 @@ import {
   XCircle,
 } from "lucide-react";
 import { toast } from "sonner";
-import { AdminApiError, createAccount, fetchDashboardSnapshot, reauthenticateAdmin, revealAccountSecrets, updateAccount, verifyAccountConnection, syncAccountCards, revealLiveCardDetails, syncCardTransactions, fetchCardTransactions, fetchTransactions, fetchTransactionNotificationIssues, reconcileTransactionNotification, setCardFrozenState, refreshCardStatus, connectOutlookMailbox, syncOutlookMailbox, disconnectOutlookMailbox, connectGmailMailbox, syncGmailMailbox, disconnectGmailMailbox, fetchAccountEmailMessages, fetchTelegramBotStatus, configureTelegramWebhook, setTelegramBotToken, clearTelegramBotToken, fetchPaymentCard, updatePaymentCard, notifyClient, fetchForceJoinChannels, upsertForceJoinChannel, deleteForceJoinChannel, fetchSupportConversations, updateSupportConversation, retrySupportMessage, fetchClientSupportMessages, sendClientSupportMessage, fetchClientAssignableAccounts, assignClientAccount, unassignClientAccount, unassignAllClientAccounts, fetchCardRequests, reviewCardRequest, issueCardRequest, reconcileCardRequest, fetchFundingRequests, reviewFundingRequest, executeFundingRequest, reconcileFundingRequest, resolveFundingRequest, fundingReceiptDownloadUrl, fetchFundingSettings, updateFundingSettings, type ApiCardRequest, type ApiFundingRequest, type AssignableClientAccount, type LiveCardDetails, type StoredCardTransaction, type StoredEmailMessage, type TelegramBotStatus, fetchProviderReadiness, type ProviderReadinessSnapshot, type TransactionNotificationIssue, type SupportConversationSummary, fetchOperationalSnapshot, updateOperationalAlert, updateRuntimeControl, type OperationalSnapshot, fetchKycSubmissions, reviewKycSubmission, kycDocumentUrl, type ApiKycSubmission } from "@/lib/admin-api";
+import { AdminApiError, createAccount, fetchDashboardSnapshot, reauthenticateAdmin, revealAccountSecrets, updateAccount, verifyAccountConnection, syncAccountCards, revealLiveCardDetails, syncCardTransactions, fetchCardTransactions, fetchTransactions, fetchTransactionNotificationIssues, reconcileTransactionNotification, setCardFrozenState, refreshCardStatus, connectOutlookMailbox, syncOutlookMailbox, disconnectOutlookMailbox, connectGmailMailbox, syncGmailMailbox, disconnectGmailMailbox, fetchAccountEmailMessages, fetchTelegramBotStatus, configureTelegramWebhook, setTelegramBotToken, clearTelegramBotToken, fetchPaymentCard, updatePaymentCard, notifyClient, fetchClientPipeline, fetchClientKyc, type ClientKyc, fetchForceJoinChannels, upsertForceJoinChannel, deleteForceJoinChannel, fetchSupportConversations, updateSupportConversation, retrySupportMessage, fetchClientSupportMessages, sendClientSupportMessage, fetchClientAssignableAccounts, assignClientAccount, unassignClientAccount, unassignAllClientAccounts, fetchCardRequests, reviewCardRequest, issueCardRequest, reconcileCardRequest, fetchFundingRequests, reviewFundingRequest, executeFundingRequest, reconcileFundingRequest, resolveFundingRequest, fundingReceiptDownloadUrl, fetchFundingSettings, updateFundingSettings, type ApiCardRequest, type ApiFundingRequest, type AssignableClientAccount, type LiveCardDetails, type StoredCardTransaction, type StoredEmailMessage, type TelegramBotStatus, fetchProviderReadiness, type ProviderReadinessSnapshot, type TransactionNotificationIssue, type SupportConversationSummary, fetchOperationalSnapshot, updateOperationalAlert, updateRuntimeControl, type OperationalSnapshot, fetchKycSubmissions, reviewKycSubmission, kycDocumentUrl, type ApiKycSubmission } from "@/lib/admin-api";
 import { disableAdminMfa, enableAdminMfa, fetchCurrentAdmin, logoutAdmin, setupAdminMfa, type CurrentAdmin } from "@/lib/auth-client";
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -627,6 +627,7 @@ export default function DashboardApp() {
   const [supportConversations, setSupportConversations] = useState<SupportConversationSummary[]>([]);
   const [kycStatusByUser, setKycStatusByUser] = useState<Record<string, "approved" | "pending" | "rejected">>({});
   const [kycPendingCount, setKycPendingCount] = useState(0);
+  const [paymentByUser, setPaymentByUser] = useState<Record<string, boolean>>({});
   const [supportAttachment, setSupportAttachment] = useState<File | null>(null);
   const [operationalSnapshot, setOperationalSnapshot] = useState<OperationalSnapshot | null>(null);
   const [activeClientId, setActiveClientId] = useState<string | null>(null);
@@ -862,6 +863,15 @@ export default function DashboardApp() {
         setKycStatusByUser(map);
         setKycPendingCount(res.items.filter((i) => i.status === "pending").length);
       })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [backendDataLoaded]);
+
+  useEffect(() => {
+    if (!backendDataLoaded) return;
+    let cancelled = false;
+    fetchClientPipeline()
+      .then((r) => { if (!cancelled) { const m: Record<string, boolean> = {}; for (const it of r.items) m[it.id] = it.declared; setPaymentByUser(m); } })
       .catch(() => {});
     return () => { cancelled = true; };
   }, [backendDataLoaded]);
@@ -1859,15 +1869,15 @@ export default function DashboardApp() {
           <div className="mx-auto max-w-[1440px]">
             {!(["overview", "settings", "kyc"] as View[]).includes(view) && <div className="relative mb-4 sm:hidden"><Search className="absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-[#9d99aa]" /><Input value={search} onChange={(event) => setSearch(event.target.value)} placeholder={`Search ${viewCopy[view].title.toLowerCase()}`} className="h-11 rounded-[14px] border-[#e5e3ec] bg-white pl-10 shadow-sm" /></div>}
             {view === "overview" && (
-              <Overview
-                accounts={accounts}
+              <OverviewV2
                 clients={clients}
-                requests={fundingRequests}
-                cardTotal={cardTotal}
+                kycByUser={kycStatusByUser}
+                paymentByUser={paymentByUser}
+                cardRequests={cardRequests}
+                fundingRequests={fundingRequests}
                 telegramStatus={telegramStatus}
                 onViewChange={changeView}
-                onOpenRequest={setActiveRequestId}
-                clientName={clientName}
+                onOpenClient={setActiveClientId}
               />
             )}
             {view === "accounts" && (
@@ -2303,6 +2313,7 @@ export default function DashboardApp() {
         <SheetContent className="w-full overflow-y-auto border-[#e7e4ed] bg-[#fbfafc] sm:max-w-xl">
           {activeClient && (
             <>
+              <ClientKycSection clientId={activeClientId} />
               <SheetHeader className="border-b border-[#eceaf2] bg-white px-6 py-5">
                 <div className="flex items-center gap-3 pr-8">
                   <Avatar className="size-11"><AvatarFallback className="bg-[#eeecff] font-bold text-[#5b50d6]">{initials(activeClient.name)}</AvatarFallback></Avatar>
@@ -3177,4 +3188,92 @@ function SettingsView({ serviceFee, exchangeRate, maxCardsPerClient, minimumFund
 
 function RoutingStep({ icon: Icon, title, detail }: { icon: typeof Mail; title: string; detail: string }) {
   return <div className="flex gap-3"><span className="grid size-9 shrink-0 place-items-center rounded-xl bg-slate-100 text-slate-600"><Icon className="size-4" /></span><div><p className="text-sm font-medium">{title}</p><p className="mt-0.5 text-sm leading-5 text-slate-500">{detail}</p></div></div>;
+}
+
+function OverviewV2({ clients, kycByUser, paymentByUser, cardRequests, fundingRequests, telegramStatus, onViewChange, onOpenClient }: { clients: Client[]; kycByUser: Record<string, "approved" | "pending" | "rejected">; paymentByUser: Record<string, boolean>; cardRequests: CardRequest[]; fundingRequests: FundingRequest[]; telegramStatus: TelegramBotStatus | null; onViewChange: (v: View) => void; onOpenClient: (id: string) => void }) {
+  const kycPending = clients.filter((c) => kycByUser[c.telegramId] === "pending").length;
+  const awaiting = clients.filter((c) => kycByUser[c.telegramId] === "approved" && paymentByUser[c.id] && c.accountIds.length === 0).length;
+  const cardsNew = cardRequests.filter((r) => r.status === "New").length;
+  const fundingOpen = fundingRequests.filter((r) => !["completed", "rejected", "cancelled"].includes(r.status)).length;
+  const attention = kycPending + awaiting + cardsNew + fundingOpen;
+  const active = clients.filter((c) => c.accountIds.length > 0).length;
+  const botLive = Boolean(telegramStatus?.configured && telegramStatus.webhook?.url);
+  const today = new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" });
+  const kycBadge = (s?: string) => s === "approved" ? <Badge variant="outline" className="border-emerald-200 bg-emerald-50 text-emerald-700">Verified</Badge> : s === "pending" ? <Badge variant="outline" className="border-amber-200 bg-amber-50 text-amber-800">KYC review</Badge> : s === "rejected" ? <Badge variant="outline" className="border-red-200 bg-red-50 text-red-700">KYC rejected</Badge> : <Badge variant="outline" className="border-slate-200 bg-slate-50 text-slate-600">Not verified</Badge>;
+  return (
+    <>
+      <div className="mb-6 flex flex-col justify-between gap-3 sm:flex-row sm:items-end">
+        <div>
+          <p className="text-[11px] font-bold uppercase tracking-[.16em] text-[#8179e8]">{today}</p>
+          <h2 className="mt-2 text-[30px] font-bold tracking-[-.045em] text-[#1b1930] sm:text-[34px]">{attention > 0 ? `${attention} item${attention === 1 ? "" : "s"} need your attention` : "All caught up"}</h2>
+          <p className="mt-1 text-[15px] text-[#7e7a8e]">{attention > 0 ? "Work the queue below — each card jumps straight to the work." : "No pending KYC, payments, card requests, or funding right now."}</p>
+        </div>
+        <Badge variant="outline" className={botLive ? "rounded-full border-emerald-200 bg-emerald-50 text-emerald-700" : "rounded-full border-amber-200 bg-amber-50 text-amber-800"}>{botLive ? `Bot live · @${telegramStatus?.bot?.username ?? "bot"}` : "Bot not connected"}</Badge>
+      </div>
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        {[
+          { label: "KYC to review", count: kycPending, hint: "identity submissions", go: () => onViewChange("requests") },
+          { label: "Payments to verify", count: awaiting, hint: "paid, awaiting activation", go: () => onViewChange("clients") },
+          { label: "Cards to issue", count: cardsNew, hint: "approved, not issued", go: () => onViewChange("requests") },
+          { label: "Funding open", count: fundingOpen, hint: "open funding requests", go: () => onViewChange("requests") },
+        ].map((card) => (
+          <button key={card.label} onClick={card.go} className={`rounded-[20px] border p-5 text-left transition ${card.count > 0 ? "border-[#d8d3ff] bg-[#f6f4ff] hover:bg-[#efecff]" : "border-[#ece9f2] bg-white hover:bg-[#faf9fc]"}`}>
+            <p className="text-3xl font-bold tracking-tight text-[#1b1930]">{card.count}</p>
+            <p className="mt-1 text-sm font-semibold text-[#353146]">{card.label}</p>
+            <p className="text-xs text-[#9692a3]">{card.hint}</p>
+          </button>
+        ))}
+      </div>
+      <Card className="mt-6 surface-card rounded-[24px]">
+        <CardHeader><CardTitle className="text-[16px]">Customer pipeline <Badge variant="outline" className="ml-2 rounded-full">{active}/{clients.length} active</Badge></CardTitle></CardHeader>
+        <CardContent>
+          {clients.length === 0 ? <p className="py-8 text-center text-sm text-[#9692a3]">No customers yet. They appear here after starting the bot.</p> : (
+            <div className="space-y-2">
+              {clients.map((c) => (
+                <button key={c.id} onClick={() => onOpenClient(c.id)} className="flex w-full items-center justify-between gap-3 rounded-[14px] border border-[#ece9f2] bg-white p-3 text-left transition hover:bg-[#faf9fc]">
+                  <div className="min-w-0"><p className="truncate text-sm font-semibold text-[#353146]">{c.name}</p><p className="text-xs text-[#9692a3]">{c.username} · joined {c.joined}</p></div>
+                  <div className="flex shrink-0 items-center gap-2">
+                    {kycBadge(kycByUser[c.telegramId])}
+                    {paymentByUser[c.id] && c.accountIds.length === 0 && <Badge variant="outline" className="border-indigo-200 bg-indigo-50 text-indigo-700">Paid</Badge>}
+                    {c.accountIds.length > 0 ? <Badge variant="outline" className="border-emerald-200 bg-emerald-50 text-emerald-700">Active</Badge> : <Badge variant="outline" className="border-amber-200 bg-amber-50 text-amber-800">Needs account</Badge>}
+                  </div>
+                </button>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    </>
+  );
+}
+
+function ClientKycSection({ clientId }: { clientId: string | null }) {
+  const [kyc, setKyc] = useState<ClientKyc>(null);
+  useEffect(() => {
+    if (!clientId) { setKyc(null); return; }
+    let cancelled = false;
+    fetchClientKyc(clientId).then((r) => { if (!cancelled) setKyc(r.kyc); }).catch(() => { if (!cancelled) setKyc(null); });
+    return () => { cancelled = true; };
+  }, [clientId]);
+  if (!clientId) return null;
+  if (!kyc) return <div className="border-b border-[#eceaf2] bg-[#f6f4ff] px-6 py-3 text-xs text-[#777287]">KYC: not submitted yet.</div>;
+  const badge = kyc.status === "approved" ? "border-emerald-200 bg-emerald-50 text-emerald-700" : kyc.status === "pending" ? "border-amber-200 bg-amber-50 text-amber-800" : "border-red-200 bg-red-50 text-red-700";
+  return (
+    <div className="border-b border-[#eceaf2] bg-[#f6f4ff] px-6 py-4">
+      <div className="flex flex-wrap items-center gap-2">
+        <p className="text-xs font-bold uppercase tracking-[.14em] text-[#8179e8]">KYC</p>
+        <Badge variant="outline" className={`rounded-full ${badge}`}>{kyc.status}</Badge>
+        {kyc.hasDocument && <a href={kycDocumentUrl(kyc.id)} target="_blank" rel="noreferrer" className="text-xs font-semibold text-[#6157e7] underline-offset-2 hover:underline">View ID document</a>}
+      </div>
+      <div className="mt-2 grid gap-x-6 gap-y-1 text-xs text-[#55516b] sm:grid-cols-2">
+        <p><span className="text-[#9692a3]">Name:</span> {kyc.fullName}</p>
+        <p><span className="text-[#9692a3]">DOB:</span> {kyc.dateOfBirth ?? "—"}</p>
+        <p><span className="text-[#9692a3]">Country:</span> {kyc.country}</p>
+        <p><span className="text-[#9692a3]">National ID:</span> {kyc.nationalId}</p>
+        <p><span className="text-[#9692a3]">Phone:</span> {kyc.phone}</p>
+        <p><span className="text-[#9692a3]">Submitted:</span> {new Date(kyc.submittedAt).toLocaleString()}</p>
+      </div>
+      {kyc.reviewNote && <p className="mt-1 text-xs text-[#777287]">Note: {kyc.reviewNote}</p>}
+    </div>
+  );
 }

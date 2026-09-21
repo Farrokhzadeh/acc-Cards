@@ -351,6 +351,20 @@ export async function notifyClient(id: string) {
   return apiJson<{ ok: true }>(`/api/v1/clients/${encodeURIComponent(id)}/notify`, { method: "POST", body: "{}" });
 }
 
+export async function fetchClientPipeline() {
+  return apiJson<{ items: Array<{ id: string; declared: boolean }> }>("/api/v1/clients/pipeline", { method: "GET" });
+}
+
+export type ClientKyc = {
+  id: string; status: string; fullName: string; dateOfBirth: string | null; country: string;
+  nationalId: string; phone: string; hasDocument: boolean; documentMimeType: string | null;
+  reviewNote: string | null; submittedAt: string;
+} | null;
+
+export async function fetchClientKyc(id: string) {
+  return apiJson<{ kyc: ClientKyc }>(`/api/v1/clients/${encodeURIComponent(id)}/kyc`, { method: "GET" });
+}
+
 export async function fetchForceJoinChannels() {
   return apiJson<{ items: Array<{ id: string; chatId: string; title: string; inviteUrl: string | null; enabled: boolean; sortOrder: number }> }>("/api/v1/telegram/force-join-channels", { method: "GET" });
 }
