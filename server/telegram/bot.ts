@@ -152,6 +152,12 @@ async function handlePaymentAmountText(client: TelegramClient, user: BotUser, ch
   if (!state || state.mode !== "payment_amount") return false;
   const cents = dollarsToCents(text.trim());
   if (cents == null || cents <= 0) { await client.sendMessage({ chatId, text: pick(PAYMENT.errAmount, user.lang) }); return true; }
+  const pc = await getPaymentCard();
+  const minCents = Math.round(pc.minLoadUsd * 100);
+  if (cents < minCents) {
+    await client.sendMessage({ chatId, text: pick(PAYMENT.errMinAmount, user.lang).replace("{min}", `${pc.minLoadUsd}`) });
+    return true;
+  }
   await setPaymentAmount(user.id, cents);
   await setKycState(user.id, "payment_receipt", {}, 60);
   const skip = await createCallbackToken({ userId: user.id, action: "menu.skipreceipt" });
@@ -187,6 +193,7 @@ async function handlePaymentReceiptMedia(client: TelegramClient, user: BotUser, 
       declaredMimeType: document?.mime_type ?? "image/jpeg",
     });
     await setPaymentReceipt(user.id, stored.objectKey, stored.detectedMimeType);
+    await getPool().query(`UPDATE telegram_users SET payment_status = 'pending', updated_at = now() WHERE id = $1::uuid`, [user.id]);
     await getPool().query(`DELETE FROM telegram_bot_states WHERE user_id=$1::uuid`, [user.id]);
     await sendWaitingScreen(client, user, chatId);
   } catch (error) {

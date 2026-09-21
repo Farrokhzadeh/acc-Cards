@@ -99,6 +99,9 @@ export const PAYMENT = {
   askReceipt: m("🧾 Please send your <b>payment receipt</b> (screenshot or PDF) so we can verify your payment. This speeds up activation.", "🧾 لطفاً <b>رسید پرداخت</b> خود را (اسکرین‌شات یا PDF) بفرستید تا پرداخت شما را تأیید کنیم. این کار فعال‌سازی را سریع‌تر می‌کند."),
   askAmount: m("💵 Enter the amount you paid in USD (for example <code>20</code>):", "💵 مبلغ پرداختی خود را به دلار وارد کنید (مثلاً <code>20</code>):"),
   errAmount: m("Enter a valid amount in USD, for example <code>20</code>.", "یک مبلغ معتبر به دلار وارد کنید، مثلاً <code>20</code>."),
+  errMinAmount: m("The minimum load is <code>{min}</code>. Please enter at least that amount.", "حداقل شارژ <code>{min}</code> است. لطفاً حداقل این مبلغ را وارد کنید."),
+  denied: m("❌ Your payment receipt was <b>denied</b>. Please check the amount and receipt and send them again, or contact support.", "❌ رسید پرداخت شما <b>رد</b> شد. لطفاً مبلغ و رسید را بررسی و دوباره بفرستید، یا با پشتیبانی تماس بگیرید."),
+  complete: m("✅ Payment confirmed! Your card (Ucard) is active. Open the menu to view your card and its balance.", "✅ پرداخت تأیید شد! کارت شما (Ucard) فعال است. منو را باز کنید تا کارت و موجودی آن را ببینید."),
   skipReceipt: m("I don't have a receipt", "رسید ندارم"),
 };
 

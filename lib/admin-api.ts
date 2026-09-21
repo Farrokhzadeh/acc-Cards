@@ -362,7 +362,7 @@ export type ClientKyc = {
 } | null;
 
 export type ClientPayment = {
-  declaredAt: string | null; hasReceipt: boolean; receiptMime: string | null; receiptAt: string | null; amountUsdCents: string | null;
+  declaredAt: string | null; hasReceipt: boolean; receiptMime: string | null; receiptAt: string | null; amountUsdCents: string | null; status: string | null;
 } | null;
 
 export async function fetchClientKyc(id: string) {
@@ -371,6 +371,10 @@ export async function fetchClientKyc(id: string) {
 
 export function clientReceiptUrl(id: string) {
   return `/api/v1/clients/${encodeURIComponent(id)}/receipt`;
+}
+
+export async function activateClient(id: string, input: { action: "accept" | "deny" | "complete"; accountId?: string }) {
+  return apiJson<{ ok: true; status: string }>(`/api/v1/clients/${encodeURIComponent(id)}/activate`, { method: "POST", body: JSON.stringify(input) });
 }
 
 export async function fetchForceJoinChannels() {

@@ -9,6 +9,7 @@ export const runtime = "nodejs";
 const bodySchema = z.object({
   cardNumber: z.string().trim().max(40),
   cardHolder: z.string().trim().max(80),
+  minLoadUsd: z.number().min(1).max(100000).optional(),
 });
 
 export async function GET(request: Request) {
@@ -23,7 +24,7 @@ export async function PUT(request: Request) {
     const session = await requireAdmin(request);
     requireCsrf(request, session);
     const input = bodySchema.parse(await request.json());
-    await setPaymentCard({ cardNumber: input.cardNumber, cardHolder: input.cardHolder });
+    await setPaymentCard({ cardNumber: input.cardNumber, cardHolder: input.cardHolder, minLoadUsd: input.minLoadUsd ?? 25 });
     await auditAdminEvent({
       adminId: session.principal.id,
       action: "settings.payment_card.update",

@@ -27,16 +27,16 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
     );
     const row = result.rows[0];
     const payment = await getPool().query<{
-      declared_at: Date | null; receipt_key: string | null; receipt_mime: string | null; receipt_at: Date | null; amount_cents: string | null;
+      declared_at: Date | null; receipt_key: string | null; receipt_mime: string | null; receipt_at: Date | null; amount_cents: string | null; payment_status: string | null;
     }>(
       `SELECT payment_declared_at AS declared_at, payment_receipt_object_key AS receipt_key,
               payment_receipt_mime AS receipt_mime, payment_receipt_at AS receipt_at,
-              payment_amount_usd_cents::text AS amount_cents
+              payment_amount_usd_cents::text AS amount_cents, payment_status
          FROM telegram_users WHERE id = $1::uuid`,
       [userId],
     );
     const p = payment.rows[0];
-    const paymentObj = p ? { declaredAt: p.declared_at ? p.declared_at.toISOString() : null, hasReceipt: Boolean(p.receipt_key), receiptMime: p.receipt_mime, receiptAt: p.receipt_at ? p.receipt_at.toISOString() : null, amountUsdCents: p.amount_cents ?? null } : null;
+    const paymentObj = p ? { declaredAt: p.declared_at ? p.declared_at.toISOString() : null, hasReceipt: Boolean(p.receipt_key), receiptMime: p.receipt_mime, receiptAt: p.receipt_at ? p.receipt_at.toISOString() : null, amountUsdCents: p.amount_cents ?? null, status: p.payment_status ?? null } : null;
     if (!row) return { kyc: null, payment: paymentObj };
     return {
       kyc: {
