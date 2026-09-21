@@ -1108,19 +1108,31 @@ export default function DashboardApp() {
         }));
         toast.success("Account connection updated securely.");
       } else {
+        const mailbox = accountForm.mailbox.trim().toLowerCase();
+        const provider = accountForm.mailProvider === "Gmail" ? "gmail" : "outlook";
+        const domain = mailbox.split("@").pop() ?? "";
+        const domainOk = provider === "gmail" ? domain === "gmail.com" : domain === "outlook.com" || domain === "hotmail.com";
+        if (!accountForm.name.trim() || !accountForm.owner.trim() || !accountForm.password || !accountForm.apiKey) {
+          toast.error("Fill in all fields: name, login email, password, and API key.");
+          return;
+        }
+        if (!mailbox || !domainOk) {
+          toast.error(provider === "gmail" ? "Connected inbox must be a @gmail.com address." : "Connected inbox must be an @outlook.com or @hotmail.com address.");
+          return;
+        }
         const created = await createAccount({
           label: accountForm.name.trim(),
           loginEmail: accountForm.owner.trim(),
           password: accountForm.password,
           apiKey: accountForm.apiKey,
-          emailProvider: accountForm.mailProvider === "Gmail" ? "gmail" : "outlook",
-          emailAddress: (accountForm.mailbox.trim() || accountForm.owner.trim()),
+          emailProvider: provider,
+          emailAddress: mailbox,
         });
         setAccounts((current) => [...current, {
           id: created.id,
           name: accountForm.name.trim(),
           owner: accountForm.owner.trim(),
-          mailbox: accountForm.mailbox.trim() || accountForm.owner.trim(),
+          mailbox: accountForm.mailbox.trim(),
           mailProvider: accountForm.mailProvider,
           password: "••••••••",
           keyHint: `••••••••${accountForm.apiKey.slice(-4)}`,
@@ -2145,7 +2157,7 @@ export default function DashboardApp() {
             <div className="grid gap-2">
               <Label htmlFor="account-mailbox">Connected inbox address</Label>
               <Input id="account-mailbox" type="email" value={accountForm.mailbox} onChange={(event) => setAccountForm((current) => ({ ...current, mailbox: event.target.value }))} placeholder="e.g. account-name@outlook.com" />
-              <p className="text-xs leading-5 text-[#8f8b9c]">Use a mailbox you control from Outlook/Hotmail or Gmail. If left blank, AccAbad uses the account email above. Inbox access will use the provider&apos;s OAuth API.</p>
+              <p className="text-xs leading-5 text-[#8f8b9c]">Required. Use a mailbox you control: Gmail → <b>@gmail.com</b>; Outlook/Hotmail → <b>@outlook.com</b> or <b>@hotmail.com</b>. Inbox access uses the provider&apos;s OAuth API.</p>
             </div>
             <div className="grid gap-2">
               <Label htmlFor="account-password">Account password {editingAccountId && <span className="font-normal text-slate-400">· leave blank to keep current</span>}</Label>
