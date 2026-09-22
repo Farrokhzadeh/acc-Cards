@@ -100,3 +100,12 @@ test("first-card receipt persistence is atomic and denied receipts are cleaned f
   assert.match(bot, /deletePrivateSupportAttachment\(stored\.objectKey\)/);
   assert.match(activateRoute, /deletePrivateSupportAttachment\(user\.payment_receipt_object_key\)/);
 });
+
+
+test("first-card amount declaration and receipt-mode transition are atomic", () => {
+  assert.match(bot, /setPaymentAmountAwaitingReceipt/);
+  assert.match(bot, /payment_amount_usd_cents=\$2,payment_declared_at=now\(\)/);
+  assert.match(bot, /mode='payment_receipt'/);
+  assert.doesNotMatch(bot, /async function setPaymentDeclared/);
+  assert.doesNotMatch(bot, /async function setPaymentAmount\(/);
+});
