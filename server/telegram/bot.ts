@@ -122,14 +122,6 @@ async function setUserLang(userId: string, lang: string) {
   await getPool().query(`UPDATE telegram_users SET lang = $2, updated_at = now() WHERE id = $1::uuid`, [userId, lang]);
 }
 
-async function isPaymentDeclared(userId: string): Promise<boolean> {
-  const r = await getPool().query<{ payment_declared_at: Date | null }>(
-    `SELECT payment_declared_at FROM telegram_users WHERE id = $1::uuid`,
-    [userId],
-  );
-  return Boolean(r.rows[0]?.payment_declared_at);
-}
-
 async function getPaymentStatus(userId: string): Promise<string | null> {
   const r = await getPool().query<{ payment_status: string | null }>(
     `SELECT payment_status FROM telegram_users WHERE id = $1::uuid`,
@@ -298,14 +290,6 @@ function withChatLog(client: TelegramClient, user: { id: string }): TelegramClie
   }) as TelegramClient;
 }
 
-async function accountCount(userId: string) {
-  const result = await getPool().query<{ count: number }>(
-    `SELECT COUNT(*)::int AS count FROM telegram_account_assignments WHERE telegram_user_id = $1::uuid`,
-    [userId],
-  );
-  return result.rows[0]?.count ?? 0;
-}
-
 async function settingValue<T>(key: string, fallback: T): Promise<T> {
   const result = await getPool().query<{ typed_value: T }>(`SELECT typed_value FROM settings WHERE key = $1`, [key]);
   return result.rows[0]?.typed_value ?? fallback;
@@ -390,11 +374,6 @@ async function sendJoinGate(client: TelegramClient, user: BotUser, chatId: numbe
   const retry = await createCallbackToken({ userId: user.id, action: "membership.retry" });
   rows.push([{ text: "✅ I've joined — check again", callback_data: retry }]);
   await client.sendMessage({ chatId, text: "To use AccAbad, join the required channel(s) below and then check again.", replyMarkup: { inline_keyboard: rows } });
-}
-
-async function sendNoAssignment(client: TelegramClient, chatId: number) {
-  const text = await settingValue("contact_admin_text", "Please contact an administrator to activate your account.");
-  await client.sendMessage({ chatId, text: escapeHtml(String(text)) });
 }
 
 async function mainKeyboard(userId: string, lang: string | null): Promise<TelegramInlineKeyboard> {
@@ -1066,14 +1045,6 @@ async function getKycState(userId: string): Promise<{ mode: string; payload: Kyc
   );
   const row = result.rows[0];
   return row ? { mode: row.mode, payload: (row.payload ?? {}) as KycDraftPayload } : null;
-}
-
-async function shouldAutoPromptKyc(userId: string): Promise<boolean> {
-  const enabled = await settingValue("kyc_enabled", true);
-  const autoprompt = await settingValue("kyc_autoprompt", true);
-  if (!enabled || !autoprompt) return false;
-  const status = await getKycStatusForUser(userId);
-  return status === "none" || status === "rejected";
 }
 
 async function sendKycInvite(client: TelegramClient, user: BotUser, chatId: number) {
