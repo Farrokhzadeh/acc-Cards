@@ -105,11 +105,14 @@ test("readiness is operation-specific so unresolved deposit/funding questions do
   assert.match(readiness, /readyByOperation/);
 });
 
-test("admin UI exposes explicit Issue and Reconcile actions rather than an automatic write after approval", () => {
-  assert.match(dashboard, />Issue card</);
-  assert.match(dashboard, />Reconcile</);
-  assert.match(dashboard, /recent admin reauthentication/);
-  assert.match(dashboard, /createcard once/);
+test("first-card onboarding exposes explicit Create and Reconcile actions with guarded provider writes", () => {
+  assert.match(dashboard, /Create first card/);
+  assert.match(dashboard, /Reconcile first card/);
+  assert.match(activateRoute, /input\.action === "create_card"/);
+  assert.match(activateRoute, /input\.action === "reconcile_card"/);
+  assert.match(activateRoute, /requireRecentReauthentication\(session\)/);
+  assert.match(activateRoute, /issueApprovedCardRequest/);
+  assert.match(activateRoute, /reconcileCardIssuance/);
 });
 
 test("provider contract states the one-shot purchase rule", () => {
