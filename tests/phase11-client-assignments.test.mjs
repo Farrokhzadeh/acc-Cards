@@ -49,7 +49,7 @@ test("standalone assignment mutation APIs are closed and onboarding owns assignm
   assert.doesNotMatch(collectionRoute, /replaceClientAccounts\(/);
   assert.doesNotMatch(itemRoute, /assignAccount\(/);
   assert.doesNotMatch(itemRoute, /unassignAccount\(/);
-  assert.match(activateRoute, /assignAccount\(/);
+  assert.match(onboarding, /assignAccountInTransaction\(/);
 });
 
 test("assignment changes produce history and redacted audit records in the same transaction", () => {
