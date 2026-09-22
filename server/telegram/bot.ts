@@ -138,8 +138,22 @@ async function getPaymentStatus(userId: string): Promise<string | null> {
   return r.rows[0]?.payment_status ?? null;
 }
 
-async function setPaymentDeclared(userId: string) {
-  await getPool().query(`UPDATE telegram_users SET payment_declared_at = now(), updated_at = now() WHERE id = $1::uuid`, [userId]);
+async function setPaymentAmountAwaitingReceipt(userId: string, cents: number) {
+  await withTransaction(async (db) => {
+    await db.query(
+      `UPDATE telegram_users
+          SET payment_amount_usd_cents=$2,payment_declared_at=now(),updated_at=now()
+        WHERE id=$1::uuid`,
+      [userId, cents],
+    );
+    await db.query(
+      `INSERT INTO telegram_bot_states(user_id,mode,payload,expires_at,updated_at)
+       VALUES($1::uuid,'payment_receipt','{}'::jsonb,now()+(60 * interval '1 minute'),now())
+       ON CONFLICT(user_id) DO UPDATE
+         SET mode='payment_receipt',payload='{}'::jsonb,expires_at=EXCLUDED.expires_at,updated_at=now()`,
+      [userId],
+    );
+  });
 }
 
 async function setPaymentReceiptPending(userId: string, objectKey: string, mime: string) {
@@ -152,10 +166,6 @@ async function setPaymentReceiptPending(userId: string, objectKey: string, mime:
     );
     await db.query(`DELETE FROM telegram_bot_states WHERE user_id=$1::uuid`, [userId]);
   });
-}
-
-async function setPaymentAmount(userId: string, cents: number) {
-  await getPool().query(`UPDATE telegram_users SET payment_amount_usd_cents = $2, updated_at = now() WHERE id = $1::uuid`, [userId, cents]);
 }
 
 // Collects the paid amount, then moves on to receipt collection.
@@ -174,9 +184,7 @@ async function handlePaymentAmountText(client: TelegramClient, user: BotUser, ch
     await client.sendMessage({ chatId, text: pick(PAYMENT.notConfigured, user.lang) });
     return true;
   }
-  await setPaymentAmount(user.id, cents);
-  await setPaymentDeclared(user.id);
-  await setKycState(user.id, "payment_receipt", {}, 60);
+  await setPaymentAmountAwaitingReceipt(user.id, cents);
   const amount = (cents / 100).toFixed(2);
   const instructions = pick(PAYMENT.info, user.lang)
     .replace("{amount}", escapeHtml(amount))
