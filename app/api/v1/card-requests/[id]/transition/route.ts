@@ -1,33 +1,13 @@
-import { z } from "zod";
 import { requireAdmin, requireCsrf } from "@/server/auth/service";
-import { requestIp } from "@/server/auth/request-meta";
-import { apiRoute } from "@/server/http/api";
-import { requireUuid } from "@/server/http/ids";
-import { reviewCardRequest } from "@/server/card-requests/service";
+import { apiRoute, ApiError } from "@/server/http/api";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
-const bodySchema = z.object({
-  action: z.enum(["approve", "reject"]),
-  selectedAccountId: z.string().uuid().nullable().optional(),
-  note: z.string().trim().max(1000).nullable().optional(),
-});
-
-export async function POST(request: Request, context: { params: Promise<{ id: string }> }) {
-  return apiRoute(request, async ({ requestId }) => {
-    const session = await requireAdmin(request, "card_requests.review");
+export async function POST(request: Request) {
+  return apiRoute(request, async () => {
+    const session = await requireAdmin(request, "clients.assign");
     requireCsrf(request, session);
-    const { id } = await context.params;
-    const input = bodySchema.parse(await request.json());
-    return reviewCardRequest({
-      requestId: requireUuid(id, "card request id"),
-      action: input.action,
-      selectedAccountId: input.selectedAccountId,
-      note: input.note,
-      adminId: session.principal.id,
-      requestIdHeader: requestId,
-      ip: requestIp(request),
-    });
+    throw new ApiError(410, "card_request_flow_disabled", "Standalone card requests are disabled. The customer's first card is created only through first-card onboarding.");
   });
 }
