@@ -17,6 +17,13 @@ export async function POST(request: Request) {
     const url = `${env.APP_BASE_URL.replace(/\/$/, "")}/api/telegram/webhook`;
     const client = new TelegramClient(creds.token);
     await client.setWebhook({ url, secretToken: creds.webhookSecret });
+    await client.setMyCommands([
+      { command: "start", description: "Open AccAbad" },
+      { command: "menu", description: "Open the main menu" },
+      { command: "kyc", description: "Open identity verification" },
+      { command: "lang", description: "Change language" },
+      { command: "cancel", description: "Cancel the current flow" },
+    ]);
     const webhook = await client.getWebhookInfo();
     await auditAdminEvent({ adminId: session.principal.id, action: "telegram.webhook.configure", entityType: "telegram_bot", entityId: "primary", request, requestId, metadata: { url } });
     return { configured: true, url: webhook.url, pendingUpdates: webhook.pending_update_count, lastErrorMessage: webhook.last_error_message ?? null };
