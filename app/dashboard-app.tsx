@@ -46,7 +46,7 @@ import {
   XCircle,
 } from "lucide-react";
 import { toast } from "sonner";
-import { AdminApiError, createAccount, archiveAccount, fetchDashboardSnapshot, reauthenticateAdmin, revealAccountSecrets, updateAccount, verifyAccountConnection, syncAccountCards, revealLiveCardDetails, syncCardTransactions, fetchCardTransactions, fetchTransactions, fetchTransactionNotificationIssues, reconcileTransactionNotification, setCardFrozenState, refreshCardStatus, connectOutlookMailbox, syncOutlookMailbox, disconnectOutlookMailbox, connectGmailMailbox, syncGmailMailbox, disconnectGmailMailbox, fetchAccountEmailMessages, classifyAccountEmail, revealParsedOtp, fetchTrustedEmailRules, createTrustedEmailRule, updateTrustedEmailRule, fetchTelegramBotStatus, configureTelegramWebhook, setTelegramBotToken, clearTelegramBotToken, fetchPaymentCard, updatePaymentCard, notifyClient, fetchClientPipeline, setClientBanned, fetchClientKyc, type ClientKyc, type ClientPayment, clientReceiptUrl, activateClient, fetchForceJoinChannels, upsertForceJoinChannel, deleteForceJoinChannel, fetchSupportConversations, updateSupportConversation, retrySupportMessage, fetchClientSupportMessages, sendClientSupportMessage, fetchClientAssignableAccounts, assignClientAccount, unassignClientAccount, unassignAllClientAccounts, fetchFundingRequests, reviewFundingRequest, executeFundingRequest, reconcileFundingRequest, resolveFundingRequest, fundingReceiptDownloadUrl, fetchFundingSettings, updateFundingSettings, type ApiFundingRequest, type AssignableClientAccount, type LiveCardDetails, type StoredCardTransaction, type StoredEmailMessage, type TelegramBotStatus, fetchProviderReadiness, updateProviderReadinessCheck, type ProviderReadinessSnapshot, type TransactionNotificationIssue, type SupportConversationSummary, fetchOperationalSnapshot, updateOperationalAlert, updateRuntimeControl, type OperationalSnapshot, fetchKycSubmissions, reviewKycSubmission, kycDocumentUrl, type ApiKycSubmission } from "@/lib/admin-api";
+import { AdminApiError, createAccount, archiveAccount, fetchDashboardSnapshot, reauthenticateAdmin, revealAccountSecrets, updateAccount, verifyAccountConnection, syncAccountCards, revealLiveCardDetails, syncCardTransactions, fetchCardTransactions, fetchTransactions, fetchTransactionNotificationIssues, reconcileTransactionNotification, setCardFrozenState, refreshCardStatus, connectOutlookMailbox, syncOutlookMailbox, disconnectOutlookMailbox, connectGmailMailbox, syncGmailMailbox, disconnectGmailMailbox, fetchAccountEmailMessages, classifyAccountEmail, revealParsedOtp, fetchTrustedEmailRules, createTrustedEmailRule, updateTrustedEmailRule, fetchTelegramBotStatus, configureTelegramWebhook, setTelegramBotToken, clearTelegramBotToken, fetchPaymentCard, updatePaymentCard, notifyClient, fetchClientPipeline, setClientBanned, fetchClientKyc, type ClientKyc, type ClientPayment, clientReceiptUrl, activateClient, fetchForceJoinChannels, upsertForceJoinChannel, deleteForceJoinChannel, fetchSupportConversations, updateSupportConversation, retrySupportMessage, fetchClientSupportMessages, sendClientSupportMessage, fetchClientAssignableAccounts, fetchFundingRequests, reviewFundingRequest, executeFundingRequest, reconcileFundingRequest, resolveFundingRequest, fundingReceiptDownloadUrl, fetchFundingSettings, updateFundingSettings, type ApiFundingRequest, type AssignableClientAccount, type LiveCardDetails, type StoredCardTransaction, type StoredEmailMessage, type TelegramBotStatus, fetchProviderReadiness, updateProviderReadinessCheck, type ProviderReadinessSnapshot, type TransactionNotificationIssue, type SupportConversationSummary, fetchOperationalSnapshot, updateOperationalAlert, updateRuntimeControl, type OperationalSnapshot, fetchKycSubmissions, reviewKycSubmission, kycDocumentUrl, type ApiKycSubmission } from "@/lib/admin-api";
 import { disableAdminMfa, enableAdminMfa, fetchCurrentAdmin, logoutAdmin, setupAdminMfa, type CurrentAdmin } from "@/lib/auth-client";
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -426,147 +426,6 @@ function ReceiptIcon({ type }: { type: FundingRequest["receiptType"] }) {
   return <Paperclip className="size-4" />;
 }
 
-function AccountAssignmentPicker({ accounts, clients, client, backendDataLoaded, assignmentPendingId, onToggle, onDisconnectAll }: {
-  accounts: Account[];
-  clients: Client[];
-  client: Client;
-  backendDataLoaded: boolean;
-  assignmentPendingId: string | null;
-  onToggle: (clientId: string, accountId: string) => void | Promise<void>;
-  onDisconnectAll: (clientId: string) => void | Promise<void>;
-}) {
-  const [open, setOpen] = useState(false);
-  const [searchTerm, setSearchTerm] = useState("");
-  const [remoteAccounts, setRemoteAccounts] = useState<AssignableClientAccount[]>([]);
-  const [loadingRemote, setLoadingRemote] = useState(false);
-  const selectedAccounts = accounts.filter((account) => client.accountIds.includes(account.id));
-  const selectedRemoteOnly = remoteAccounts
-    .filter((item) => item.selected && !accounts.some((account) => account.id === item.id))
-    .map((item) => ({ id: item.id, name: item.label, owner: item.loginEmail }));
-  const selectedAccountRows = [
-    ...selectedAccounts.map((account) => ({ id: account.id, name: account.name, owner: account.owner })),
-    ...selectedRemoteOnly,
-  ];
-
-  useEffect(() => {
-    if (!backendDataLoaded || !open) return;
-    let cancelled = false;
-    const timer = window.setTimeout(() => {
-      setLoadingRemote(true);
-      fetchClientAssignableAccounts(client.id, searchTerm)
-        .then((result) => {
-          if (!cancelled) setRemoteAccounts(result.items);
-        })
-        .catch((error) => {
-          if (!cancelled) toast.error(error instanceof Error ? error.message : "Could not load assignable accounts.");
-        })
-        .finally(() => {
-          if (!cancelled) setLoadingRemote(false);
-        });
-    }, 180);
-    return () => {
-      cancelled = true;
-      window.clearTimeout(timer);
-    };
-  }, [backendDataLoaded, client.id, client.accountIds, open, searchTerm]);
-
-  const productionOptions = remoteAccounts.map((item) => {
-    const existing = accounts.find((account) => account.id === item.id);
-    return {
-      id: item.id,
-      name: item.label,
-      owner: item.loginEmail,
-      selected: item.selected,
-      status: item.status,
-      account: existing ?? null,
-    };
-  });
-
-  return (
-    <div className="space-y-3">
-      <Popover open={open} onOpenChange={(next) => { setOpen(next); if (!next) setSearchTerm(""); }}>
-        <PopoverTrigger asChild>
-          <Button variant="outline" role="combobox" aria-expanded={open} className="h-11 w-full justify-between rounded-[14px] bg-white font-normal">
-            <span className="truncate">{client.accountIds.length ? `${client.accountIds.length} account${client.accountIds.length > 1 ? "s" : ""} connected` : "Search and select accounts"}</span>
-            <ChevronsUpDown className="size-4 shrink-0 text-[#9995a7]" />
-          </Button>
-        </PopoverTrigger>
-        <PopoverContent align="start" className="w-[var(--radix-popover-trigger-width)] rounded-[16px] border-[#e4e1ec] p-0 shadow-xl">
-          <Command shouldFilter={!backendDataLoaded}>
-            <CommandInput
-              placeholder="Search by name or email…"
-              value={searchTerm}
-              onValueChange={setSearchTerm}
-            />
-            <CommandList>
-              {backendDataLoaded && loadingRemote && <div className="px-3 py-5 text-center text-sm text-muted-foreground">Searching accounts…</div>}
-              {!loadingRemote && <CommandEmpty>No assignable account found.</CommandEmpty>}
-              <CommandGroup heading={backendDataLoaded ? "Available or already connected" : "Kripicard accounts"}>
-                {backendDataLoaded ? productionOptions.map((item) => (
-                  <CommandItem
-                    key={item.id}
-                    value={`${item.name} ${item.owner}`}
-                    disabled={Boolean(assignmentPendingId)}
-                    onSelect={() => void onToggle(client.id, item.id)}
-                    className="items-start rounded-xl px-3 py-2.5"
-                  >
-                    <span className={`mt-0.5 grid size-5 shrink-0 place-items-center rounded-md border ${item.selected ? "border-[#6157e7] bg-[#6157e7] text-white" : "border-[#d9d6e3]"}`}>
-                      {item.selected && <Check className="size-3.5" />}
-                    </span>
-                    <span className="min-w-0 flex-1">
-                      <span className="block truncate font-medium">{item.name}</span>
-                      <span className="block truncate text-xs text-muted-foreground">{item.owner}</span>
-                    </span>
-                    <Badge variant="outline" className={`rounded-full text-[10px] ${item.selected ? "border-[#d8d3ff] bg-[#f0eeff] text-[#5549ca]" : "border-emerald-200 bg-emerald-50 text-emerald-700"}`}>
-                      {assignmentPendingId === item.id ? "Working…" : item.selected ? "Connected" : "Available"}
-                    </Badge>
-                  </CommandItem>
-                )) : accounts.map((account) => {
-                  const assignedClient = clients.find((item) => item.id !== client.id && item.accountIds.includes(account.id));
-                  const selected = client.accountIds.includes(account.id);
-                  return (
-                    <CommandItem
-                      key={account.id}
-                      value={`${account.name} ${account.owner}`}
-                      disabled={Boolean(assignedClient)}
-                      onSelect={() => void onToggle(client.id, account.id)}
-                      className="items-start rounded-xl px-3 py-2.5"
-                    >
-                      <span className={`mt-0.5 grid size-5 shrink-0 place-items-center rounded-md border ${selected ? "border-[#6157e7] bg-[#6157e7] text-white" : "border-[#d9d6e3]"}`}>
-                        {selected && <Check className="size-3.5" />}
-                      </span>
-                      <span className="min-w-0 flex-1">
-                        <span className="block truncate font-medium">{account.name}</span>
-                        <span className="block truncate text-xs text-muted-foreground">{assignedClient ? `Assigned to ${assignedClient.name}` : account.owner}</span>
-                      </span>
-                      <Badge variant="outline" className={`rounded-full text-[10px] ${assignedClient ? "border-slate-200 text-slate-500" : selected ? "border-[#d8d3ff] bg-[#f0eeff] text-[#5549ca]" : "border-emerald-200 bg-emerald-50 text-emerald-700"}`}>
-                        {assignedClient ? "In use" : selected ? "Selected" : "Available"}
-                      </Badge>
-                    </CommandItem>
-                  );
-                })}
-              </CommandGroup>
-            </CommandList>
-          </Command>
-        </PopoverContent>
-      </Popover>
-
-      {client.accountIds.length > 0 && (
-        <div className="space-y-2">
-          {selectedAccountRows.map((account) => (
-            <div key={account.id} className="flex items-center justify-between rounded-[13px] border border-[#e8e5f0] bg-white px-3 py-2.5">
-              <div className="min-w-0"><p className="truncate text-sm font-medium">{account.name}</p><p className="truncate text-xs text-[#9692a3]">{account.owner}</p></div>
-              <Button variant="ghost" size="sm" disabled={Boolean(assignmentPendingId)} className="rounded-xl text-[#b74250] hover:bg-red-50 hover:text-[#a82e3c]" onClick={() => void onToggle(client.id, account.id)}><XCircle className="size-4" />{assignmentPendingId === account.id ? "Disconnecting…" : "Disconnect"}</Button>
-            </div>
-          ))}
-          <Button variant="outline" size="sm" disabled={Boolean(assignmentPendingId)} className="w-full rounded-xl border-dashed text-[#7a7588]" onClick={() => void onDisconnectAll(client.id)}>Disconnect all accounts</Button>
-        </div>
-      )}
-      {backendDataLoaded && <p className="text-xs leading-5 text-[#9692a3]">Search is server-side and returns only unassigned accounts plus accounts already connected to this client.</p>}
-    </div>
-  );
-}
-
 export default function DashboardApp() {
   const [view, setView] = useState<View>("overview");
   const [backendDataLoaded, setBackendDataLoaded] = useState(false);
@@ -594,7 +453,6 @@ export default function DashboardApp() {
   const [liveCardDetails, setLiveCardDetails] = useState<LiveCardDetails | null>(null);
   const [activeCardTransactions, setActiveCardTransactions] = useState<StoredCardTransaction[]>([]);
   const [cardStatePendingId, setCardStatePendingId] = useState<string | null>(null);
-  const [assignmentPendingId, setAssignmentPendingId] = useState<string | null>(null);
   const [fundingExecutionPendingId, setFundingExecutionPendingId] = useState<string | null>(null);
   const [emailActionPendingId, setEmailActionPendingId] = useState<string | null>(null);
   const [activeRequestId, setActiveRequestId] = useState<string | null>(null);
@@ -1551,69 +1409,6 @@ export default function DashboardApp() {
     } catch (error) { toast.error(error instanceof Error ? error.message : "Could not retry support delivery."); }
   };
 
-  const toggleClientAccount = async (clientId: string, accountId: string) => {
-    if (assignmentPendingId) return;
-    const target = clients.find((client) => client.id === clientId);
-    if (!target) return;
-    const removing = target.accountIds.includes(accountId);
-
-    if (!backendDataLoaded) {
-      const assignedClient = clients.find((client) => client.id !== clientId && client.accountIds.includes(accountId));
-      if (assignedClient) {
-        toast.error(`This account is already assigned to ${assignedClient.name}.`);
-        return;
-      }
-      setClients((current) => current.map((client) => client.id === clientId ? {
-        ...client,
-        accountIds: removing ? client.accountIds.filter((id) => id !== accountId) : [...client.accountIds, accountId],
-      } : client));
-      toast.success(removing ? "Demo account disconnected." : "Demo account connected.");
-      return;
-    }
-
-    setAssignmentPendingId(accountId);
-    try {
-      const result = removing
-        ? await unassignClientAccount(clientId, accountId)
-        : await assignClientAccount(clientId, accountId);
-      setClients((current) => current.map((client) => client.id === clientId ? { ...client, accountIds: result.accountIds } : client));
-      toast.success(removing
-        ? "Account disconnected. Its cards are no longer visible on the client's next bot action."
-        : "Account connected. Its cards are available on the client's next bot action.");
-    } catch (error) {
-      if (error instanceof AdminApiError && error.code === "account_already_assigned") {
-        toast.error("Another operator assigned this account first. The account was not reassigned.");
-      } else if (error instanceof AdminApiError && error.code === "assignment_changed") {
-        toast.error("The assignment changed in another session. Reopen the client to refresh it.");
-      } else {
-        toast.error(error instanceof Error ? error.message : "Account assignment failed.");
-      }
-    } finally {
-      setAssignmentPendingId(null);
-    }
-  };
-
-  const disconnectAllClientAccounts = async (clientId: string) => {
-    if (assignmentPendingId) return;
-    if (!backendDataLoaded) {
-      setClients((current) => current.map((client) => client.id === clientId ? { ...client, accountIds: [] } : client));
-      toast.success("All demo accounts disconnected.");
-      return;
-    }
-    setAssignmentPendingId(`all:${clientId}`);
-    try {
-      const result = await unassignAllClientAccounts(clientId);
-      setClients((current) => current.map((client) => client.id === clientId ? { ...client, accountIds: result.accountIds } : client));
-      toast.success(result.removedCount
-        ? `Disconnected ${result.removedCount} account${result.removedCount === 1 ? "" : "s"}.`
-        : "This client already has no connected accounts.");
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Could not disconnect the client's accounts.");
-    } finally {
-      setAssignmentPendingId(null);
-    }
-  };
-
   const accountName = (id: string | null) => accounts.find((account) => account.id === id)?.name ?? "Not connected";
   const clientName = (id: string | null) => id ? clients.find((client) => client.id === id)?.name ?? "Unknown client" : "No Telegram user";
   const pendingRequestCount =
@@ -2089,10 +1884,11 @@ export default function DashboardApp() {
               </SheetHeader>
               <div className="space-y-6 px-6 py-5">
                 <div className="grid gap-2">
-                  <Label>Connected Kripicard accounts</Label>
-                  <AccountAssignmentPicker accounts={accounts} clients={clients} client={activeClient} backendDataLoaded={backendDataLoaded} assignmentPendingId={assignmentPendingId} onToggle={toggleClientAccount} onDisconnectAll={disconnectAllClientAccounts} />
-                  {!activeClient.accountIds.length && <p className="text-sm text-amber-700">No Kripicard account is assigned yet. During first-card onboarding, choose the account in the payment panel above.</p>}
-                  <p className="text-xs leading-5 text-[#9692a3]">A Kripicard account can belong to one Telegram client only. The onboarding flow assigns the account before creating the first card.</p>
+                  <Label>Kripicard account</Label>
+                  {activeClient.accountIds.length
+                    ? <div className="flex flex-wrap gap-2">{activeClient.accountIds.map((id) => <Badge key={id} variant="outline" className="rounded-full border-[#d8d3ff] bg-[#f2f0ff] text-[#5549ca]">{accountName(id)}</Badge>)}</div>
+                    : <p className="text-sm text-amber-700">Not assigned yet. After accepting the receipt, choose the account in the First-card onboarding panel above and click Create first card.</p>}
+                  <p className="text-xs leading-5 text-[#9692a3]">Account assignment is performed by first-card creation so it cannot bypass KYC and payment approval.</p>
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                   <div className="rounded-[18px] border border-[#eceaf2] bg-white p-4"><p className="text-sm text-[#8f8b9c]">Total funded</p><p className="mt-1 text-xl font-semibold tracking-[-.03em] text-[#302d43]">{formatUsd(activeClient.totalFunded)}</p></div>
