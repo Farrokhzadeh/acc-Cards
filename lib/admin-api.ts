@@ -716,8 +716,6 @@ export async function updateRuntimeControl(key: OperationalSnapshot["controls"][
   });
 }
 
-// --- KYC (Know Your Customer) ---
-
 export type ApiKycSubmission = {
   id: string;
   telegramUserId: string;

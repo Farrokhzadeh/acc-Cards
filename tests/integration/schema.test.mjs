@@ -2,8 +2,8 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 
-const migration = await readFile(new URL("../db/migrations/0001_initial_schema.sql", import.meta.url), "utf8");
-const defaults = await readFile(new URL("../db/migrations/0002_seed_safe_defaults.sql", import.meta.url), "utf8");
+const migration = await readFile(new URL("../../db/migrations/0001_initial_schema.sql", import.meta.url), "utf8");
+const defaults = await readFile(new URL("../../db/migrations/0002_seed_safe_defaults.sql", import.meta.url), "utf8");
 
 test("defines the core production tables", () => {
   for (const table of [

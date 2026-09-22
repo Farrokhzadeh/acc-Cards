@@ -410,8 +410,6 @@ export async function syncKripicardCardTransactions(cardId: string, session: Aut
         if (result.rows[0]?.inserted === true) inserted += 1;
       }
       const env = parseServerEnv(process.env);
-      // A manual sync is an explicit operator baseline. Do not emit historical notifications from it,
-      // but let the scheduled Phase 17 worker notify only transactions discovered after this point.
       await db.query(
         `INSERT INTO transaction_sync_state(card_id, baseline_completed, consecutive_failures, next_attempt_at, lease_until, last_succeeded_at, last_error_code, last_error_message, updated_at)
          VALUES ($1::uuid, true, 0, now()+($2::int * interval '1 second'), NULL, now(), NULL, NULL, now())
@@ -551,8 +549,6 @@ export async function setKripicardCardFrozenState(
 
   const { row, client } = await loadCardClient(cardId);
   const desiredStatus = action === "freeze" ? "frozen" : "active";
-
-  // Refresh first so repeated clicks on an already-achieved state do not create another write.
   let before: ProviderCardState;
   try {
     before = await readProviderCardState(cardId, row, client);
@@ -627,7 +623,6 @@ export async function setKripicardCardFrozenState(
           };
         }
       } catch {
-        // Keep the original ambiguous result. Never retry the write automatically.
       }
       await finalizeStateOperation(operationId, "needs_reconciliation", "unknown", "ambiguous_write_outcome");
       await auditAdminEvent({
@@ -665,9 +660,6 @@ export async function setKripicardCardFrozenState(
     });
     throw apiError;
   }
-
-  // The provider explicitly accepted the write. From this point onward, any local
-  // persistence failure must never be turned into a retryable provider failure.
   try {
     await withTransaction(async (db) => {
       await db.query(
@@ -689,7 +681,6 @@ export async function setKripicardCardFrozenState(
     try {
       await finalizeStateOperation(operationId, "needs_reconciliation", "provider_accepted_local_persistence_failed", "provider_accepted");
     } catch {
-      // The original pending operation remains and the unique index blocks another state write.
     }
     throw new ApiError(503, "persistence_error_after_provider_write", "Kripicard accepted the card-state change, but AccAbad could not persist the result. Do not retry the write; reconcile the card state first.");
   }
@@ -830,7 +821,6 @@ export async function setKripicardCardFrozenStateForTelegram(
           return { operationId, status: desiredStatus, balanceUsdCents: state.balanceUsdCents?.toString() ?? null, noOp: false, reconciled: true, needsReconciliation: false };
         }
       } catch {
-        // Preserve the ambiguous write outcome and never retry automatically.
       }
       await finalizeStateOperation(operationId, "needs_reconciliation", "unknown", "ambiguous_write_outcome");
       await auditTelegramCardEvent({ telegramUserId, action: `card.provider.${action}`, cardId, requestId, metadata: { operationId, result: "needs_reconciliation" } });

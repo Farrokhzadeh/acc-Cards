@@ -105,8 +105,6 @@ function serialize(row: Row): KycSubmission {
   };
 }
 
-// --- Bot side -------------------------------------------------------------
-
 export async function getKycStatusForUser(userId: string): Promise<KycStatus | "none"> {
   const result = await getPool().query<{ status: KycStatus }>(
     `SELECT status FROM kyc_submissions
@@ -151,8 +149,6 @@ export async function createKycSubmission(input: {
   if (!row) throw new ApiError(500, "kyc_insert_failed", "Could not store the KYC submission.");
   return { id: row.id };
 }
-
-// --- Admin side -----------------------------------------------------------
 
 export async function listKycSubmissions(page: {
   limit: number;

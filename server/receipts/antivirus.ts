@@ -36,7 +36,6 @@ function clamAvScan(bytes: Buffer, host: string, port: number, timeoutMs: number
       finish(new Error(`Unexpected ClamAV response: ${response.slice(0, 160)}`));
     });
     socket.on("connect", () => {
-      // clamd INSTREAM protocol: command, one or more 32-bit length-prefixed chunks, then zero length.
       socket.write(Buffer.from("zINSTREAM\0", "ascii"));
       const header = Buffer.allocUnsafe(4);
       header.writeUInt32BE(bytes.length, 0);

@@ -6,8 +6,6 @@ import { readPrivateSupportAttachment } from "@/server/support/storage";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
-
-// Serves a customer's payment receipt so admins can verify the payment.
 export async function GET(request: Request, context: { params: Promise<{ id: string }> }) {
   return apiRoute(request, async ({ requestId }) => {
     const session = await requireAdmin(request, "clients.assign");

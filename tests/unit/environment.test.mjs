@@ -1,11 +1,11 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
-import { safeParseServerEnv } from "../config/env-schema.mjs";
+import { safeParseServerEnv } from "../../config/env-schema.mjs";
 
-const envExample = await readFile(new URL("../.env.example", import.meta.url), "utf8");
-const setupScript = await readFile(new URL("../setup.sh", import.meta.url), "utf8");
-const deployGuide = await readFile(new URL("../DOCKER-DEPLOY.md", import.meta.url), "utf8");
+const envExample = await readFile(new URL("../../.env.example", import.meta.url), "utf8");
+const setupScript = await readFile(new URL("../../setup.sh", import.meta.url), "utf8");
+const deployGuide = await readFile(new URL("../../DOCKER-DEPLOY.md", import.meta.url), "utf8");
 
 const encryption = { APP_ENCRYPTION_KEY: "AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE=" };
 

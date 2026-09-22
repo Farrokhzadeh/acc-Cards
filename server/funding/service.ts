@@ -153,9 +153,6 @@ export async function createTelegramFundingRequest(input: { userId: string; card
     if (!Number.isInteger(input.quote.providerFeeBasisPoints) || input.quote.providerFeeBasisPoints < 0 || input.quote.providerFeeBasisPoints > 10000) throw new ApiError(400,"invalid_quote","The provider fee snapshot is invalid.");
     if (!Number.isInteger(input.quote.serviceFeeBasisPoints) || input.quote.serviceFeeBasisPoints < 0 || input.quote.serviceFeeBasisPoints > 10000) throw new ApiError(400,"invalid_quote","The service fee snapshot is invalid.");
     if (!/^\d+$/.test(input.quote.providerFeeFixedUsdCents) || !/^\d+$/.test(input.quote.rialPerUsd)) throw new ApiError(400,"invalid_quote","The quote contains invalid integer values.");
-
-    // Re-read the exact immutable rate row and verify the server-side draft snapshot still matches it.
-    // Current fee settings are deliberately not re-read: a quote remains stable for its lifetime.
     const rate = await activeRate(db,input.quote.rateId);
     if (String(rate.rial_per_usd) !== input.quote.rialPerUsd) throw new ApiError(409,"quote_mismatch","The exchange-rate snapshot no longer matches the approved rate record.");
     const amount = BigInt(input.amountUsdCents);

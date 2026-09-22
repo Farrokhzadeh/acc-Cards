@@ -79,8 +79,6 @@ export class KripicardClient {
     email?: string | null;
     dateOfBirth?: string | null;
   }) {
-    // Phase 15 card issuance is a single provider attempt. The supplied Kripicard contract
-    // explicitly says an HTTP 202/pending purchase must never be auto-retried.
     return this.write(
       "/api/external/cards/createcard",
       {
@@ -95,8 +93,6 @@ export class KripicardClient {
   }
 
   fundCard(input: { cardId: string; amount: number }) {
-    // Phase 16 funding is a single provider attempt. The general Kripicard purchase contract
-    // says HTTP 202/pending must never be auto-retried, because a second purchase can double-charge.
     return this.write(
       "/api/external/cards/fundcard",
       { card_id: input.cardId, amount: input.amount },
@@ -104,12 +100,7 @@ export class KripicardClient {
     );
   }
 
-  // createDeposit intentionally remains unavailable. Deposit creation is a separate money-changing
-  // phase and must not become reachable through the Phase 16 card-funding switch.
-
   freezeUnfreeze(input: { cardId: string; action: "freeze" | "unfreeze" }) {
-    // Provider writes are deliberately never retried here. The service layer reconciles
-    // ambiguous outcomes with a safe read before allowing another state-changing write.
     return this.write(
       "/api/external/premium/Freeze_Unfreeze",
       { card_id: input.cardId, action: input.action },
@@ -161,10 +152,6 @@ export class KripicardClient {
     const raw: unknown = await response.json().catch(() => null);
     const providerFailure = kripicardErrorResponseSchema.safeParse(raw);
     const retryAfterHeader = Number.parseInt(response.headers.get("retry-after") ?? "", 10);
-
-    // Kripicard documents HTTP 202 + pending=true as a purchase outcome that MUST NOT be retried.
-    // With REFUND_PENDING the account can still be charged; without a code the provider says it
-    // already refunded the purchase. Neither outcome is treated as success.
     if (providerFailure.success && response.status === 202 && providerFailure.data.pending === true) {
       const metadata = {
         providerCode: providerFailure.data.code ?? null,

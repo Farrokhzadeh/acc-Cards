@@ -2,16 +2,16 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 
-const initial = await readFile(new URL("../db/migrations/0001_initial_schema.sql", import.meta.url), "utf8");
-const migration = await readFile(new URL("../db/migrations/0010_client_account_assignments.sql", import.meta.url), "utf8");
-const service = await readFile(new URL("../server/clients/assignments.ts", import.meta.url), "utf8");
-const collectionRoute = await readFile(new URL("../app/api/v1/clients/[id]/accounts/route.ts", import.meta.url), "utf8");
-const itemRoute = await readFile(new URL("../app/api/v1/clients/[id]/accounts/[accountId]/route.ts", import.meta.url), "utf8");
-const adminApi = await readFile(new URL("../lib/admin-api.ts", import.meta.url), "utf8");
-const dashboard = await readFile(new URL("../app/dashboard-app.tsx", import.meta.url), "utf8");
-const bot = await readFile(new URL("../server/telegram/bot.ts", import.meta.url), "utf8");
-const activateRoute = await readFile(new URL("../app/api/v1/clients/[id]/activate/route.ts", import.meta.url), "utf8");
-const onboarding = await readFile(new URL("../server/clients/onboarding.ts", import.meta.url), "utf8");
+const initial = await readFile(new URL("../../db/migrations/0001_initial_schema.sql", import.meta.url), "utf8");
+const migration = await readFile(new URL("../../db/migrations/0010_client_account_assignments.sql", import.meta.url), "utf8");
+const service = await readFile(new URL("../../server/clients/assignments.ts", import.meta.url), "utf8");
+const collectionRoute = await readFile(new URL("../../app/api/v1/clients/[id]/accounts/route.ts", import.meta.url), "utf8");
+const itemRoute = await readFile(new URL("../../app/api/v1/clients/[id]/accounts/[accountId]/route.ts", import.meta.url), "utf8");
+const adminApi = await readFile(new URL("../../lib/admin-api.ts", import.meta.url), "utf8");
+const dashboard = await readFile(new URL("../../app/dashboard-app.tsx", import.meta.url), "utf8");
+const bot = await readFile(new URL("../../server/telegram/bot.ts", import.meta.url), "utf8");
+const activateRoute = await readFile(new URL("../../app/api/v1/clients/[id]/activate/route.ts", import.meta.url), "utf8");
+const onboarding = await readFile(new URL("../../server/clients/onboarding.ts", import.meta.url), "utf8");
 
 
 test("database keeps one current Telegram owner per Kripicard account", () => {

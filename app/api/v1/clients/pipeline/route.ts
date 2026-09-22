@@ -4,8 +4,6 @@ import { getPool } from "@/server/database/pool";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
-
-// Per-client onboarding pipeline flags for the Overview action-center.
 export async function GET(request: Request) {
   return apiRoute(request, async () => {
     await requireAdmin(request);

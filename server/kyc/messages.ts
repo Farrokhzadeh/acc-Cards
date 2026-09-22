@@ -1,6 +1,3 @@
-// Per-language message catalog. Every message is { en, fa }; the bot shows only
-// the user's chosen language (never both at once). Users pick at /start and can
-// change later via /lang or the 🌐 Language menu button.
 
 export type Lang = "en" | "fa";
 export type Msg = { en: string; fa: string };
@@ -131,8 +128,6 @@ export const NOTIFY = {
   cardReady: m("✅ Your card is ready ••{last4}. Open the menu to start using it.", "✅ کارت شما آماده است ••{last4}. منو را باز کنید و استفاده را شروع کنید."),
   accountReady: m("✅ Your onboarding is complete. Open the menu to view your card.", "✅ ثبت‌نام شما تکمیل شد. منو را باز کنید و کارت خود را ببینید."),
 };
-
-// Confirmation summary for the KYC review step (single language).
 export function kycConfirmSummary(
   f: { fullName: string; dateOfBirth: string; country: string; nationalId: string; phone: string },
   lang: string | null | undefined,

@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 
-const read = (p) => fs.readFileSync(new URL(`../${p}`, import.meta.url), "utf8");
+const read = (p) => fs.readFileSync(new URL(`../../${p}`, import.meta.url), "utf8");
 
 test("phase 19 migration provides PostgreSQL scheduled jobs and worker leases", () => {
   const sql = read("db/migrations/0018_background_jobs.sql");

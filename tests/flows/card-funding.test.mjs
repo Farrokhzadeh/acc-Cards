@@ -2,18 +2,18 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 
-const migration = await readFile(new URL("../db/migrations/0015_card_funding.sql", import.meta.url), "utf8");
-const client = await readFile(new URL("../server/providers/kripicard/client.ts", import.meta.url), "utf8");
-const schemas = await readFile(new URL("../server/providers/kripicard/schemas.ts", import.meta.url), "utf8");
-const execution = await readFile(new URL("../server/funding/execution.ts", import.meta.url), "utf8");
-const fundRoute = await readFile(new URL("../app/api/v1/funding-requests/[id]/fund/route.ts", import.meta.url), "utf8");
-const reconcileRoute = await readFile(new URL("../app/api/v1/funding-requests/[id]/reconcile/route.ts", import.meta.url), "utf8");
-const resolveRoute = await readFile(new URL("../app/api/v1/funding-requests/[id]/resolve/route.ts", import.meta.url), "utf8");
-const env = await readFile(new URL("../config/env-schema.mjs", import.meta.url), "utf8");
-const readiness = await readFile(new URL("../server/providers/kripicard/readiness.ts", import.meta.url), "utf8");
-const dashboard = await readFile(new URL("../app/dashboard-app.tsx", import.meta.url), "utf8");
-const adminApi = await readFile(new URL("../lib/admin-api.ts", import.meta.url), "utf8");
-const success = JSON.parse(await readFile(new URL("./fixtures/kripicard/fund-card.json", import.meta.url), "utf8"));
+const migration = await readFile(new URL("../../db/migrations/0015_card_funding.sql", import.meta.url), "utf8");
+const client = await readFile(new URL("../../server/providers/kripicard/client.ts", import.meta.url), "utf8");
+const schemas = await readFile(new URL("../../server/providers/kripicard/schemas.ts", import.meta.url), "utf8");
+const execution = await readFile(new URL("../../server/funding/execution.ts", import.meta.url), "utf8");
+const fundRoute = await readFile(new URL("../../app/api/v1/funding-requests/[id]/fund/route.ts", import.meta.url), "utf8");
+const reconcileRoute = await readFile(new URL("../../app/api/v1/funding-requests/[id]/reconcile/route.ts", import.meta.url), "utf8");
+const resolveRoute = await readFile(new URL("../../app/api/v1/funding-requests/[id]/resolve/route.ts", import.meta.url), "utf8");
+const env = await readFile(new URL("../../config/env-schema.mjs", import.meta.url), "utf8");
+const readiness = await readFile(new URL("../../server/providers/kripicard/readiness.ts", import.meta.url), "utf8");
+const dashboard = await readFile(new URL("../../app/dashboard-app.tsx", import.meta.url), "utf8");
+const adminApi = await readFile(new URL("../../lib/admin-api.ts", import.meta.url), "utf8");
+const success = JSON.parse(await readFile(new URL("../fixtures/kripicard/fund-card.json", import.meta.url), "utf8"));
 
 test("Phase 16 adds funding operation state, locking, and execution permission", () => {
   assert.match(migration, /needs_reconciliation/);
@@ -88,7 +88,7 @@ test("funding routes require RBAC and CSRF, with recent reauthentication for wri
 
 
 test("reconciliation remains resolvable after assignment changes and final resolution is race protected", () => {
-  assert.match(execution, /Do not require the original Telegram assignment to still exist here/);
+  assert.match(execution, /JOIN cards c ON c\.id=fr\.card_id/);
   assert.match(execution, /FOR UPDATE OF fr,co/);
   assert.match(execution, /already been resolved/);
   assert.match(execution, /funding_request\.reconciliation_resolved_completed/);
@@ -103,7 +103,7 @@ test("card-fund readiness now uses documented rate, fee, and purchase-202 contra
   assert.match(readiness, /card_fund: \["wallet_flow", "card_minimum_documented", "production_rate_limits", "production_fee_schedule", "purchase_202_contract"\]/);
   assert.match(migration, /production_fee_schedule/);
   assert.match(migration, /fundcard_idempotency/);
-  assert.match(migration, /never auto-retry HTTP 202/);
+  assert.match(migration, /never auto-retries uncertainty/);
 });
 
 test("admin UI exposes Fund, safe retry, reconciliation, and provider-confirmed resolution", () => {

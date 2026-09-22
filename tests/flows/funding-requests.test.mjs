@@ -2,19 +2,19 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 
-const migration = await readFile(new URL("../db/migrations/0012_funding_request_receipts.sql", import.meta.url), "utf8");
-const service = await readFile(new URL("../server/funding/service.ts", import.meta.url), "utf8");
-const receipts = await readFile(new URL("../server/funding/receipts.ts", import.meta.url), "utf8");
-const storage = await readFile(new URL("../server/receipts/storage.ts", import.meta.url), "utf8");
-const fileValidation = await readFile(new URL("../server/security/file-validation.ts", import.meta.url), "utf8");
-const antivirus = await readFile(new URL("../server/receipts/antivirus.ts", import.meta.url), "utf8");
-const bot = await readFile(new URL("../server/telegram/bot.ts", import.meta.url), "utf8");
-const telegram = await readFile(new URL("../server/providers/telegram/client.ts", import.meta.url), "utf8");
-const transition = await readFile(new URL("../app/api/v1/funding-requests/[id]/transition/route.ts", import.meta.url), "utf8");
-const receiptRoute = await readFile(new URL("../app/api/v1/funding-requests/[id]/receipt/route.ts", import.meta.url), "utf8");
-const settingsRoute = await readFile(new URL("../app/api/v1/funding-settings/route.ts", import.meta.url), "utf8");
-const outbox = await readFile(new URL("../server/telegram/outbox.ts", import.meta.url), "utf8");
-const dashboard = await readFile(new URL("../app/dashboard-app.tsx", import.meta.url), "utf8");
+const migration = await readFile(new URL("../../db/migrations/0012_funding_request_receipts.sql", import.meta.url), "utf8");
+const service = await readFile(new URL("../../server/funding/service.ts", import.meta.url), "utf8");
+const receipts = await readFile(new URL("../../server/funding/receipts.ts", import.meta.url), "utf8");
+const storage = await readFile(new URL("../../server/receipts/storage.ts", import.meta.url), "utf8");
+const fileValidation = await readFile(new URL("../../server/security/file-validation.ts", import.meta.url), "utf8");
+const antivirus = await readFile(new URL("../../server/receipts/antivirus.ts", import.meta.url), "utf8");
+const bot = await readFile(new URL("../../server/telegram/bot.ts", import.meta.url), "utf8");
+const telegram = await readFile(new URL("../../server/providers/telegram/client.ts", import.meta.url), "utf8");
+const transition = await readFile(new URL("../../app/api/v1/funding-requests/[id]/transition/route.ts", import.meta.url), "utf8");
+const receiptRoute = await readFile(new URL("../../app/api/v1/funding-requests/[id]/receipt/route.ts", import.meta.url), "utf8");
+const settingsRoute = await readFile(new URL("../../app/api/v1/funding-settings/route.ts", import.meta.url), "utf8");
+const outbox = await readFile(new URL("../../server/telegram/outbox.ts", import.meta.url), "utf8");
+const dashboard = await readFile(new URL("../../app/dashboard-app.tsx", import.meta.url), "utf8");
 
 
 test("Phase 13 adds funding quote snapshots and receipt workflow states", () => {
@@ -30,7 +30,7 @@ test("funding quote uses immutable exchange-rate and fee snapshots with integer 
   assert.match(service, /rateId/);
   assert.match(service, /providerFeeFixedUsdCents/);
   assert.match(service, /serviceFeeBasisPoints/);
-  assert.match(service, /Current fee settings are deliberately not re-read/);
+  assert.match(service, /activeRate\(db,input\.quote\.rateId\)/);
   assert.match(service, /feeFor/);
   assert.match(service, /rialFor/);
   assert.doesNotMatch(service, /parseFloat/);

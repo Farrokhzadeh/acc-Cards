@@ -23,7 +23,6 @@ function createPool() {
   });
 
   pool.on("error", (error) => {
-    // Do not log query text/parameters or credentials.
     console.error("[database] unexpected idle client error", {
       name: error.name,
       message: redactSensitiveText(error),
@@ -56,7 +55,6 @@ export async function withTransaction<T>(work: (client: PoolClient) => Promise<T
     try {
       await client.query("ROLLBACK");
     } catch {
-      // Preserve the original error. Connection cleanup still happens below.
     }
     throw error;
   } finally {

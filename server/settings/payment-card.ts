@@ -1,8 +1,5 @@
 import { getPool } from "@/server/database/pool";
 
-// Destination payment card shown to customers in the Telegram bot when they need
-// to make a payment. Configured (and changeable) by admins in Settings.
-
 const KEY_NUMBER = "payment_card_number";
 const KEY_HOLDER = "payment_card_holder";
 const KEY_MIN_LOAD = "payment_min_load_usd";

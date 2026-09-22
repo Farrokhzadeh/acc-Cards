@@ -2,13 +2,13 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 
-const migration = await readFile(new URL("../db/migrations/0006_outlook_graph_integration.sql", import.meta.url), "utf8");
-const microsoftClient = await readFile(new URL("../server/providers/microsoft/client.ts", import.meta.url), "utf8");
-const microsoftService = await readFile(new URL("../server/providers/microsoft/service.ts", import.meta.url), "utf8");
-const envExample = await readFile(new URL("../.env.example", import.meta.url), "utf8");
-const dashboard = await readFile(new URL("../app/dashboard-app.tsx", import.meta.url), "utf8");
-const backgroundRoute = await readFile(new URL("../app/api/internal/jobs/outlook-sync/route.ts", import.meta.url), "utf8");
-const envSchema = await readFile(new URL("../config/env-schema.mjs", import.meta.url), "utf8");
+const migration = await readFile(new URL("../../db/migrations/0006_outlook_graph_integration.sql", import.meta.url), "utf8");
+const microsoftClient = await readFile(new URL("../../server/providers/microsoft/client.ts", import.meta.url), "utf8");
+const microsoftService = await readFile(new URL("../../server/providers/microsoft/service.ts", import.meta.url), "utf8");
+const envExample = await readFile(new URL("../../.env.example", import.meta.url), "utf8");
+const dashboard = await readFile(new URL("../../app/dashboard-app.tsx", import.meta.url), "utf8");
+const backgroundRoute = await readFile(new URL("../../app/api/internal/jobs/outlook-sync/route.ts", import.meta.url), "utf8");
+const envSchema = await readFile(new URL("../../config/env-schema.mjs", import.meta.url), "utf8");
 
 test("phase 7 stores one-time OAuth state and encrypted synchronization state", () => {
   assert.match(migration, /CREATE TABLE IF NOT EXISTS admin_oauth_states/);
@@ -56,7 +56,7 @@ test("deployment example exposes Microsoft app registration placeholders only", 
   assert.doesNotMatch(envExample, /[A-Za-z0-9_-]{30,}\.[A-Za-z0-9_-]{30,}\.[A-Za-z0-9_-]{20,}/);
 });
 
-const authCookies = await readFile(new URL("../server/auth/cookies.ts", import.meta.url), "utf8");
+const authCookies = await readFile(new URL("../../server/auth/cookies.ts", import.meta.url), "utf8");
 
 test("admin session cookie is OAuth callback compatible while mutations still use CSRF", () => {
   assert.match(authCookies, /SESSION_COOKIE.*[\s\S]*SameSite=Lax/);

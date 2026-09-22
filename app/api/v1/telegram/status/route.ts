@@ -18,9 +18,6 @@ export async function GET(request: Request) {
     if (!configured) {
       return { ...base, bot: null, webhook: null };
     }
-
-    // Token is present - try to fetch live bot/webhook info, but never fail the
-    // whole status call if Telegram is unreachable or the token was rejected.
     try {
       const client = await getTelegramClient();
       const [bot, webhook] = await Promise.all([client.getMe(), client.getWebhookInfo()]);

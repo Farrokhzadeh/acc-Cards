@@ -1,4 +1,3 @@
--- DEVELOPMENT/STAGING ONLY. Never run against production.
 BEGIN;
 
 INSERT INTO kripi_accounts (

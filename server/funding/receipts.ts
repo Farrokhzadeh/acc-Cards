@@ -29,8 +29,6 @@ export async function attachTelegramReceipt(input: {
 
   try {
     const result = await withTransaction(async (db)=>{
-      // The receipt row, any correction supersession, and the funding-request transition
-      // commit atomically. The file itself is removed on transaction failure below.
       if (request.rows[0]!.status === "correction_needed") {
         await db.query(`UPDATE receipts SET scan_status='rejected',rejected_reason='superseded_by_client',scan_completed_at=COALESCE(scan_completed_at,now()) WHERE request_id=$1::uuid AND scan_status IN('pending','clean')`,[input.requestId]);
       }

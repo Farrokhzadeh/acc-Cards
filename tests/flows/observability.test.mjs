@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
-const read = (p) => fs.readFileSync(new URL(`../${p}`, import.meta.url), "utf8");
+const read = (p) => fs.readFileSync(new URL(`../../${p}`, import.meta.url), "utf8");
 
 test("phase 20 migration adds durable operational alerts and health scan", () => {
   const sql = read("db/migrations/0019_audit_observability_operations.sql");

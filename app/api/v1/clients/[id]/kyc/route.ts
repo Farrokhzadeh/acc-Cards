@@ -5,8 +5,6 @@ import { getPool } from "@/server/database/pool";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
-
-// Latest KYC submission for a client (for the client detail sheet).
 export async function GET(request: Request, context: { params: Promise<{ id: string }> }) {
   return apiRoute(request, async () => {
     await requireAdmin(request, "kyc.read");

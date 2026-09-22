@@ -6,15 +6,21 @@ A multi-tenant card issuance & management admin panel (plus Telegram bot and ema
 
 ## Run it — 3 steps
 
+1. Configure the generated `.env` with a clean database name and random secrets. You can instead copy `.env.example` and set `DATABASE_PASSWORD` and `APP_ENCRYPTION_KEY` manually.
+
 ```bash
-# 1. Configure - auto-generates .env (clean DB name + random secrets)
 ./setup.sh
-#    (or manually: cp .env.example .env, then set DATABASE_PASSWORD + APP_ENCRYPTION_KEY)
+```
 
-# 2. Start everything (Postgres + schema + app + worker). Schema is created automatically.
+2. Start PostgreSQL, create the schema, and run the app and worker.
+
+```bash
 docker compose up -d --build
+```
 
-# 3. Create your admin login
+3. Create the admin login.
+
+```bash
 docker compose --profile tools run --rm \
   -e BOOTSTRAP_ADMIN_EMAIL='you@example.com' \
   -e BOOTSTRAP_ADMIN_PASSWORD='a-strong-password-12+' \

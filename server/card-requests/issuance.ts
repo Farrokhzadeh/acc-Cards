@@ -323,7 +323,6 @@ async function persistIssued(args: {
       );
       await getPool().query(`UPDATE card_requests SET status='needs_reconciliation',updated_at=now() WHERE id=$1::uuid`, [args.row.id]);
     } catch {
-      // Keep the original active operation; the unique index blocks another create attempt.
     }
     throw new ApiError(503, "persistence_error_after_provider_write", "Kripicard may have created the card, but AccAbad could not persist the result. Do not retry createcard; reconcile this request.");
   }
@@ -375,8 +374,6 @@ export async function issueApprovedCardRequest(requestId: string, session: AuthS
   }
   const { row, account, operationId, apiKey } = prepared;
   const client = new KripicardClient({ apiKey });
-
-  // Safe pre-write snapshot: if this read fails, no purchase was attempted.
   let before;
   try {
     before = await client.listCards();
@@ -416,7 +413,6 @@ export async function issueApprovedCardRequest(requestId: string, session: AuthS
       const reconciled = await reconcileWithList({ operationId, row, account, client, session, request, requestId: traceId });
       if (reconciled.status === "issued") return reconciled;
     } catch {
-      // Preserve the unresolved state. A failed reconciliation read must never cause another createcard call.
     }
     return { requestId: row.id, operationId, status: "needs_reconciliation" as const, reconciled: false, needsReconciliation: true, providerOutcome: ambiguousCode };
   }
