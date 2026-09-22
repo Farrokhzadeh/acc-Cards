@@ -232,21 +232,6 @@ type FundingRequest = {
   submitted: string;
 };
 
-type CardRequest = {
-  id: string;
-  reference: string;
-  clientId: string;
-  bin: string;
-  initialAmount: number;
-  nameOnCard: string;
-  email: string;
-  dateOfBirth: string | null;
-  selectedAccountId: string | null;
-  eligibleAccounts: Array<{ id: string; label: string; loginEmail: string; status: string }>;
-  adminNote: string | null;
-  status: "New" | "Approved" | "Correction needed" | "Issuing" | "Issue failed" | "Needs reconciliation" | "Issued" | "Rejected" | "Cancelled";
-  submitted: string;
-};
 
 type Transaction = {
   id: string;
@@ -308,7 +293,7 @@ const viewCopy: Record<View, { title: string; description: string }> = {
   overview: { title: "Overview", description: "Card operations across every connected account." },
   accounts: { title: "Kripicard accounts", description: "API connections, card funding, and card exposure." },
   clients: { title: "Telegram clients", description: "Account assignments, cards, access, and activity." },
-  requests: { title: "Requests", description: "Review client payments and new card requests." },
+  requests: { title: "Requests", description: "Review add-funds requests, KYC, and transaction issues." },
   inbox: { title: "Client inbox", description: "Handle Telegram support without leaving the console." },
   operations: { title: "Operations", description: "Audit, worker health, sync lag, and operational alerts." },
   settings: { title: "Settings", description: "Pricing, exchange rate, bot access, and 3DS routing." },
@@ -361,35 +346,6 @@ function formatApiDateTime(value: string) {
 function formatExpiry(month: number | null, year: number | null) {
   if (!month || !year) return "—";
   return `${String(month).padStart(2, "0")}/${String(year).slice(-2)}`;
-}
-
-function mapApiCardRequest(request: ApiCardRequest): CardRequest {
-  const statusMap: Record<ApiCardRequest["status"], CardRequest["status"]> = {
-    pending_review: "New",
-    approved: "Approved",
-    correction_needed: "Correction needed",
-    issuing: "Issuing",
-    issue_failed: "Issue failed",
-    needs_reconciliation: "Needs reconciliation",
-    issued: "Issued",
-    rejected: "Rejected",
-    cancelled: "Cancelled",
-  };
-  return {
-    id: request.id,
-    reference: request.reference,
-    clientId: request.userId,
-    bin: request.bin,
-    initialAmount: Number(request.initialAmountUsdCents) / 100,
-    nameOnCard: request.nameOnCard,
-    email: request.email,
-    dateOfBirth: request.dateOfBirth,
-    selectedAccountId: request.selectedAccountId,
-    eligibleAccounts: request.eligibleAccounts,
-    adminNote: request.adminNote,
-    status: statusMap[request.status],
-    submitted: formatApiDate(request.createdAt),
-  };
 }
 
 function mapApiFundingRequest(request: ApiFundingRequest): FundingRequest {
@@ -1649,7 +1605,7 @@ export default function DashboardApp() {
       const result = await unassignAllClientAccounts(clientId);
       setClients((current) => current.map((client) => client.id === clientId ? { ...client, accountIds: result.accountIds } : client));
       toast.success(result.removedCount
-        ? `Disconnected ${result.removedCount} account${result.removedCount === 1 ? "" : "s"}. The client now sees only Contact the admin.`
+        ? `Disconnected ${result.removedCount} account${result.removedCount === 1 ? "" : "s"}.`
         : "This client already has no connected accounts.");
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Could not disconnect the client's accounts.");
@@ -1661,8 +1617,8 @@ export default function DashboardApp() {
   const accountName = (id: string | null) => accounts.find((account) => account.id === id)?.name ?? "Not connected";
   const clientName = (id: string | null) => id ? clients.find((client) => client.id === id)?.name ?? "Unknown client" : "No Telegram user";
   const pendingRequestCount =
-    cardRequests.filter((r) => r.status === "New").length +
-    fundingRequests.filter((r) => r.status === "pending_review" || r.status === "needs_reconciliation").length;
+    fundingRequests.filter((request) => request.status === "pending_review" || request.status === "needs_reconciliation").length +
+    kycPendingCount;
   const unreadInboxCount = supportConversations.reduce((sum, c) => sum + (c.unreadAdminCount ?? 0), 0);
   const badgeFor = (view: View): number => (view === "requests" ? pendingRequestCount : view === "inbox" ? unreadInboxCount : 0);
 
