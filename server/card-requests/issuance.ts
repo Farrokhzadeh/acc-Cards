@@ -92,6 +92,13 @@ async function event(db: DatabaseQueryable, args: {
 }
 
 async function notify(db: DatabaseQueryable, requestId: string, status: string) {
+  const onboarding = await db.query<{ onboarding: boolean }>(
+    `SELECT EXISTS(
+       SELECT 1 FROM telegram_users WHERE onboarding_card_request_id=$1::uuid
+     ) AS onboarding`,
+    [requestId],
+  );
+  if (onboarding.rows[0]?.onboarding) return;
   await db.query(
     `INSERT INTO outbox_events(topic,aggregate_type,aggregate_id,event_type,payload,status,available_at)
      VALUES('telegram','card_request',$1::uuid,'card_request.status_changed',$2::jsonb,'pending',now())`,
