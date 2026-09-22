@@ -33,3 +33,11 @@ test("docker compose contains a separate worker service", () => {
   assert.match(compose, /accabad-worker:/);
   assert.match(compose, /npm", "run", "worker/);
 });
+
+
+test("optional mailbox jobs may report skipped without poisoning worker retry state", () => {
+  const gmail = read("server/providers/google/service.ts");
+  const outlook = read("server/providers/microsoft/service.ts");
+  assert.match(gmail, /skipped: true, reason: "google_not_configured"/);
+  assert.match(outlook, /skipped: true, reason: "microsoft_not_configured"/);
+});

@@ -11,6 +11,7 @@ const adminApi = await readFile(new URL("../lib/admin-api.ts", import.meta.url),
 const dashboard = await readFile(new URL("../app/dashboard-app.tsx", import.meta.url), "utf8");
 const bot = await readFile(new URL("../server/telegram/bot.ts", import.meta.url), "utf8");
 const activateRoute = await readFile(new URL("../app/api/v1/clients/[id]/activate/route.ts", import.meta.url), "utf8");
+const onboarding = await readFile(new URL("../server/clients/onboarding.ts", import.meta.url), "utf8");
 
 
 test("database keeps one current Telegram owner per Kripicard account", () => {
@@ -41,14 +42,14 @@ test("assignment writes require authenticated permission and CSRF", () => {
   assert.match(itemRoute, /requireCsrf\(request, session\)/);
 });
 
-test("single assign/unassign and replace-all operations are transactionally supported", () => {
-  assert.match(service, /assignAccount/);
-  assert.match(service, /unassignAccount/);
-  assert.match(service, /unassignAllAccounts/);
-  assert.match(service, /replaceClientAccounts/);
-  assert.match(service, /withTransaction/);
-  assert.match(collectionRoute, /export async function PUT/);
-  assert.match(collectionRoute, /export async function DELETE/);
+test("standalone assignment mutation APIs are closed and onboarding owns assignment writes", () => {
+  assert.match(collectionRoute, /assignment_managed_by_onboarding/);
+  assert.match(itemRoute, /assignment_managed_by_onboarding/);
+  assert.doesNotMatch(collectionRoute, /assignAccount\(/);
+  assert.doesNotMatch(collectionRoute, /replaceClientAccounts\(/);
+  assert.doesNotMatch(itemRoute, /assignAccount\(/);
+  assert.doesNotMatch(itemRoute, /unassignAccount\(/);
+  assert.match(onboarding, /assignAccountInTransaction\(/);
 });
 
 test("assignment changes produce history and redacted audit records in the same transaction", () => {
@@ -58,13 +59,14 @@ test("assignment changes produce history and redacted audit records in the same 
   assert.doesNotMatch(service, /encrypted_api_key|encrypted_password/);
 });
 
-test("first-card onboarding owns account assignment instead of a standalone admin picker", () => {
+test("first-card onboarding owns account assignment atomically instead of a standalone admin picker", () => {
   assert.match(adminApi, /fetchClientAssignableAccounts/);
   assert.match(dashboard, /Create first card/);
   assert.doesNotMatch(dashboard, /AccountAssignmentPicker/);
-  assert.doesNotMatch(dashboard, /await assignClientAccount/);
-  assert.match(activateRoute, /assignAccount/);
+  assert.doesNotMatch(adminApi, /assignClientAccount/);
   assert.match(activateRoute, /input\.action === "create_card"/);
+  assert.match(onboarding, /assignAccountInTransaction/);
+  assert.match(service, /assignAccountInTransaction/);
 });
 
 test("Telegram authorization requires completed onboarding and resolves current card ownership", () => {

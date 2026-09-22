@@ -10,7 +10,6 @@ import {
   Bot,
   Check,
   CheckCircle2,
-  ChevronsUpDown,
   ChevronRight,
   CircleDollarSign,
   CreditCard,
@@ -65,14 +64,6 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
-  Command,
-  CommandEmpty,
-  CommandGroup,
-  CommandInput,
-  CommandItem,
-  CommandList,
-} from "@/components/ui/command";
-import {
   Dialog,
   DialogContent,
   DialogDescription,
@@ -82,7 +73,6 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
   Pagination,
   PaginationContent,
@@ -557,7 +547,6 @@ export default function DashboardApp() {
         setAccounts(nextAccounts);
         setCards(nextCards);
         setClients(nextClients);
-        // Keep unimplemented domains from showing stale demo records beside real DB records.
         setAccountEmails([]);
         setFundingRequests([]);
         setTransactions([]);
@@ -571,7 +560,8 @@ export default function DashboardApp() {
           window.location.replace("/login");
           return;
         }
-        console.warn("AccAbad backend snapshot unavailable; keeping local demo data.", error);
+        console.error("AccAbad backend snapshot unavailable.", error);
+        toast.error("AccAbad backend is unavailable. No local fallback data or actions will be used.");
       });
     return () => controller.abort();
   }, []);
@@ -1127,12 +1117,14 @@ export default function DashboardApp() {
     }
   };
 
-  const openCreateCard = (_accountId = "") => {
+  const openCreateCard = (...args: [accountId?: string]) => {
+    void args;
     setView("clients");
     toast.info("A customer's first card is created from the First-card onboarding panel after KYC and receipt approval.");
   };
 
-  const openFundCard = (_cardId = "", _accountId = "") => {
+  const openFundCard = (...args: [cardId?: string, accountId?: string]) => {
+    void args;
     setView("requests");
     toast.info("Card funding is executed only from accepted funding requests in Request Center.");
   };
@@ -1146,13 +1138,17 @@ export default function DashboardApp() {
       setDeleteAccountId(null);
       return;
     }
+    if (!backendDataLoaded) {
+      toast.error("Backend unavailable. The account was not changed.");
+      return;
+    }
     try {
-      if (backendDataLoaded) await archiveAccount(id);
+      await archiveAccount(id);
       setAccounts((current) => current.filter((account) => account.id !== id));
       setCards((current) => current.filter((card) => card.accountId !== id));
       setAccountEmails((current) => current.filter((email) => email.accountId !== id));
       setDeleteAccountId(null);
-      toast.success(backendDataLoaded ? "Account archived and mailbox authorization disabled." : "Account removed from the local demo.");
+      toast.success("Account archived and mailbox authorization disabled.");
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Account archive failed.");
     }
@@ -1199,8 +1195,12 @@ export default function DashboardApp() {
     const target = clients.find((client) => client.id === clientId);
     if (!target) return;
     const nextBanned = !target.banned;
+    if (!backendDataLoaded) {
+      toast.error("Backend unavailable. Client access was not changed.");
+      return;
+    }
     try {
-      if (backendDataLoaded) await setClientBanned(clientId, nextBanned);
+      await setClientBanned(clientId, nextBanned);
       setClients((current) => current.map((client) => client.id === clientId ? { ...client, banned: nextBanned } : client));
       toast.success(nextBanned ? "Client banned from the bot." : "Client unbanned.");
     } catch (error) {
@@ -1212,8 +1212,7 @@ export default function DashboardApp() {
     const card = cards.find((item) => item.id === cardId);
     if (!card) return;
     if (!backendDataLoaded) {
-      setCards((current) => current.map((item) => item.id === cardId ? { ...item, frozen: !item.frozen } : item));
-      toast.success("Demo card status updated.");
+      toast.error("Backend unavailable. Card state was not changed.");
       return;
     }
     if (cardStatePendingId) return;
@@ -1308,7 +1307,7 @@ export default function DashboardApp() {
   const advanceRequest = async (request: FundingRequest) => {
     if (request.status !== "pending_review") return;
     if (!backendDataLoaded) {
-      setFundingRequests((current) => current.map((item) => item.id === request.id ? { ...item, status: "accepted" } : item));
+      toast.error("Backend unavailable. Funding request was not changed.");
       return;
     }
     try {
@@ -1334,8 +1333,8 @@ export default function DashboardApp() {
   const rejectRequest = async () => {
     if (!activeRequest) return;
     if (!backendDataLoaded) {
-      setFundingRequests((current) => current.map((item) => item.id === activeRequest.id ? { ...item, status: "rejected" } : item));
-      setRejectDialogOpen(false); setRejectNote(""); return;
+      toast.error("Backend unavailable. Funding request was not changed.");
+      return;
     }
     try {
       await reviewFundingRequest(activeRequest.id, { action: "reject", note: rejectNote.trim() || null });
@@ -1455,10 +1454,7 @@ export default function DashboardApp() {
     const body = chatDraft.trim();
     if ((!body && !supportAttachment) || !activeChatId) return;
     if (!backendDataLoaded) {
-      setMessages((current) => ({ ...current, [activeChatId]: [...(current[activeChatId] ?? []), { id: `m-${Date.now()}`, from: "admin", body, time: "Now", attachment: supportAttachment ? { filename: supportAttachment.name } : null }] }));
-      setChatDraft("");
-      setSupportAttachment(null);
-      toast.success("Demo message queued for Telegram.");
+      toast.error("Backend unavailable. The message was not queued.");
       return;
     }
     try {
@@ -2314,10 +2310,6 @@ function PageIntro({ title, description, action }: { title: string; description:
   );
 }
 
-function FocusRow({ number, title, detail, onClick, warning = false }: { number: string; title: string; detail: string; onClick: () => void; warning?: boolean }) {
-  return <button onClick={onClick} className="flex w-full items-center gap-3 rounded-[16px] border border-[#eeecf3] bg-[#fbfafc] p-3.5 text-left transition hover:border-[#dcd8f1] hover:bg-[#f7f5ff]"><span className={`grid size-8 shrink-0 place-items-center rounded-[10px] text-xs font-bold ${warning ? "bg-[#fff0da] text-[#ad6811]" : "bg-[#eeecff] text-[#5b50d6]"}`}>{number}</span><span className="min-w-0 flex-1"><span className="block text-sm font-semibold text-[#353146]">{title}</span><span className="mt-0.5 block text-xs text-[#9692a3]">{detail}</span></span><ChevronRight className="size-4 text-[#aaa6b8]" /></button>;
-}
-
 function MetricCard({ icon: Icon, label, value, foot, tone }: { icon: typeof Landmark; label: string; value: string; foot: string; tone: "navy" | "cyan" | "amber" | "violet" }) {
   const tones = {
     navy: "bg-[#eeecff] text-[#6157e7]",
@@ -2450,7 +2442,7 @@ function TransactionsView({ transactions, clientName, search, issues, onReconcil
       <PageIntro title="Card transactions" description="Scheduled Kripicard activity with fingerprint deduplication and current-owner Telegram notifications." action={<Button variant="outline" className="h-11 rounded-[14px] border-[#dedbe8] bg-white" onClick={() => toast.info("Scheduled sync runs through the protected Kripicard transaction job. Manual per-card sync remains available from card details.")}><RefreshCw className="size-4" />Sync status</Button>} />
       {issues.length > 0 && <Card className="mb-4 surface-card rounded-[22px] border-amber-200 bg-amber-50/40"><CardHeader><div className="flex items-center justify-between gap-3"><div><CardTitle className="text-base">Notification reconciliation</CardTitle><p className="mt-1 text-sm text-[#777287]">Failed deliveries can be safely retried only while the original user still owns the account. Ownership-change skips are never resent automatically.</p></div><Badge variant="outline" className="rounded-full border-amber-300 bg-white text-amber-800">{issues.length} issue{issues.length === 1 ? "" : "s"}</Badge></div></CardHeader><CardContent className="space-y-2">{issues.slice(0, 8).map((issue) => <div key={issue.id} className="flex flex-col gap-3 rounded-[14px] border border-amber-200 bg-white p-3 sm:flex-row sm:items-center"><div className="min-w-0 flex-1"><p className="truncate text-sm font-semibold">•{issue.last4 ?? "????"} · {issue.merchant || issue.transactionType || "Provider transaction"}</p><p className="mt-1 text-xs text-[#8f8b9c]">{issue.notificationStatus} · {issue.notificationError || "delivery mismatch"} · {new Date(issue.occurredAt).toLocaleString()}</p></div><div className="flex gap-2">{issue.notificationStatus === "failed" && <Button size="sm" variant="outline" className="rounded-xl" onClick={() => void onReconcileIssue(issue.id, "retry")}>Retry safely</Button>}<Button size="sm" variant="outline" className="rounded-xl" onClick={() => void onReconcileIssue(issue.id, "acknowledge")}>Acknowledge</Button></div></div>)}</CardContent></Card>}
       <div className="mb-4 grid gap-4 sm:grid-cols-3"><MetricCard icon={CheckCircle2} label="Successful volume" value={formatUsd(338.99)} foot="Across the visible period" tone="cyan" /><MetricCard icon={XCircle} label="Declined" value={formatUsd(9.99)} foot="Insufficient balance" tone="amber" /><MetricCard icon={ShieldCheck} label="Verification events" value="1" foot="OTP event — no code exposed" tone="violet" /></div>
-      <Card className="data-table overflow-hidden surface-card rounded-[24px]"><div className="overflow-x-auto"><Table><TableHeader><TableRow className="bg-[#faf9fc]"><TableHead className="pl-6">Transaction</TableHead><TableHead>Client</TableHead><TableHead>Merchant</TableHead><TableHead>Type</TableHead><TableHead>Amount</TableHead><TableHead>Status</TableHead><TableHead>Telegram</TableHead></TableRow></TableHeader><TableBody>{paging.pageItems.map((tx) => <TableRow key={tx.id}><TableCell className="pl-6"><span className="font-semibold text-[#353146]">{tx.id}</span><span className="mt-0.5 block text-xs text-[#9692a3]">{tx.date}</span></TableCell><TableCell>{clientName(tx.clientId)}<span className="block text-xs text-[#9d99aa]">card •{tx.cardLast4}</span></TableCell><TableCell className="font-semibold text-[#353146]">{tx.merchant}</TableCell><TableCell>{tx.type}</TableCell><TableCell className="font-semibold text-[#353146]">{formatUsd(tx.amount)}</TableCell><TableCell><Badge variant="outline" className={`${tx.status === "Success" ? "border-[#bfe9d9] bg-[#eaf8f2] text-[#167957]" : "border-[#f1c7cc] bg-[#fff0f2] text-[#b53847]"} rounded-full`}>{tx.status}</Badge></TableCell><TableCell><Badge variant="outline" className="rounded-full">{tx.notificationStatus ?? "demo"}</Badge></TableCell></TableRow>)}</TableBody></Table></div><ListPagination page={paging.page} pageSize={paging.pageSize} totalItems={paging.totalItems} totalPages={paging.totalPages} onPageChange={paging.setPage} /></Card>
+      <Card className="data-table overflow-hidden surface-card rounded-[24px]"><div className="overflow-x-auto"><Table><TableHeader><TableRow className="bg-[#faf9fc]"><TableHead className="pl-6">Transaction</TableHead><TableHead>Client</TableHead><TableHead>Merchant</TableHead><TableHead>Type</TableHead><TableHead>Amount</TableHead><TableHead>Status</TableHead><TableHead>Telegram</TableHead></TableRow></TableHeader><TableBody>{paging.pageItems.map((tx) => <TableRow key={tx.id}><TableCell className="pl-6"><span className="font-semibold text-[#353146]">{tx.id}</span><span className="mt-0.5 block text-xs text-[#9692a3]">{tx.date}</span></TableCell><TableCell>{clientName(tx.clientId)}<span className="block text-xs text-[#9d99aa]">card •{tx.cardLast4}</span></TableCell><TableCell className="font-semibold text-[#353146]">{tx.merchant}</TableCell><TableCell>{tx.type}</TableCell><TableCell className="font-semibold text-[#353146]">{formatUsd(tx.amount)}</TableCell><TableCell><Badge variant="outline" className={`${tx.status === "Success" ? "border-[#bfe9d9] bg-[#eaf8f2] text-[#167957]" : "border-[#f1c7cc] bg-[#fff0f2] text-[#b53847]"} rounded-full`}>{tx.status}</Badge></TableCell><TableCell><Badge variant="outline" className="rounded-full">{tx.notificationStatus ?? "unknown"}</Badge></TableCell></TableRow>)}</TableBody></Table></div><ListPagination page={paging.page} pageSize={paging.pageSize} totalItems={paging.totalItems} totalPages={paging.totalPages} onPageChange={paging.setPage} /></Card>
     </>
   );
 }
@@ -2585,12 +2577,20 @@ function SettingsView({ serviceFee, exchangeRate, minimumFunding, botToken, show
   const [settingsTab, setSettingsTab] = useState("general");
   const [mfaSetup, setMfaSetup] = useState<{ secret: string; otpauthUri: string } | null>(null);
   const [securityBusy, setSecurityBusy] = useState(false);
-  const [payCard, setPayCard] = useState<{ cardNumber: string; cardHolder: string; minLoadUsd: number; onboardingBin: string }>({ cardNumber: "", cardHolder: "", minLoadUsd: 25, onboardingBin: "539502" });
+  const [payCard, setPayCard] = useState<{ cardNumber: string; cardHolder: string; minLoadUsd: number; onboardingBin: string; allowedBins: Array<{ bin: string; requiresDob: boolean }> }>({ cardNumber: "", cardHolder: "", minLoadUsd: 25, onboardingBin: "539502", allowedBins: [] });
   const [payBusy, setPayBusy] = useState(false);
   useEffect(() => { fetchPaymentCard().then(setPayCard).catch(() => {}); }, []);
   const savePayCard = async () => {
     setPayBusy(true);
-    try { await updatePaymentCard(payCard); toast.success("Payment card saved. Customers will see the new card."); }
+    try {
+      await updatePaymentCard({
+        cardNumber: payCard.cardNumber,
+        cardHolder: payCard.cardHolder,
+        minLoadUsd: payCard.minLoadUsd,
+        onboardingBin: payCard.onboardingBin,
+      });
+      toast.success("First-card setup saved.");
+    }
     catch (error) { toast.error(error instanceof Error ? error.message : "Could not save payment card."); }
     finally { setPayBusy(false); }
   };
@@ -2701,7 +2701,7 @@ function SettingsView({ serviceFee, exchangeRate, minimumFunding, botToken, show
         <Card className={`surface-card rounded-[24px] ${settingsTab==="general"?"":"hidden"}`}><CardHeader><div className="flex items-center gap-3"><span className="grid size-10 place-items-center rounded-[13px] bg-[#eeecff] text-[#6157e7]"><CircleDollarSign className="size-5" /></span><div><CardTitle className="text-[17px] tracking-[-.02em] text-[#2c2940]">Pricing and exchange</CardTitle><p className="mt-1 text-sm text-[#8f8b9c]">Calculate the Rial amount before a request is created.</p></div></div></CardHeader><CardContent className="space-y-5"><div className="grid gap-4 sm:grid-cols-2"><div className="grid gap-2"><Label htmlFor="service-fee">Your funding fee (%)</Label><Input id="service-fee" type="number" min="0" step="0.1" value={serviceFee} onChange={(event) => onServiceFee(Number(event.target.value))} /></div><div className="grid gap-2"><Label>Provider card fee</Label><Input value="4% + $1.00" readOnly className="bg-[#f8f7fb]" /></div><div className="grid gap-2 sm:col-span-2"><Label htmlFor="minimum-funding">Minimum existing-card funding (USD)</Label><Input id="minimum-funding" type="number" min="1" step="1" value={minimumFunding} onChange={(event) => onMinimumFunding(Number(event.target.value))} /><p className="text-xs text-[#8f8b9c]">Applies only after onboarding when a customer adds money to an existing card. The first-card minimum is configured separately below.</p></div></div><div className="grid gap-2"><div className="flex items-center justify-between gap-2"><Label htmlFor="exchange-rate">Rial per 1 USD</Label><Badge variant="outline" className="rounded-full border-amber-200 bg-amber-50 text-amber-800">Manual snapshot</Badge></div><Input id="exchange-rate" type="number" min="1" value={exchangeRate} onChange={(event) => onExchangeRate(Number(event.target.value))} /><div className="rounded-[14px] border border-[#ece9f2] bg-[#faf9fc] p-3 text-xs leading-5 text-[#777287]"><p className="font-semibold text-[#353146]">Source: admin-approved manual snapshot</p><p>Saving creates a new immutable exchange-rate row used by new funding quotes until it expires.</p><p className="mt-1 text-[#9692a3]">Existing funding requests never recalculate when this value changes.</p></div><Button variant="outline" className="mt-3 rounded-xl" onClick={() => void onSavePricing()}><Check className="size-4" />Save pricing & rate snapshot</Button></div><div className="hero-grid rounded-[20px] p-5 text-white"><p className="text-xs font-medium uppercase tracking-[.14em] text-[#c8c3ff]">Example · $100 card funding request</p><div className="mt-3 grid grid-cols-2 gap-4"><div><p className="text-sm text-[#aaa5c8]">USD basis</p><p className="mt-1 text-xl font-semibold">{formatUsd(total)}</p></div><div><p className="text-sm text-[#aaa5c8]">Client pays</p><p className="mt-1 text-xl font-semibold">{formatRial(total * exchangeRate)}</p></div></div><div className="mt-3 border-t border-white/10 pt-3 text-xs text-[#aaa5c8]">$100 + {formatUsd(providerFee)} provider + {formatUsd(ownFee)} service fee</div></div></CardContent></Card>
 
         <Card className={`surface-card rounded-[24px] ${settingsTab==="general"?"":"hidden"}`}><CardHeader><div className="flex items-center gap-3"><span className="grid size-10 place-items-center rounded-[13px] bg-[#eeecff] text-[#6157e7]"><CreditCard className="size-5" /></span><div><CardTitle className="text-[17px] tracking-[-.02em] text-[#2c2940]">First card setup</CardTitle><p className="mt-1 text-sm text-[#8f8b9c]">After KYC approval, customers choose their first-card balance, pay exactly that amount to this card, and upload a receipt.</p></div></div></CardHeader><CardContent className="space-y-4"><div className="grid gap-3 sm:grid-cols-2"><div className="grid gap-2"><Label htmlFor="pay-card-number">Card number</Label><Input id="pay-card-number" value={payCard.cardNumber} onChange={(e) => setPayCard((c) => ({ ...c, cardNumber: e.target.value }))} placeholder="6037-9911-2233-4455" className="bg-white" /></div><div className="grid gap-2"><Label htmlFor="pay-card-holder">Card holder name</Label><Input id="pay-card-holder" value={payCard.cardHolder} onChange={(e) => setPayCard((c) => ({ ...c, cardHolder: e.target.value }))} placeholder="Full name as on the card" className="bg-white" /></div>
-<div className="grid gap-2"><Label htmlFor="pay-min-load">Minimum first-card amount (USD)</Label><Input id="pay-min-load" type="number" min={1} value={payCard.minLoadUsd} onChange={(e) => setPayCard((c) => ({ ...c, minLoadUsd: Number(e.target.value) || 25 }))} className="bg-white" /><p className="text-xs text-[#8f8b9c]">Default is $25. The customer may choose any higher amount; the accepted amount becomes the initial card balance.</p></div><div className="grid gap-2"><Label htmlFor="onboarding-bin">First-card BIN</Label><Input id="onboarding-bin" inputMode="numeric" maxLength={6} value={payCard.onboardingBin} onChange={(e) => setPayCard((c) => ({ ...c, onboardingBin: e.target.value.replace(/\D/g, "").slice(0, 6) }))} placeholder="539502" className="bg-white" /><p className="text-xs text-[#8f8b9c]">Provider product used when the admin creates the customer&apos;s first card after accepting the receipt.</p></div></div><Button className="rounded-xl bg-[#6157e7] text-white hover:bg-[#554bcf]" disabled={payBusy} onClick={() => void savePayCard()}><Check className="size-4" />Save first-card setup</Button></CardContent></Card>
+<div className="grid gap-2"><Label htmlFor="pay-min-load">Minimum first-card amount (USD)</Label><Input id="pay-min-load" type="number" min={1} value={payCard.minLoadUsd} onChange={(e) => setPayCard((c) => ({ ...c, minLoadUsd: Number(e.target.value) || 25 }))} className="bg-white" /><p className="text-xs text-[#8f8b9c]">Default is $25. The customer may choose any higher amount; the accepted amount becomes the initial card balance.</p></div><div className="grid gap-2"><Label htmlFor="onboarding-bin">First-card BIN</Label><Select value={payCard.onboardingBin} onValueChange={(value) => setPayCard((c) => ({ ...c, onboardingBin: value }))}><SelectTrigger id="onboarding-bin" className="bg-white"><SelectValue placeholder="Choose a provider BIN" /></SelectTrigger><SelectContent>{payCard.allowedBins.map((item) => <SelectItem key={item.bin} value={item.bin}>{item.bin}{item.requiresDob ? " · DOB required" : ""}</SelectItem>)}</SelectContent></Select><p className="text-xs text-[#8f8b9c]">Only provider-supported BINs can be saved. BINs marked DOB required use the approved KYC date of birth.</p></div></div><Button className="rounded-xl bg-[#6157e7] text-white hover:bg-[#554bcf]" disabled={payBusy} onClick={() => void savePayCard()}><Check className="size-4" />Save first-card setup</Button></CardContent></Card>
         <Card className={`surface-card rounded-[24px] ${settingsTab==="telegram"?"":"hidden"}`}><CardHeader><div className="flex items-center gap-3"><span className="grid size-10 place-items-center rounded-[13px] bg-[#f1eefe] text-[#7864c9]"><Bot className="size-5" /></span><div><CardTitle className="text-[17px] tracking-[-.02em] text-[#2c2940]">Telegram bot</CardTitle><p className="mt-1 text-sm text-[#8f8b9c]">Webhook readiness, server-side token status, and required channels.</p></div></div></CardHeader><CardContent className="space-y-5"><div className="grid gap-2"><Label htmlFor="bot-token">Bot token</Label><div className="flex flex-wrap gap-2"><div className="relative min-w-[220px] flex-1"><Input id="bot-token" type={showToken ? "text" : "password"} value={botToken} onChange={(event) => onBotToken(event.target.value)} placeholder={telegramStatus?.tokenHint ? `Update token (current ends ${telegramStatus.tokenHint})` : "Paste bot token from @BotFather"} className="pr-10" autoComplete="off" /><button type="button" aria-label={showToken ? "Hide token" : "Show token"} onClick={() => onShowToken(!showToken)} className="absolute right-3 top-1/2 -translate-y-1/2 text-[#9692a3]">{showToken ? <EyeOff className="size-4" /> : <Eye className="size-4" />}</button></div><Button className="rounded-xl bg-[#6157e7] text-white hover:bg-[#554bcf]" disabled={!botToken.trim()} onClick={() => void onSaveBotToken()}><Check className="size-4" />Save token</Button><Button variant="outline" className="rounded-xl" disabled={!telegramStatus?.configured} onClick={() => void onConfigureWebhook()}><Radio className="size-4" />Configure webhook</Button>{telegramStatus?.tokenSource === "database" && <Button variant="outline" className="rounded-xl border-red-200 text-red-700 hover:bg-red-50" onClick={() => void onClearBotToken()}><Trash2 className="size-4" />Clear</Button>}</div><p className="text-xs text-[#8f8b9c]">{telegramStatus?.tokenHint ? <>Current token: <code>••••{telegramStatus.tokenHint}</code> · stored {telegramStatus.tokenSource === "database" ? "encrypted in the database (set here)" : "in the server environment"}. Only the last 4 characters are ever shown.</> : <>Paste a token from <b>@BotFather</b> and click <b>Save token</b>. It is stored encrypted (AES-256-GCM); only the last 4 characters are shown afterward.</>}</p></div><div className="rounded-[14px] border border-[#ece9f2] bg-[#faf9fc] p-3 text-sm"><div className="flex flex-wrap gap-2"><Badge variant="outline" className={telegramStatus?.configured ? "rounded-full border-emerald-200 bg-emerald-50 text-emerald-700" : "rounded-full border-amber-200 bg-amber-50 text-amber-700"}>{telegramStatus?.configured ? "Bot configured" : "Bot not configured"}</Badge>{telegramStatus?.bot?.username && <Badge variant="outline" className="rounded-full">@{telegramStatus.bot.username}</Badge>}{telegramStatus?.webhook?.url && <Badge variant="outline" className="rounded-full border-emerald-200 text-emerald-700">Webhook connected</Badge>}</div><p className="mt-2 break-all text-xs text-[#777287]">Expected webhook: {telegramStatus?.expectedWebhookUrl ?? "Configure Telegram environment variables to inspect status."}</p>{telegramStatus?.webhook?.lastErrorMessage && <p className="mt-1 text-xs text-red-600">Telegram: {telegramStatus.webhook.lastErrorMessage}</p>}{telegramStatus?.error && <p className="mt-1 text-xs text-red-600">Telegram: {telegramStatus.error}</p>}</div><div><div className="mb-2 flex items-center justify-between"><Label>Force-join channels</Label><Badge variant="outline" className="rounded-full">{channels.length} required</Badge></div><div className="space-y-2">{channels.map((channel) => <div key={channel} className="flex items-center gap-3 rounded-[14px] border border-[#ebe9f1] bg-[#fbfafc] p-3"><Hash className="size-4 text-[#9692a3]" /><span className="flex-1 text-sm font-medium">{channel}</span><button onClick={() => void onRemoveChannel(channel)} className="text-[#9692a3] hover:text-red-600"><Trash2 className="size-4" /><span className="sr-only">Remove {channel}</span></button></div>)}</div><div className="mt-2 flex gap-2"><Input value={newChannel} onChange={(event) => onNewChannel(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); void onAddChannel(); } }} placeholder="@channel_username" /><Button variant="outline" className="rounded-xl" onClick={() => void onAddChannel()}><Plus className="size-4" />Add</Button></div><p className="mt-2 text-xs text-[#8f8b9c]">Membership checks fail open on Telegram/API configuration errors so one broken channel cannot lock out every client; explicit left/kicked status is enforced.</p></div><Alert className="rounded-[16px] border-[#cfeadf] bg-[#f0faf6]"><CheckCircle2 className="text-[#167957]" /><AlertTitle className="text-[#245f4c]">Telegram backend implemented</AlertTitle><AlertDescription className="text-[#4f7669]">The bot uses verified and deduplicated webhooks, assignment and ban gates, opaque callbacks, guarded card actions, support relay, and durable OTP delivery.</AlertDescription></Alert></CardContent></Card>
 
         <EmailRulesCard hidden={settingsTab !== "email"} />

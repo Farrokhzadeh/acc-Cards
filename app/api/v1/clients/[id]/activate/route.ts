@@ -3,11 +3,11 @@ import { apiRoute, ApiError } from "@/server/http/api";
 import { requireAdmin, requireCsrf, requireRecentReauthentication, auditAdminEvent } from "@/server/auth/service";
 import { requireUuid } from "@/server/http/ids";
 import { getPool } from "@/server/database/pool";
-import { assignAccount } from "@/server/clients/assignments";
 import { ensureOnboardingCardRequest, getOnboardingCardLink, markOnboardingCardResult } from "@/server/clients/onboarding";
-import { issueApprovedCardRequest, reconcileCardIssuance } from "@/server/card-requests/issuance";
+import { assertCardCreationAvailable, issueApprovedCardRequest, reconcileCardIssuance } from "@/server/card-requests/issuance";
 import { randomToken } from "@/server/security/crypto";
 import { requestIp } from "@/server/auth/request-meta";
+import { deletePrivateSupportAttachment } from "@/server/support/storage";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -79,6 +79,14 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
           WHERE id=$1::uuid`,
         [userId],
       );
+      if (user.payment_receipt_object_key) {
+        await deletePrivateSupportAttachment(user.payment_receipt_object_key).catch((error) => {
+          console.warn("[payment] receipt cleanup failed", {
+            userId,
+            errorName: error instanceof Error ? error.name : "unknown",
+          });
+        });
+      }
       await enqueuePaymentNotify(userId, "denied");
       await auditAdminEvent({ adminId: session.principal.id, action: "payment.denied", entityType: "telegram_user", entityId: userId, request, requestId });
       return { ok: true as const, status: "denied" };
@@ -88,12 +96,13 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
       requireRecentReauthentication(session);
       if (current !== "accepted" && current !== "card_creating") throw new ApiError(409, "invalid_state", "Accept the payment before creating the first card.");
       if (!input.accountId) throw new ApiError(400, "validation_error", "Choose the Kripicard account that will own this customer's first card.");
-      await assignAccount({ clientId: userId, accountId: input.accountId, adminId: session.principal.id, requestId, ip: requestIp(request) });
+      await assertCardCreationAvailable();
       const onboarding = await ensureOnboardingCardRequest({
         userId,
         accountId: input.accountId,
         adminId: session.principal.id,
         requestId,
+        ip: requestIp(request),
       });
       if (onboarding.status === "issued" && onboarding.cardId) {
         await markOnboardingCardResult({ userId, cardId: onboarding.cardId, status: "card_ready" });

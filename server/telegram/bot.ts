@@ -122,14 +122,6 @@ async function setUserLang(userId: string, lang: string) {
   await getPool().query(`UPDATE telegram_users SET lang = $2, updated_at = now() WHERE id = $1::uuid`, [userId, lang]);
 }
 
-async function isPaymentDeclared(userId: string): Promise<boolean> {
-  const r = await getPool().query<{ payment_declared_at: Date | null }>(
-    `SELECT payment_declared_at FROM telegram_users WHERE id = $1::uuid`,
-    [userId],
-  );
-  return Boolean(r.rows[0]?.payment_declared_at);
-}
-
 async function getPaymentStatus(userId: string): Promise<string | null> {
   const r = await getPool().query<{ payment_status: string | null }>(
     `SELECT payment_status FROM telegram_users WHERE id = $1::uuid`,
@@ -138,19 +130,34 @@ async function getPaymentStatus(userId: string): Promise<string | null> {
   return r.rows[0]?.payment_status ?? null;
 }
 
-async function setPaymentDeclared(userId: string) {
-  await getPool().query(`UPDATE telegram_users SET payment_declared_at = now(), updated_at = now() WHERE id = $1::uuid`, [userId]);
+async function setPaymentAmountAwaitingReceipt(userId: string, cents: number) {
+  await withTransaction(async (db) => {
+    await db.query(
+      `UPDATE telegram_users
+          SET payment_amount_usd_cents=$2,payment_declared_at=now(),updated_at=now()
+        WHERE id=$1::uuid`,
+      [userId, cents],
+    );
+    await db.query(
+      `INSERT INTO telegram_bot_states(user_id,mode,payload,expires_at,updated_at)
+       VALUES($1::uuid,'payment_receipt','{}'::jsonb,now()+(60 * interval '1 minute'),now())
+       ON CONFLICT(user_id) DO UPDATE
+         SET mode='payment_receipt',payload='{}'::jsonb,expires_at=EXCLUDED.expires_at,updated_at=now()`,
+      [userId],
+    );
+  });
 }
 
-async function setPaymentReceipt(userId: string, objectKey: string, mime: string) {
-  await getPool().query(
-    `UPDATE telegram_users SET payment_receipt_object_key = $2, payment_receipt_mime = $3, payment_receipt_at = now(), updated_at = now() WHERE id = $1::uuid`,
-    [userId, objectKey, mime],
-  );
-}
-
-async function setPaymentAmount(userId: string, cents: number) {
-  await getPool().query(`UPDATE telegram_users SET payment_amount_usd_cents = $2, updated_at = now() WHERE id = $1::uuid`, [userId, cents]);
+async function setPaymentReceiptPending(userId: string, objectKey: string, mime: string) {
+  await withTransaction(async (db) => {
+    await db.query(
+      `UPDATE telegram_users
+          SET payment_receipt_object_key=$2,payment_receipt_mime=$3,payment_receipt_at=now(),payment_status='pending',updated_at=now()
+        WHERE id=$1::uuid`,
+      [userId, objectKey, mime],
+    );
+    await db.query(`DELETE FROM telegram_bot_states WHERE user_id=$1::uuid`, [userId]);
+  });
 }
 
 // Collects the paid amount, then moves on to receipt collection.
@@ -169,9 +176,7 @@ async function handlePaymentAmountText(client: TelegramClient, user: BotUser, ch
     await client.sendMessage({ chatId, text: pick(PAYMENT.notConfigured, user.lang) });
     return true;
   }
-  await setPaymentAmount(user.id, cents);
-  await setPaymentDeclared(user.id);
-  await setKycState(user.id, "payment_receipt", {}, 60);
+  await setPaymentAmountAwaitingReceipt(user.id, cents);
   const amount = (cents / 100).toFixed(2);
   const instructions = pick(PAYMENT.info, user.lang)
     .replace("{amount}", escapeHtml(amount))
@@ -208,9 +213,12 @@ async function handlePaymentReceiptMedia(client: TelegramClient, user: BotUser, 
       originalFilename: document?.file_name ?? `payment-receipt-${message.message_id}.jpg`,
       declaredMimeType: document?.mime_type ?? "image/jpeg",
     });
-    await setPaymentReceipt(user.id, stored.objectKey, stored.detectedMimeType);
-    await getPool().query(`UPDATE telegram_users SET payment_status = 'pending', updated_at = now() WHERE id = $1::uuid`, [user.id]);
-    await getPool().query(`DELETE FROM telegram_bot_states WHERE user_id=$1::uuid`, [user.id]);
+    try {
+      await setPaymentReceiptPending(user.id, stored.objectKey, stored.detectedMimeType);
+    } catch (error) {
+      await deletePrivateSupportAttachment(stored.objectKey).catch(() => {});
+      throw error;
+    }
     await sendWaitingScreen(client, user, chatId);
   } catch (error) {
     await client.sendMessage({ chatId, text: error instanceof ApiError ? escapeHtml(error.message) : pick(KYC.errDocGeneric, user.lang) });
@@ -280,14 +288,6 @@ function withChatLog(client: TelegramClient, user: { id: string }): TelegramClie
       return value;
     },
   }) as TelegramClient;
-}
-
-async function accountCount(userId: string) {
-  const result = await getPool().query<{ count: number }>(
-    `SELECT COUNT(*)::int AS count FROM telegram_account_assignments WHERE telegram_user_id = $1::uuid`,
-    [userId],
-  );
-  return result.rows[0]?.count ?? 0;
 }
 
 async function settingValue<T>(key: string, fallback: T): Promise<T> {
@@ -374,11 +374,6 @@ async function sendJoinGate(client: TelegramClient, user: BotUser, chatId: numbe
   const retry = await createCallbackToken({ userId: user.id, action: "membership.retry" });
   rows.push([{ text: "✅ I've joined — check again", callback_data: retry }]);
   await client.sendMessage({ chatId, text: "To use AccAbad, join the required channel(s) below and then check again.", replyMarkup: { inline_keyboard: rows } });
-}
-
-async function sendNoAssignment(client: TelegramClient, chatId: number) {
-  const text = await settingValue("contact_admin_text", "Please contact an administrator to activate your account.");
-  await client.sendMessage({ chatId, text: escapeHtml(String(text)) });
 }
 
 async function mainKeyboard(userId: string, lang: string | null): Promise<TelegramInlineKeyboard> {
@@ -1050,14 +1045,6 @@ async function getKycState(userId: string): Promise<{ mode: string; payload: Kyc
   );
   const row = result.rows[0];
   return row ? { mode: row.mode, payload: (row.payload ?? {}) as KycDraftPayload } : null;
-}
-
-async function shouldAutoPromptKyc(userId: string): Promise<boolean> {
-  const enabled = await settingValue("kyc_enabled", true);
-  const autoprompt = await settingValue("kyc_autoprompt", true);
-  if (!enabled || !autoprompt) return false;
-  const status = await getKycStatusForUser(userId);
-  return status === "none" || status === "rejected";
 }
 
 async function sendKycInvite(client: TelegramClient, user: BotUser, chatId: number) {

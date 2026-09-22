@@ -8,7 +8,6 @@ const bot = await readFile(new URL("../server/telegram/bot.ts", import.meta.url)
 const listRoute = await readFile(new URL("../app/api/v1/card-requests/route.ts", import.meta.url), "utf8");
 const transitionRoute = await readFile(new URL("../app/api/v1/card-requests/[id]/transition/route.ts", import.meta.url), "utf8");
 const outbox = await readFile(new URL("../server/telegram/outbox.ts", import.meta.url), "utf8");
-const adminApi = await readFile(new URL("../lib/admin-api.ts", import.meta.url), "utf8");
 const dashboard = await readFile(new URL("../app/dashboard-app.tsx", import.meta.url), "utf8");
 
 test("Phase 12 adds immutable-style card request timeline records and review permissions", () => {
@@ -56,11 +55,11 @@ test("admin approval rechecks assignment and platform capacity before selecting 
   assert.match(service, /capacitySnapshot\(db, row\.user_id, row\.id\)/);
 });
 
-test("card request admin routes require RBAC and CSRF for review writes", () => {
+test("legacy card-request mutation route is closed while read-only history remains available", () => {
   assert.match(listRoute, /card_requests\.read/);
-  assert.match(transitionRoute, /card_requests\.review/);
   assert.match(transitionRoute, /requireCsrf/);
-  assert.match(transitionRoute, /z\.enum\(\["approve", "reject"\]\)/);
+  assert.match(transitionRoute, /card_request_flow_disabled/);
+  assert.doesNotMatch(transitionRoute, /reviewCardRequest\(/);
 });
 
 test("legacy card-request review service remains provider-write free", () => {
@@ -75,12 +74,11 @@ test("review changes are audited and notify the Telegram user through the durabl
   assert.match(outbox, /card_request\.status_changed/);
 });
 
-test("legacy card-request APIs remain internal and are not exposed as the customer first-card workflow", () => {
-  assert.match(adminApi, /fetchCardRequests/);
-  assert.match(adminApi, /reviewCardRequest/);
+test("standalone card-request flow cannot be reached from the dashboard or Telegram", () => {
   assert.doesNotMatch(dashboard, /fetchCardRequests\(/);
   assert.doesNotMatch(dashboard, /await reviewCardRequest/);
   assert.doesNotMatch(dashboard, />Issue card/);
   assert.match(dashboard, /First-card onboarding/);
   assert.match(bot, /Additional card requests are not available/);
+  assert.match(transitionRoute, /card_request_flow_disabled/);
 });

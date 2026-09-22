@@ -1,38 +1,21 @@
 import { requireAdmin, requireCsrf } from "@/server/auth/service";
-import { assignAccount, unassignAccount } from "@/server/clients/assignments";
-import { apiRoute } from "@/server/http/api";
-import { requireUuid } from "@/server/http/ids";
-import { requestIp } from "@/server/auth/request-meta";
+import { apiRoute, ApiError } from "@/server/http/api";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
-export async function PUT(request: Request, context: { params: Promise<{ id: string; accountId: string }> }) {
-  return apiRoute(request, async ({ requestId }) => {
+async function rejectStandaloneAssignment(request: Request) {
+  return apiRoute(request, async () => {
     const session = await requireAdmin(request, "clients.assign");
     requireCsrf(request, session);
-    const params = await context.params;
-    return assignAccount({
-      clientId: requireUuid(params.id, "client id"),
-      accountId: requireUuid(params.accountId, "account id"),
-      adminId: session.principal.id,
-      requestId,
-      ip: requestIp(request),
-    });
+    throw new ApiError(410, "assignment_managed_by_onboarding", "Kripicard account assignment is managed by first-card onboarding and cannot be changed independently.");
   });
 }
 
-export async function DELETE(request: Request, context: { params: Promise<{ id: string; accountId: string }> }) {
-  return apiRoute(request, async ({ requestId }) => {
-    const session = await requireAdmin(request, "clients.assign");
-    requireCsrf(request, session);
-    const params = await context.params;
-    return unassignAccount({
-      clientId: requireUuid(params.id, "client id"),
-      accountId: requireUuid(params.accountId, "account id"),
-      adminId: session.principal.id,
-      requestId,
-      ip: requestIp(request),
-    });
-  });
+export async function PUT(request: Request) {
+  return rejectStandaloneAssignment(request);
+}
+
+export async function DELETE(request: Request) {
+  return rejectStandaloneAssignment(request);
 }

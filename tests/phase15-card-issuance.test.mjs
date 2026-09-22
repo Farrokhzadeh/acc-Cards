@@ -12,6 +12,9 @@ const reconcileRoute = await readFile(new URL("../app/api/v1/card-requests/[id]/
 const env = await readFile(new URL("../config/env-schema.mjs", import.meta.url), "utf8");
 const dashboard = await readFile(new URL("../app/dashboard-app.tsx", import.meta.url), "utf8");
 const activateRoute = await readFile(new URL("../app/api/v1/clients/[id]/activate/route.ts", import.meta.url), "utf8");
+const onboarding = await readFile(new URL("../server/clients/onboarding.ts", import.meta.url), "utf8");
+const paymentSettingsRoute = await readFile(new URL("../app/api/v1/settings/payment-card/route.ts", import.meta.url), "utf8");
+const cardPolicyRoute = await readFile(new URL("../app/api/v1/settings/card-policy/route.ts", import.meta.url), "utf8");
 const readiness = await readFile(new URL("../server/providers/kripicard/readiness.ts", import.meta.url), "utf8");
 const contract = await readFile(new URL("../docs/KRIPICARD-PROVIDER-CONTRACT.md", import.meta.url), "utf8");
 const success = JSON.parse(await readFile(new URL("./fixtures/kripicard/create-card.json", import.meta.url), "utf8"));
@@ -85,12 +88,14 @@ test("ambiguous provider outcomes are reconciled with cards/list and never cause
   assert.match(issuance, /persistence_error_after_provider_write/);
 });
 
-test("issuance routes require RBAC, CSRF and recent reauthentication for the purchase", () => {
-  assert.match(issueRoute, /card_requests\.issue/);
+test("standalone issuance routes are closed and onboarding keeps RBAC, CSRF, and recent reauthentication", () => {
+  assert.match(issueRoute, /card_request_flow_disabled/);
+  assert.match(reconcileRoute, /card_request_flow_disabled/);
   assert.match(issueRoute, /requireCsrf/);
-  assert.match(issueRoute, /requireRecentReauthentication/);
-  assert.match(reconcileRoute, /card_requests\.issue/);
   assert.match(reconcileRoute, /requireCsrf/);
+  assert.match(activateRoute, /requireAdmin\(request, "clients\.assign"\)/);
+  assert.match(activateRoute, /requireCsrf\(request, session\)/);
+  assert.match(activateRoute, /requireRecentReauthentication\(session\)/);
 });
 
 test("deployment has a dedicated card-creation kill switch", () => {
@@ -133,4 +138,50 @@ test("provider contract states the one-shot purchase rule", () => {
   assert.match(contract, /HTTP 202/i);
   assert.match(contract, /REFUND_PENDING/);
   assert.match(contract, /one provider attempt/i);
+});
+
+
+test("first-card configuration validates BINs early and does not retroactively apply a newer minimum", () => {
+  assert.match(paymentSettingsRoute, /unsupported_onboarding_bin/);
+  assert.match(paymentSettingsRoute, /getCardRequestBins/);
+  assert.match(onboarding, /payment_amount_usd_cents/);
+  assert.doesNotMatch(onboarding, /amount_below_minimum/);
+  assert.doesNotMatch(onboarding, /minCents/);
+});
+
+
+test("onboarding checks live card-creation gates before persisting assignment/request state", () => {
+  const preflight = activateRoute.indexOf("await assertCardCreationAvailable()");
+  const ensure = activateRoute.indexOf("ensureOnboardingCardRequest({", preflight);
+  assert.ok(preflight >= 0 && ensure > preflight);
+  assert.match(issuance, /export async function assertCardCreationAvailable/);
+  assert.match(onboarding, /assignAccountInTransaction/);
+});
+
+test("legacy card-policy mutation is closed so provider BIN catalogue cannot drift through hidden UI", () => {
+  assert.match(cardPolicyRoute, /card_policy_mutation_disabled/);
+  assert.match(cardPolicyRoute, /requireCsrf/);
+});
+
+
+test("onboarding can switch accounts only after safely retryable issuance failures", () => {
+  assert.match(onboarding, /\["approved", "issue_failed"\]\.includes\(row\.status\)/);
+  assert.match(onboarding, /unassignAccountInTransaction/);
+  assert.match(onboarding, /assignAccountInTransaction/);
+  assert.match(onboarding, /onboarding_account_locked/);
+  assert.match(onboarding, /onboarding\.issuing_account\.changed/);
+  assert.match(onboarding, /email=\$3/);
+  assert.match(onboarding, /account\.rows\[0\]\.email/);
+  assert.match(onboarding, /encrypted_api_key\.startsWith\("v1\."\)/);
+  assert.doesNotMatch(onboarding, /\["approved", "issue_failed", "needs_reconciliation"/);
+});
+
+
+test("corrupted provider API keys fail before issuance state is committed", () => {
+  const decrypt = issuance.indexOf("apiKey = decryptSecret(account.encrypted_api_key)");
+  const operation = issuance.indexOf("INSERT INTO card_operations", decrypt);
+  const issuing = issuance.indexOf("SET status='issuing'", decrypt);
+  assert.ok(decrypt >= 0 && operation > decrypt && issuing > decrypt);
+  assert.match(issuance, /throw new ApiError\(409, "secret_unavailable"/);
+  assert.match(issuance, /new KripicardClient\(\{ apiKey \}\)/);
 });

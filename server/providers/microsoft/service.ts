@@ -391,7 +391,7 @@ export async function syncOutlookInbox(accountId: string, session: AuthSession, 
 
 export async function syncConnectedOutlookInboxesSystem(requestId: string) {
   if (!microsoftConfigured()) {
-    throw new ApiError(503, "microsoft_not_configured", "Microsoft Outlook OAuth is not configured on this deployment.");
+    return { skipped: true, reason: "microsoft_not_configured", attempted: 0, succeeded: 0, failed: 0, failedAccountIds: [] };
   }
 
   const run = await getPool().query<{ id: string }>(

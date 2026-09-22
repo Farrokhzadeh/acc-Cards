@@ -366,7 +366,7 @@ export async function clearTelegramBotToken() {
 }
 
 export async function fetchPaymentCard() {
-  return apiJson<{ cardNumber: string; cardHolder: string; minLoadUsd: number; onboardingBin: string }>("/api/v1/settings/payment-card", { method: "GET" });
+  return apiJson<{ cardNumber: string; cardHolder: string; minLoadUsd: number; onboardingBin: string; allowedBins: Array<{ bin: string; requiresDob: boolean }> }>("/api/v1/settings/payment-card", { method: "GET" });
 }
 
 export async function updatePaymentCard(input: { cardNumber: string; cardHolder: string; minLoadUsd?: number; onboardingBin?: string }) {
@@ -513,92 +513,6 @@ export async function fetchClientAssignableAccounts(clientId: string, search = "
   return apiJson<{ items: AssignableClientAccount[] }>(`/api/v1/clients/${encodeURIComponent(clientId)}/accounts?${query.toString()}`, { method: "GET" });
 }
 
-export async function assignClientAccount(clientId: string, accountId: string) {
-  return apiJson<{ accountIds: string[]; changed: boolean }>(`/api/v1/clients/${encodeURIComponent(clientId)}/accounts/${encodeURIComponent(accountId)}`, {
-    method: "PUT",
-    body: "{}",
-  });
-}
-
-export async function unassignClientAccount(clientId: string, accountId: string) {
-  return apiJson<{ accountIds: string[]; changed: boolean }>(`/api/v1/clients/${encodeURIComponent(clientId)}/accounts/${encodeURIComponent(accountId)}`, {
-    method: "DELETE",
-    body: "{}",
-  });
-}
-
-export async function replaceClientAccounts(clientId: string, accountIds: string[]) {
-  return apiJson<{ accountIds: string[]; changed: boolean; assignedCount: number; unassignedCount: number }>(`/api/v1/clients/${encodeURIComponent(clientId)}/accounts`, {
-    method: "PUT",
-    body: JSON.stringify({ accountIds }),
-  });
-}
-
-export async function unassignAllClientAccounts(clientId: string) {
-  return apiJson<{ accountIds: string[]; changed: boolean; removedCount: number }>(`/api/v1/clients/${encodeURIComponent(clientId)}/accounts`, {
-    method: "DELETE",
-    body: "{}",
-  });
-}
-
-export type ApiCardRequest = {
-  id: string;
-  reference: string;
-  userId: string;
-  preferredAccountId: string | null;
-  selectedAccountId: string | null;
-  bin: string;
-  initialAmountUsdCents: string;
-  nameOnCard: string;
-  email: string;
-  dateOfBirth: string | null;
-  status: "pending_review" | "approved" | "correction_needed" | "issuing" | "issue_failed" | "needs_reconciliation" | "issued" | "rejected" | "cancelled";
-  adminNote: string | null;
-  providerCardId: string | null;
-  reviewedBy: string | null;
-  createdAt: string;
-  updatedAt: string;
-  issuanceStartedAt?: string | null;
-  issuedAt?: string | null;
-  lastIssueOperationId?: string | null;
-  client: { id: string; displayName: string | null; username: string | null; telegramUserId: string };
-  eligibleAccounts: Array<{ id: string; label: string; loginEmail: string; status: string }>;
-};
-
-export async function fetchCardRequests(input: { search?: string; status?: string; limit?: number; cursor?: string } = {}) {
-  const query = new URLSearchParams({ limit: String(input.limit ?? 100) });
-  if (input.search?.trim()) query.set("search", input.search.trim());
-  if (input.status?.trim()) query.set("status", input.status.trim());
-  if (input.cursor) query.set("cursor", input.cursor);
-  return apiJson<{ items: ApiCardRequest[]; nextCursor: string | null }>(`/api/v1/card-requests?${query.toString()}`, { method: "GET" });
-}
-
-export async function reviewCardRequest(id: string, input: { action: "approve" | "reject"; selectedAccountId?: string | null; note?: string | null }) {
-  return apiJson<ApiCardRequest>(`/api/v1/card-requests/${encodeURIComponent(id)}/transition`, {
-    method: "POST",
-    body: JSON.stringify(input),
-  });
-}
-
-export type CardIssuanceResult = {
-  requestId: string;
-  operationId: string;
-  status: "issued" | "needs_reconciliation";
-  cardId?: string;
-  providerCardId?: string;
-  reconciled: boolean;
-  needsReconciliation: boolean;
-  providerOutcome?: string;
-};
-
-export async function issueCardRequest(id: string) {
-  return apiJson<CardIssuanceResult>(`/api/v1/card-requests/${encodeURIComponent(id)}/issue`, { method: "POST", body: "{}" });
-}
-
-export async function reconcileCardRequest(id: string) {
-  return apiJson<CardIssuanceResult>(`/api/v1/card-requests/${encodeURIComponent(id)}/reconcile`, { method: "POST", body: "{}" });
-}
-
 export type ApiFundingRequest = {
   id: string;
   reference: string;
@@ -705,20 +619,6 @@ export async function fetchFundingSettings() {
 
 export async function updateFundingSettings(input: { serviceFeeBasisPoints?: number; minimumUsdCents?: number; rialPerUsd?: number; rateValidMinutes?: number }) {
   return apiJson<FundingSettings>("/api/v1/funding-settings", { method: "PATCH", body: JSON.stringify(input) });
-}
-
-export type CardPolicy = {
-  platformCardLimit: number;
-  minimumCardCreationUsdCents: number;
-  bins: Array<{ bin: string; requiresDob: boolean }>;
-};
-
-export async function fetchCardPolicy() {
-  return apiJson<CardPolicy>("/api/v1/settings/card-policy", { method: "GET" });
-}
-
-export async function updateCardPolicy(input: Partial<CardPolicy>) {
-  return apiJson<CardPolicy>("/api/v1/settings/card-policy", { method: "PATCH", body: JSON.stringify(input) });
 }
 
 export type ProviderReadinessCheck = {
