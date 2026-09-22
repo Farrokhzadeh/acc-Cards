@@ -3,11 +3,9 @@ import { apiRoute, ApiError } from "@/server/http/api";
 import { requireAdmin, requireCsrf, requireRecentReauthentication, auditAdminEvent } from "@/server/auth/service";
 import { requireUuid } from "@/server/http/ids";
 import { getPool } from "@/server/database/pool";
-import { assignAccount } from "@/server/clients/assignments";
 import { ensureOnboardingCardRequest, getOnboardingCardLink, markOnboardingCardResult } from "@/server/clients/onboarding";
-import { issueApprovedCardRequest, reconcileCardIssuance } from "@/server/card-requests/issuance";
+import { assertCardCreationAvailable, issueApprovedCardRequest, reconcileCardIssuance } from "@/server/card-requests/issuance";
 import { randomToken } from "@/server/security/crypto";
-import { requestIp } from "@/server/auth/request-meta";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -88,12 +86,13 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
       requireRecentReauthentication(session);
       if (current !== "accepted" && current !== "card_creating") throw new ApiError(409, "invalid_state", "Accept the payment before creating the first card.");
       if (!input.accountId) throw new ApiError(400, "validation_error", "Choose the Kripicard account that will own this customer's first card.");
-      await assignAccount({ clientId: userId, accountId: input.accountId, adminId: session.principal.id, requestId, ip: requestIp(request) });
+      await assertCardCreationAvailable();
       const onboarding = await ensureOnboardingCardRequest({
         userId,
         accountId: input.accountId,
         adminId: session.principal.id,
         requestId,
+        ip: request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || request.headers.get("x-real-ip"),
       });
       if (onboarding.status === "issued" && onboarding.cardId) {
         await markOnboardingCardResult({ userId, cardId: onboarding.cardId, status: "card_ready" });
