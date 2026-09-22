@@ -75,7 +75,7 @@ async function getGmailConnection(accountId: string) {
 
 export async function startGmailConnection(accountId: string, session: AuthSession, request: Request, requestId: string) {
   if (!googleConfigured()) {
-    throw new ApiError(503, "google_not_configured", "Google Gmail OAuth is not configured on this deployment.");
+    return { skipped: true, reason: "google_not_configured", succeeded: 0, failed: 0, failedAccountIds: [] };
   }
   await getGmailConnection(accountId);
 
