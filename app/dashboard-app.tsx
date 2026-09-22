@@ -2575,28 +2575,29 @@ function AccountsView({ accounts, clients, cards, accountEmails, onAdd, onOpen, 
   );
 }
 
-function ClientsView({ clients, cards, maxCardsPerClient, onOpen, onToggleBan, accountName, kycStatusByUser, onNotify }: { clients: Client[]; cards: ClientCard[]; maxCardsPerClient: number; onOpen: (id: string) => void; onToggleBan: (id: string) => void; accountName: (id: string | null) => string; kycStatusByUser: Record<string, "approved" | "pending" | "rejected">; onNotify: (id: string) => void | Promise<void> }) {
+function ClientsView({ clients, cards, onOpen, onToggleBan, accountName, kycStatusByUser, onNotify }: { clients: Client[]; cards: ClientCard[]; onOpen: (id: string) => void; onToggleBan: (id: string) => void; accountName: (id: string | null) => string; kycStatusByUser: Record<string, "approved" | "pending" | "rejected">; onNotify: (id: string) => void | Promise<void> }) {
   const kycBadge = (telegramId: string) => {
-    const s = kycStatusByUser[telegramId];
-    if (!s) return <Badge variant="outline" className="border-slate-200 bg-slate-50 text-slate-600">KYC —</Badge>;
-    const cls = s === "approved" ? "border-emerald-200 bg-emerald-50 text-emerald-700" : s === "pending" ? "border-amber-200 bg-amber-50 text-amber-800" : "border-red-200 bg-red-50 text-red-700";
-    return <Badge variant="outline" className={cls}>KYC {s}</Badge>;
+    const status = kycStatusByUser[telegramId];
+    if (!status) return <Badge variant="outline" className="border-slate-200 bg-slate-50 text-slate-600">KYC —</Badge>;
+    const cls = status === "approved" ? "border-emerald-200 bg-emerald-50 text-emerald-700" : status === "pending" ? "border-amber-200 bg-amber-50 text-amber-800" : "border-red-200 bg-red-50 text-red-700";
+    return <Badge variant="outline" className={cls}>KYC {status}</Badge>;
   };
   const paging = usePaginatedItems(clients);
   return (
     <>
-      <PageIntro title="Clients" description="Telegram access, card limits, and multiple exclusive Kripicard account connections." />
+      <PageIntro title="Clients" description="Telegram onboarding, KYC, assigned Kripicard accounts, cards, and access." />
       <Card className="data-table overflow-hidden surface-card rounded-[24px]">
         <div className="overflow-x-auto">
           <Table>
-            <TableHeader><TableRow className="bg-[#faf9fc]"><TableHead className="pl-6">Client</TableHead><TableHead>Connected accounts</TableHead><TableHead>Cards / limit</TableHead><TableHead>Total funded</TableHead><TableHead>Bot access</TableHead><TableHead className="w-28" /></TableRow></TableHeader>
+            <TableHeader><TableRow className="bg-[#faf9fc]"><TableHead className="pl-6">Client</TableHead><TableHead>Connected account</TableHead><TableHead>Cards</TableHead><TableHead>Total funded</TableHead><TableHead>Bot access</TableHead><TableHead className="w-28" /></TableRow></TableHeader>
             <TableBody>
               {paging.pageItems.map((client) => {
                 const accessibleCards = cards.filter((card) => client.accountIds.includes(card.accountId));
                 return <TableRow key={client.id}>
                   <TableCell className="pl-6"><div className="flex items-center gap-3"><Avatar className="size-10"><AvatarFallback className="bg-[#eeecff] text-xs font-bold text-[#5b50d6]">{initials(client.name)}</AvatarFallback></Avatar><div><button onClick={() => onOpen(client.id)} className="font-semibold text-[#353146] hover:text-[#6157e7]">{client.name}</button> <span className="align-middle">{kycBadge(client.telegramId)}</span><p className="mt-0.5 text-xs text-[#9692a3]">{client.username} · {client.telegramId}</p></div></div></TableCell>
-                  <TableCell>{client.accountIds.length ? <div className="flex max-w-[280px] flex-wrap gap-1.5">{client.accountIds.map((id) => <Badge key={id} variant="outline" className="rounded-full border-[#d8d3ff] bg-[#f2f0ff] text-[#5549ca]">{accountName(id)}</Badge>)}</div> : <Badge variant="outline" className="border-amber-200 bg-amber-50 text-amber-800">Contact admin</Badge>}</TableCell>
-                  <TableCell><span className="font-semibold">{accessibleCards.length}</span><span className="mt-1 block text-xs text-[#9692a3]">{Math.max(maxCardsPerClient - accessibleCards.length, 0)} remaining</span></TableCell><TableCell className="font-medium">{formatUsd(client.totalFunded)}</TableCell>
+                  <TableCell>{client.accountIds.length ? <div className="flex max-w-[280px] flex-wrap gap-1.5">{client.accountIds.map((id) => <Badge key={id} variant="outline" className="rounded-full border-[#d8d3ff] bg-[#f2f0ff] text-[#5549ca]">{accountName(id)}</Badge>)}</div> : <Badge variant="outline" className="border-amber-200 bg-amber-50 text-amber-800">Not assigned yet</Badge>}</TableCell>
+                  <TableCell><span className="font-semibold">{accessibleCards.length}</span></TableCell>
+                  <TableCell className="font-medium">{formatUsd(client.totalFunded)}</TableCell>
                   <TableCell><Badge variant="outline" className={client.banned ? "border-red-200 bg-red-50 text-red-700" : "border-emerald-200 bg-emerald-50 text-emerald-700"}>{client.banned ? "Banned" : "Active"}</Badge></TableCell>
                   <TableCell><div className="flex items-center justify-end gap-3"><Button variant="ghost" size="sm" onClick={() => void onNotify(client.id)}><Bell className="size-4" /><span className="sr-only">Notify {client.name}</span></Button><Button variant="ghost" size="sm" onClick={() => onOpen(client.id)}>View</Button><Switch checked={!client.banned} onCheckedChange={() => onToggleBan(client.id)} aria-label={`${client.banned ? "Unban" : "Ban"} ${client.name}`} /></div></TableCell>
                 </TableRow>;
@@ -2606,117 +2607,33 @@ function ClientsView({ clients, cards, maxCardsPerClient, onOpen, onToggleBan, a
         </div>
         <ListPagination page={paging.page} pageSize={paging.pageSize} totalItems={paging.totalItems} totalPages={paging.totalPages} onPageChange={paging.setPage} />
       </Card>
-      <div className="mt-4 flex items-center gap-2 rounded-[16px] border border-[#e8e5f6] bg-[#f5f3ff] px-4 py-3 text-sm text-[#6a6488]"><ShieldCheck className="size-4 text-[#6157e7]" />The card cap is your platform policy and applies across all accounts connected to a client. Registration verification is a separate workflow and is never sent to Kripicard.</div>
+      <div className="mt-4 flex items-center gap-2 rounded-[16px] border border-[#e8e5f6] bg-[#f5f3ff] px-4 py-3 text-sm text-[#6a6488]"><ShieldCheck className="size-4 text-[#6157e7]" />A customer&apos;s first card is created only through the KYC → payment → receipt approval → account assignment → card creation onboarding flow.</div>
     </>
   );
 }
 
-function RequestsView({ fundingRequests, cardRequests, clients, cards, clientName, maxCardsPerClient, search, onOpenRequest, onCardRequestAction, onCardRequestIssue, kycPendingCount, transactions, issues, onReconcileIssue }: { fundingRequests: FundingRequest[]; cardRequests: CardRequest[]; clients: Client[]; cards: ClientCard[]; clientName: (id: string | null) => string; maxCardsPerClient: number; search: string; onOpenRequest: (id: string) => void; onCardRequestAction: (id: string, action: "approve" | "reject", selectedAccountId?: string | null) => void | Promise<void>; onCardRequestIssue: (id: string, mode: "issue" | "reconcile") => void | Promise<void>; kycPendingCount: number; transactions: Transaction[]; issues: TransactionNotificationIssue[]; onReconcileIssue: (id: string, action: "acknowledge" | "retry") => void | Promise<void> }) {
+function RequestsView({ fundingRequests, clientName, search, onOpenRequest, kycPendingCount, transactions, issues, onReconcileIssue }: { fundingRequests: FundingRequest[]; clientName: (id: string | null) => string; search: string; onOpenRequest: (id: string) => void; kycPendingCount: number; transactions: Transaction[]; issues: TransactionNotificationIssue[]; onReconcileIssue: (id: string, action: "acknowledge" | "retry") => void | Promise<void> }) {
   const needle = search.trim().toLowerCase();
-  const [selectedAccounts, setSelectedAccounts] = useState<Record<string, string>>({});
-  const [pendingRequestId, setPendingRequestId] = useState<string | null>(null);
   const matchingFundingRequests = fundingRequests.filter((request) => !needle || `${request.id} ${clientName(request.clientId)} ${request.cardLast4} ${request.receipt} ${request.receiptType} ${fundingMeta[request.status].label}`.toLowerCase().includes(needle));
-  const matchingCardRequests = cardRequests.filter((request) => !needle || `${request.reference} ${clientName(request.clientId)} ${request.nameOnCard} ${request.email} ${request.bin} ${request.status}`.toLowerCase().includes(needle));
   const fundingPaging = usePaginatedItems(matchingFundingRequests);
-  const cardPaging = usePaginatedItems(matchingCardRequests);
-
-  async function review(request: CardRequest, action: "approve" | "reject") {
-    const selectedAccountId = request.selectedAccountId || selectedAccounts[request.id] || "";
-    if (action === "approve" && !selectedAccountId) {
-      toast.error("Select one of the client's currently assigned Kripicard accounts first.");
-      return;
-    }
-    setPendingRequestId(request.id);
-    try {
-      await onCardRequestAction(request.id, action, selectedAccountId || null);
-    } finally {
-      setPendingRequestId(null);
-    }
-  }
-
-  async function issue(request: CardRequest, mode: "issue" | "reconcile") {
-    setPendingRequestId(request.id);
-    try {
-      await onCardRequestIssue(request.id, mode);
-    } finally {
-      setPendingRequestId(null);
-    }
-  }
 
   return (
     <>
-      <PageIntro title="Request center" description="Review requests, issue approved cards, and execute accepted funding through guarded one-shot Kripicard workflows." />
-      <Tabs defaultValue="cards">
+      <PageIntro title="Request center" description="Review existing-card add-funds requests, KYC, and transaction notification issues. First-card onboarding is handled from the client record." />
+      <Tabs defaultValue="funding">
         <TabsList className="mb-4 h-11 rounded-[14px] border border-[#e7e5ef] bg-white p-1 shadow-[0_4px_18px_rgba(26,24,48,.04)]">
-          <TabsTrigger className="rounded-[10px] px-4 data-[state=active]:bg-[#eeecff] data-[state=active]:text-[#5146ca]" value="cards">New cards <Badge variant="outline" className="ml-1.5 rounded-full">{cardRequests.filter((item) => item.status === "New").length}</Badge></TabsTrigger>
           <TabsTrigger className="rounded-[10px] px-4 data-[state=active]:bg-[#eeecff] data-[state=active]:text-[#5146ca]" value="funding">Funding <Badge className="ml-1.5 rounded-full bg-[#6157e7] text-white">{fundingRequests.filter((item) => !["completed", "rejected", "cancelled"].includes(item.status)).length}</Badge></TabsTrigger>
           <TabsTrigger className="rounded-[10px] px-4 data-[state=active]:bg-[#eeecff] data-[state=active]:text-[#5146ca]" value="kyc">KYC <Badge className="ml-1.5 rounded-full bg-[#6157e7] text-white">{kycPendingCount}</Badge></TabsTrigger>
           <TabsTrigger className="rounded-[10px] px-4 data-[state=active]:bg-[#eeecff] data-[state=active]:text-[#5146ca]" value="transactions">Transactions <Badge variant="outline" className="ml-1.5 rounded-full">{transactions.length}</Badge></TabsTrigger>
         </TabsList>
-        <TabsContent value="cards">
-          <Card className="data-table overflow-hidden surface-card rounded-[24px]">
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader><TableRow className="bg-[#faf9fc]"><TableHead className="pl-6">Request</TableHead><TableHead>Client</TableHead><TableHead>Cardholder</TableHead><TableHead>BIN</TableHead><TableHead>Initial funds</TableHead><TableHead>Issuing account</TableHead><TableHead>Status</TableHead><TableHead /></TableRow></TableHeader>
-                <TableBody>
-                  {cardPaging.pageItems.map((request) => {
-                    const client = clients.find((item) => item.id === request.clientId);
-                    const clientCardCount = client ? cards.filter((card) => client.accountIds.includes(card.accountId)).length : 0;
-                    const limitReached = clientCardCount >= maxCardsPerClient;
-                    const selectedAccountId = request.selectedAccountId || selectedAccounts[request.id] || "";
-                    return (
-                      <TableRow key={request.id}>
-                        <TableCell className="pl-6 font-semibold text-[#353146]">{request.reference}<span className="mt-0.5 block text-xs font-normal text-[#9692a3]">{request.submitted}</span></TableCell>
-                        <TableCell>{clientName(request.clientId)}{!request.eligibleAccounts.length && <span className="block text-xs text-[#b66e10]">Needs assigned account</span>}{limitReached && <span className="block text-xs text-[#b53847]">Current cards at platform limit</span>}</TableCell>
-                        <TableCell><span className="font-medium">{request.nameOnCard}</span><span className="block max-w-[190px] truncate text-xs text-[#9692a3]">{request.email}{request.dateOfBirth ? ` · DOB ${request.dateOfBirth}` : ""}</span></TableCell>
-                        <TableCell className="font-mono text-sm">{request.bin}</TableCell>
-                        <TableCell className="font-semibold">{formatUsd(request.initialAmount)}</TableCell>
-                        <TableCell className="min-w-[190px]">
-                          {request.status === "New" ? (
-                            <Select value={selectedAccountId} onValueChange={(value) => setSelectedAccounts((current) => ({ ...current, [request.id]: value }))}>
-                              <SelectTrigger className="h-9 rounded-xl"><SelectValue placeholder="Select account" /></SelectTrigger>
-                              <SelectContent>{request.eligibleAccounts.map((account) => <SelectItem key={account.id} value={account.id}>{account.label}<span className="ml-1 text-xs text-muted-foreground">· {account.loginEmail}</span></SelectItem>)}</SelectContent>
-                            </Select>
-                          ) : request.selectedAccountId ? (
-                            <span className="text-sm">{request.eligibleAccounts.find((item) => item.id === request.selectedAccountId)?.label ?? "Selected account"}</span>
-                          ) : <span className="text-sm text-muted-foreground">—</span>}
-                        </TableCell>
-                        <TableCell><Badge variant="outline" className={`${request.status === "New" ? "border-[#f4d9aa] bg-[#fff5e4] text-[#a4600c]" : request.status === "Issued" ? "border-[#bfe9d9] bg-[#eaf8f2] text-[#167957]" : request.status === "Rejected" || request.status === "Cancelled" ? "border-[#f1c7cc] bg-[#fff0f2] text-[#b53847]" : "border-[#d9d5ff] bg-[#f0eeff] text-[#5449c8]"} rounded-full`}>{request.status}</Badge>{request.adminNote && <span className="mt-1 block max-w-[180px] truncate text-xs text-muted-foreground">{request.adminNote}</span>}</TableCell>
-                        <TableCell>
-                          <div className="flex justify-end gap-1">
-                            {request.status === "New" && <>
-                              <Button size="sm" variant="outline" disabled={pendingRequestId === request.id} className="rounded-xl" onClick={() => void review(request, "reject")}>Reject</Button>
-                              <Button size="sm" disabled={pendingRequestId === request.id || limitReached || !request.eligibleAccounts.length || !selectedAccountId} className="rounded-xl bg-[#6157e7] text-white hover:bg-[#554bcf]" onClick={() => void review(request, "approve")}>Approve</Button>
-                            </>}
-                            {request.status === "Approved" && <Button size="sm" disabled={pendingRequestId === request.id} className="rounded-xl bg-[#6157e7] text-white hover:bg-[#554bcf]" onClick={() => void issue(request, "issue")}>Issue card</Button>}
-                            {request.status === "Issue failed" && <Button size="sm" variant="outline" disabled={pendingRequestId === request.id} className="rounded-xl" onClick={() => void issue(request, "issue")}>Retry clean failure</Button>}
-                            {request.status === "Needs reconciliation" && <Button size="sm" variant="outline" disabled={pendingRequestId === request.id} className="rounded-xl border-amber-300 bg-amber-50 text-amber-900" onClick={() => void issue(request, "reconcile")}>Reconcile</Button>}
-                            {request.status === "Issuing" && <Badge variant="outline" className="rounded-full border-indigo-200 bg-indigo-50 text-indigo-800">Provider operation in progress</Badge>}
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    );
-                  })}
-                  {!cardPaging.pageItems.length && <TableRow><TableCell colSpan={8} className="py-10 text-center text-sm text-muted-foreground">No card requests match the current search.</TableCell></TableRow>}
-                </TableBody>
-              </Table>
-            </div>
-            <ListPagination page={cardPaging.page} pageSize={cardPaging.pageSize} totalItems={cardPaging.totalItems} totalPages={cardPaging.totalPages} onPageChange={cardPaging.setPage} />
-          </Card>
-          <Alert className="mt-4 rounded-2xl border-indigo-200 bg-indigo-50/60"><ShieldCheck className="text-indigo-700" /><AlertTitle className="text-indigo-950">Transactional platform limit</AlertTitle><AlertDescription className="text-indigo-900/70">Submission is enforced by PostgreSQL using current cards plus open requests across all assigned accounts. Approval rechecks the limit and requires an account that is still assigned to the client. Approval alone does not call Kripicard. The explicit Issue card action requires recent admin reauthentication and deployment kill switches, calls createcard once, and never auto-retries an uncertain provider outcome.</AlertDescription></Alert>
-        </TabsContent>
         <TabsContent value="funding">
           <Card className="data-table overflow-hidden surface-card rounded-[24px]">
             <div className="overflow-x-auto"><Table><TableHeader><TableRow className="bg-[#faf9fc]"><TableHead className="pl-6">Request</TableHead><TableHead>Client</TableHead><TableHead>Card</TableHead><TableHead>Receipt</TableHead><TableHead>Client pays</TableHead><TableHead>Status</TableHead><TableHead /></TableRow></TableHeader><TableBody>{fundingPaging.pageItems.map((request) => <TableRow key={request.id} className="cursor-pointer" onClick={() => onOpenRequest(request.id)}><TableCell className="pl-6 font-semibold text-[#353146]">{request.id}<span className="mt-0.5 block text-xs font-normal text-[#9692a3]">{request.submitted}</span></TableCell><TableCell>{clientName(request.clientId)}</TableCell><TableCell><span className="font-semibold">{formatUsd(request.amount)}</span><span className="block text-xs text-[#9d99aa]">to •{request.cardLast4}</span></TableCell><TableCell><span className="inline-flex items-center gap-2 text-sm"><ReceiptIcon type={request.receiptType} />{request.receiptType.toUpperCase()}</span></TableCell><TableCell className="font-medium">{formatRial(request.rialTotal)}</TableCell><TableCell><StatusBadge status={request.status} /></TableCell><TableCell><span className="grid size-8 place-items-center rounded-lg bg-[#f4f2fa]"><ChevronRight className="size-4 text-[#777287]" /></span></TableCell></TableRow>)}</TableBody></Table></div>
             <ListPagination page={fundingPaging.page} pageSize={fundingPaging.pageSize} totalItems={fundingPaging.totalItems} totalPages={fundingPaging.totalPages} onPageChange={fundingPaging.setPage} />
           </Card>
         </TabsContent>
-        <TabsContent value="kyc">
-          <KycView />
-        </TabsContent>
-        <TabsContent value="transactions">
-          <TransactionsView transactions={transactions} clientName={clientName} search={search} issues={issues} onReconcileIssue={onReconcileIssue} />
-        </TabsContent>
+        <TabsContent value="kyc"><KycView /></TabsContent>
+        <TabsContent value="transactions"><TransactionsView transactions={transactions} clientName={clientName} search={search} issues={issues} onReconcileIssue={onReconcileIssue} /></TabsContent>
       </Tabs>
     </>
   );
@@ -3058,32 +2975,36 @@ function RoutingStep({ icon: Icon, title, detail }: { icon: typeof Mail; title: 
   return <div className="flex gap-3"><span className="grid size-9 shrink-0 place-items-center rounded-xl bg-slate-100 text-slate-600"><Icon className="size-4" /></span><div><p className="text-sm font-medium">{title}</p><p className="mt-0.5 text-sm leading-5 text-slate-500">{detail}</p></div></div>;
 }
 
-function OverviewV2({ clients, kycByUser, paymentByUser, paymentStatusByUser, cardRequests, fundingRequests, telegramStatus, onViewChange, onOpenClient }: { clients: Client[]; kycByUser: Record<string, "approved" | "pending" | "rejected">; paymentByUser: Record<string, boolean>; paymentStatusByUser: Record<string, string | null>; cardRequests: CardRequest[]; fundingRequests: FundingRequest[]; telegramStatus: TelegramBotStatus | null; onViewChange: (v: View) => void; onOpenClient: (id: string) => void }) {
-  const kycPending = clients.filter((c) => kycByUser[c.telegramId] === "pending").length;
-  const awaiting = clients.filter((c) => ["pending", "accepted"].includes(paymentStatusByUser[c.id] ?? "")).length;
-  const cardsNew = cardRequests.filter((r) => r.status === "New").length;
-  const fundingOpen = fundingRequests.filter((r) => !["completed", "rejected", "cancelled"].includes(r.status)).length;
-  const attention = kycPending + awaiting + cardsNew + fundingOpen;
-  const active = clients.filter((c) => c.accountIds.length > 0).length;
+function OverviewV2({ clients, kycByUser, paymentByUser, paymentStatusByUser, fundingRequests, telegramStatus, onViewChange, onOpenClient }: { clients: Client[]; kycByUser: Record<string, "approved" | "pending" | "rejected">; paymentByUser: Record<string, boolean>; paymentStatusByUser: Record<string, string | null>; fundingRequests: FundingRequest[]; telegramStatus: TelegramBotStatus | null; onViewChange: (v: View) => void; onOpenClient: (id: string) => void }) {
+  const kycPending = clients.filter((client) => kycByUser[client.telegramId] === "pending").length;
+  const onboardingPending = clients.filter((client) => ["pending", "accepted", "card_creating", "card_reconciliation", "card_ready"].includes(paymentStatusByUser[client.id] ?? "")).length;
+  const fundingOpen = fundingRequests.filter((request) => !["completed", "rejected", "cancelled"].includes(request.status)).length;
+  const attention = kycPending + onboardingPending + fundingOpen;
+  const active = clients.filter((client) => paymentStatusByUser[client.id] === "complete").length;
   const botLive = Boolean(telegramStatus?.configured && telegramStatus.webhook?.url);
   const today = new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" });
-  const kycBadge = (s?: string) => s === "approved" ? <Badge variant="outline" className="border-emerald-200 bg-emerald-50 text-emerald-700">Verified</Badge> : s === "pending" ? <Badge variant="outline" className="border-amber-200 bg-amber-50 text-amber-800">KYC review</Badge> : s === "rejected" ? <Badge variant="outline" className="border-red-200 bg-red-50 text-red-700">KYC rejected</Badge> : <Badge variant="outline" className="border-slate-200 bg-slate-50 text-slate-600">Not verified</Badge>;
+  const kycBadge = (status?: string) => status === "approved"
+    ? <Badge variant="outline" className="border-emerald-200 bg-emerald-50 text-emerald-700">Verified</Badge>
+    : status === "pending"
+      ? <Badge variant="outline" className="border-amber-200 bg-amber-50 text-amber-800">KYC review</Badge>
+      : status === "rejected"
+        ? <Badge variant="outline" className="border-red-200 bg-red-50 text-red-700">KYC rejected</Badge>
+        : <Badge variant="outline" className="border-slate-200 bg-slate-50 text-slate-600">Not verified</Badge>;
   return (
     <>
       <div className="mb-6 flex flex-col justify-between gap-3 sm:flex-row sm:items-end">
         <div>
           <p className="text-[11px] font-bold uppercase tracking-[.16em] text-[#8179e8]">{today}</p>
           <h2 className="mt-2 text-[30px] font-bold tracking-[-.045em] text-[#1b1930] sm:text-[34px]">{attention > 0 ? `${attention} item${attention === 1 ? "" : "s"} need your attention` : "All caught up"}</h2>
-          <p className="mt-1 text-[15px] text-[#7e7a8e]">{attention > 0 ? "Work the queue below — each card jumps straight to the work." : "No pending KYC, payments, card requests, or funding right now."}</p>
+          <p className="mt-1 text-[15px] text-[#7e7a8e]">{attention > 0 ? "Review KYC, first-card onboarding, and add-funds requests." : "No pending KYC, onboarding payments, or funding requests right now."}</p>
         </div>
         <Badge variant="outline" className={botLive ? "rounded-full border-emerald-200 bg-emerald-50 text-emerald-700" : "rounded-full border-amber-200 bg-amber-50 text-amber-800"}>{botLive ? `Bot live · @${telegramStatus?.bot?.username ?? "bot"}` : "Bot not connected"}</Badge>
       </div>
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid gap-4 sm:grid-cols-3">
         {[
           { label: "KYC to review", count: kycPending, hint: "identity submissions", go: () => onViewChange("requests") },
-          { label: "Payments to process", count: awaiting, hint: "receipt/activation incomplete", go: () => onViewChange("clients") },
-          { label: "Cards to issue", count: cardsNew, hint: "approved, not issued", go: () => onViewChange("requests") },
-          { label: "Funding open", count: fundingOpen, hint: "open funding requests", go: () => onViewChange("requests") },
+          { label: "First cards in progress", count: onboardingPending, hint: "payment / issuance incomplete", go: () => onViewChange("clients") },
+          { label: "Funding open", count: fundingOpen, hint: "existing-card add-funds requests", go: () => onViewChange("requests") },
         ].map((card) => (
           <button key={card.label} onClick={card.go} className={`rounded-[20px] border p-5 text-left transition ${card.count > 0 ? "border-[#d8d3ff] bg-[#f6f4ff] hover:bg-[#efecff]" : "border-[#ece9f2] bg-white hover:bg-[#faf9fc]"}`}>
             <p className="text-3xl font-bold tracking-tight text-[#1b1930]">{card.count}</p>
@@ -3093,22 +3014,21 @@ function OverviewV2({ clients, kycByUser, paymentByUser, paymentStatusByUser, ca
         ))}
       </div>
       <Card className="mt-6 surface-card rounded-[24px]">
-        <CardHeader><CardTitle className="text-[16px]">Customer pipeline <Badge variant="outline" className="ml-2 rounded-full">{active}/{clients.length} active</Badge></CardTitle></CardHeader>
+        <CardHeader><CardTitle className="text-[16px]">Customer pipeline <Badge variant="outline" className="ml-2 rounded-full">{active}/{clients.length} complete</Badge></CardTitle></CardHeader>
         <CardContent>
-          {clients.length === 0 ? <p className="py-8 text-center text-sm text-[#9692a3]">No customers yet. They appear here after starting the bot.</p> : (
-            <div className="space-y-2">
-              {clients.map((c) => (
-                <button key={c.id} onClick={() => onOpenClient(c.id)} className="flex w-full items-center justify-between gap-3 rounded-[14px] border border-[#ece9f2] bg-white p-3 text-left transition hover:bg-[#faf9fc]">
-                  <div className="min-w-0"><p className="truncate text-sm font-semibold text-[#353146]">{c.name}</p><p className="text-xs text-[#9692a3]">{c.username} · joined {c.joined}</p></div>
-                  <div className="flex shrink-0 items-center gap-2">
-                    {kycBadge(kycByUser[c.telegramId])}
-                    {paymentByUser[c.id] && c.accountIds.length === 0 && <Badge variant="outline" className="border-indigo-200 bg-indigo-50 text-indigo-700">Paid</Badge>}
-                    {c.accountIds.length > 0 ? <Badge variant="outline" className="border-emerald-200 bg-emerald-50 text-emerald-700">Active</Badge> : <Badge variant="outline" className="border-amber-200 bg-amber-50 text-amber-800">Needs account</Badge>}
-                  </div>
-                </button>
-              ))}
-            </div>
-          )}
+          {clients.length === 0 ? <p className="py-8 text-center text-sm text-[#9692a3]">No customers yet. They appear here after starting the bot.</p> : <div className="space-y-2">
+            {clients.map((client) => {
+              const paymentStatus = paymentStatusByUser[client.id] ?? null;
+              return <button key={client.id} onClick={() => onOpenClient(client.id)} className="flex w-full items-center justify-between gap-3 rounded-[14px] border border-[#ece9f2] bg-white p-3 text-left transition hover:bg-[#faf9fc]">
+                <div className="min-w-0"><p className="truncate text-sm font-semibold text-[#353146]">{client.name}</p><p className="text-xs text-[#9692a3]">{client.username} · joined {client.joined}</p></div>
+                <div className="flex shrink-0 items-center gap-2">
+                  {kycBadge(kycByUser[client.telegramId])}
+                  {paymentByUser[client.id] && paymentStatus !== "complete" && <Badge variant="outline" className="border-indigo-200 bg-indigo-50 text-indigo-700">{paymentStatus?.replaceAll("_", " ") ?? "payment"}</Badge>}
+                  {paymentStatus === "complete" ? <Badge variant="outline" className="border-emerald-200 bg-emerald-50 text-emerald-700">Card ready</Badge> : <Badge variant="outline" className="border-amber-200 bg-amber-50 text-amber-800">Onboarding</Badge>}
+                </div>
+              </button>;
+            })}
+          </div>}
         </CardContent>
       </Card>
     </>
