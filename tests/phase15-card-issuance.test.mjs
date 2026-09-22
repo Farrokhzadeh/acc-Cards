@@ -151,8 +151,8 @@ test("first-card configuration validates BINs early and does not retroactively a
 
 
 test("onboarding checks live card-creation gates before persisting assignment/request state", () => {
-  const preflight = activateRoute.indexOf("assertCardCreationAvailable()");
-  const ensure = activateRoute.indexOf("ensureOnboardingCardRequest");
+  const preflight = activateRoute.indexOf("await assertCardCreationAvailable()");
+  const ensure = activateRoute.indexOf("ensureOnboardingCardRequest({", preflight);
   assert.ok(preflight >= 0 && ensure > preflight);
   assert.match(issuance, /export async function assertCardCreationAvailable/);
   assert.match(onboarding, /assignAccountInTransaction/);
