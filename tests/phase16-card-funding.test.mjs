@@ -12,6 +12,7 @@ const resolveRoute = await readFile(new URL("../app/api/v1/funding-requests/[id]
 const env = await readFile(new URL("../config/env-schema.mjs", import.meta.url), "utf8");
 const readiness = await readFile(new URL("../server/providers/kripicard/readiness.ts", import.meta.url), "utf8");
 const dashboard = await readFile(new URL("../app/dashboard-app.tsx", import.meta.url), "utf8");
+const adminApi = await readFile(new URL("../lib/admin-api.ts", import.meta.url), "utf8");
 const success = JSON.parse(await readFile(new URL("./fixtures/kripicard/fund-card.json", import.meta.url), "utf8"));
 
 test("Phase 16 adds funding operation state, locking, and execution permission", () => {
@@ -112,4 +113,21 @@ test("admin UI exposes Fund, safe retry, reconciliation, and provider-confirmed 
   assert.match(dashboard, /Provider confirms not funded/);
   assert.match(dashboard, /Provider confirms funded/);
   assert.match(dashboard, /Recheck if stuck/);
+});
+
+test("funding privileged writes recover from stale admin sessions instead of surfacing raw reauth errors", () => {
+  assert.match(dashboard, /queueFundingReauthentication/);
+  assert.match(dashboard, /Confirm live card funding/);
+  assert.match(dashboard, /Confirm funding reconciliation/);
+  assert.match(dashboard, /reauthentication_required/);
+  assert.match(dashboard, /Reauthenticate & continue/);
+  assert.match(dashboard, /reauthenticateAdmin\(fundingReauthPassword/);
+  assert.match(dashboard, /allowReauthPrompt: false/);
+});
+
+test("admin API preserves structured backend error details for readiness and retry UX", () => {
+  assert.match(adminApi, /public readonly details\?: unknown/);
+  assert.match(adminApi, /failure\.error\?\.details/);
+  assert.match(dashboard, /provider_money_not_ready/);
+  assert.match(dashboard, /details\.blockers|details\?\.blockers/);
 });
