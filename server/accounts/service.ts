@@ -184,3 +184,36 @@ export async function revealKripiAccountSecrets(id: string, session: AuthSession
   });
   return secrets;
 }
+
+
+export async function archiveKripiAccount(id: string, session: AuthSession, request: Request, requestId: string) {
+  await withTransaction(async (db) => {
+    const assignment = await db.query<{ count: number }>(
+      `SELECT COUNT(*)::int AS count FROM telegram_account_assignments WHERE account_id=$1::uuid`,
+      [id],
+    );
+    if ((assignment.rows[0]?.count ?? 0) > 0) {
+      throw new ApiError(409, "account_still_assigned", "Reassign or remove Telegram clients before archiving this account.");
+    }
+    const result = await db.query(
+      `UPDATE kripi_accounts
+          SET status='archived', archived_at=now(), updated_by=$2::uuid, updated_at=now()
+        WHERE id=$1::uuid AND archived_at IS NULL
+        RETURNING id`,
+      [id, session.principal.id],
+    );
+    if (!result.rowCount) throw new ApiError(404, "not_found", "Account not found.");
+    await db.query(
+      `UPDATE email_accounts
+          SET connection_status='disabled', encrypted_refresh_token=NULL, encrypted_access_token=NULL,
+              token_expires_at=NULL, encrypted_sync_cursor=NULL, updated_at=now()
+        WHERE account_id=$1::uuid`,
+      [id],
+    );
+    await db.query(
+      `INSERT INTO audit_logs(actor_type,actor_id,action,entity_type,entity_id,metadata_redacted,ip,request_id)
+       VALUES('admin',$1::uuid,'account.archive','kripi_account',$2,'{}'::jsonb,$3::inet,$4)`,
+      [session.principal.id, id, requestIp(request), requestId],
+    );
+  });
+}
