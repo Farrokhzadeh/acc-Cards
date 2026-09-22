@@ -10,6 +10,7 @@ import {
   createGooglePkcePair,
   exchangeGoogleAuthorizationCode,
   getGmailMessageMetadata,
+  getGmailMessageText,
   getGmailProfile,
   listGmailHistory,
   listGmailInboxMessages,
@@ -75,7 +76,7 @@ async function getGmailConnection(accountId: string) {
 
 export async function startGmailConnection(accountId: string, session: AuthSession, request: Request, requestId: string) {
   if (!googleConfigured()) {
-    throw new ApiError(503, "google_not_configured", "Google Gmail OAuth is not configured on this deployment.");
+    return { skipped: true, reason: "google_not_configured", succeeded: 0, failed: 0, failedAccountIds: [] };
   }
   await getGmailConnection(accountId);
 
@@ -471,7 +472,11 @@ async function syncGmailInboxCore(accountId: string) {
       cursor: sync.cursor,
     });
 
-    const classification = await classifyPendingEmailMessages({ accountId, limit: 200 });
+    const classification = await classifyPendingEmailMessages({
+      accountId,
+      limit: 200,
+      resolveMessageText: (message) => getGmailMessageText(token.access_token, message.providerMessageId),
+    });
     return {
       received: sync.messages.length,
       removed: sync.removedIds.length,

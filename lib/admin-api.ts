@@ -113,6 +113,10 @@ export async function updateAccount(id: string, input: { label?: string; loginEm
   return apiJson<{ ok: true }>(`/api/v1/accounts/${encodeURIComponent(id)}`, { method: "PATCH", body: JSON.stringify(input) });
 }
 
+export async function archiveAccount(id: string) {
+  return apiJson<{ archived: true }>(`/api/v1/accounts/${encodeURIComponent(id)}`, { method: "DELETE" });
+}
+
 export async function revealAccountSecrets(id: string) {
   return apiJson<{ loginEmail: string; password: string; apiKey: string }>(`/api/v1/accounts/${encodeURIComponent(id)}/reveal`, { method: "POST", body: "{}" });
 }
@@ -313,6 +317,10 @@ export async function createTrustedEmailRule(input: { label: string; senderMatch
   return apiJson<{ id: string }>("/api/v1/email/trusted-rules", { method: "POST", body: JSON.stringify(input) });
 }
 
+export async function updateTrustedEmailRule(id: string, enabled: boolean) {
+  return apiJson<{ ok: true }>(`/api/v1/email/trusted-rules/${encodeURIComponent(id)}`, { method: "PATCH", body: JSON.stringify({ enabled }) });
+}
+
 export type TelegramBotStatus = {
   configured: boolean;
   tokenSource?: "database" | "environment" | "none";
@@ -343,7 +351,7 @@ export async function fetchPaymentCard() {
   return apiJson<{ cardNumber: string; cardHolder: string; minLoadUsd?: number }>("/api/v1/settings/payment-card", { method: "GET" });
 }
 
-export async function updatePaymentCard(input: { cardNumber: string; cardHolder: string }) {
+export async function updatePaymentCard(input: { cardNumber: string; cardHolder: string; minLoadUsd?: number }) {
   return apiJson<{ ok: true }>("/api/v1/settings/payment-card", { method: "PUT", body: JSON.stringify(input) });
 }
 
@@ -353,6 +361,13 @@ export async function notifyClient(id: string) {
 
 export async function fetchClientPipeline() {
   return apiJson<{ items: Array<{ id: string; declared: boolean; status: string | null }> }>("/api/v1/clients/pipeline", { method: "GET" });
+}
+
+export async function setClientBanned(id: string, banned: boolean) {
+  return apiJson<{ banned: boolean; bannedAt: string | null }>(`/api/v1/clients/${encodeURIComponent(id)}`, {
+    method: "PATCH",
+    body: JSON.stringify({ banned }),
+  });
 }
 
 export type ClientKyc = {
@@ -663,6 +678,20 @@ export async function fetchFundingSettings() {
 
 export async function updateFundingSettings(input: { serviceFeeBasisPoints?: number; minimumUsdCents?: number; rialPerUsd?: number; rateValidMinutes?: number }) {
   return apiJson<FundingSettings>("/api/v1/funding-settings", { method: "PATCH", body: JSON.stringify(input) });
+}
+
+export type CardPolicy = {
+  platformCardLimit: number;
+  minimumCardCreationUsdCents: number;
+  bins: Array<{ bin: string; requiresDob: boolean }>;
+};
+
+export async function fetchCardPolicy() {
+  return apiJson<CardPolicy>("/api/v1/settings/card-policy", { method: "GET" });
+}
+
+export async function updateCardPolicy(input: Partial<CardPolicy>) {
+  return apiJson<CardPolicy>("/api/v1/settings/card-policy", { method: "PATCH", body: JSON.stringify(input) });
 }
 
 export type ProviderReadinessCheck = {

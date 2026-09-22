@@ -64,3 +64,10 @@ test("background classification hook is protected with a timing safe secret", ()
   assert.match(jobRoute, /EMAIL_CLASSIFY_JOB_SECRET/);
   assert.match(env, /EMAIL_CLASSIFY_JOB_SECRET/);
 });
+
+
+test("trusted OTP classification accepts transient provider message text", () => {
+  assert.match(classifier, /resolveMessageText/);
+  assert.match(classifier, /provider_message_id/);
+  assert.match(classifier, /Full-body retrieval is best-effort/);
+});

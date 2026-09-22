@@ -1438,8 +1438,16 @@ async function handleMessage(client: TelegramClient, message: z.infer<typeof mes
   if (await handleKycMedia(client, user, chatId, message)) return;
   if (text && (await handleKycText(client, user, chatId, text))) return;
   if (text === "/kyc") { await beginKyc(client, user, chatId); return; }
+  if (text === "/support") { await beginSupport(client, user, chatId); return; }
 
   if (text === "/lang") { await sendLangPicker(client, user, chatId); return; }
+  if (text === "/help") {
+    await client.sendMessage({
+      chatId,
+      text: "<b>AccAbad commands</b>\n/start or /menu — main menu\n/kyc — identity verification\n/support — contact support\n/lang — language\n/cancel — cancel the current flow",
+    });
+    return;
+  }
   if (text === "/start" || text === "/menu") { await routeHome(client, user, chatId); return; }
 
   if (!(await assertBotAccess(client, user, chatId))) return;

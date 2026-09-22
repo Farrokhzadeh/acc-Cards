@@ -10,6 +10,7 @@ import {
   createPkcePair,
   exchangeMicrosoftAuthorizationCode,
   getMicrosoftInboxDeltaPage,
+  getMicrosoftMessageText,
   getMicrosoftProfile,
   refreshMicrosoftAccessToken,
 } from "@/server/providers/microsoft/client";
@@ -349,7 +350,11 @@ async function syncOutlookInboxCore(accountId: string) {
       );
     });
 
-    const classification = await classifyPendingEmailMessages({ accountId, limit: 200 });
+    const classification = await classifyPendingEmailMessages({
+      accountId,
+      limit: 200,
+      resolveMessageText: (message) => getMicrosoftMessageText(token.access_token, message.providerMessageId),
+    });
     return { received: messages.length, removed: removedIds.length, insertedOrUpdated, pages, partial, classification };
   } catch (error) {
     if (error instanceof MicrosoftIntegrationError) {

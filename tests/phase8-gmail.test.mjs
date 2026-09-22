@@ -86,3 +86,10 @@ test("deployment example exposes Google OAuth placeholders only", () => {
   assert.match(envExample, /GOOGLE_GMAIL_TIMEOUT_MS=10000/);
   assert.match(envExample, /GMAIL_SYNC_JOB_SECRET=/);
 });
+
+
+test("Gmail can fetch full message text transiently for trusted OTP parsing without persistence", () => {
+  assert.match(googleClient, /getGmailMessageText/);
+  assert.match(googleClient, /format.*full/s);
+  assert.doesNotMatch(googleService, /body_html_ref\s*=/);
+});

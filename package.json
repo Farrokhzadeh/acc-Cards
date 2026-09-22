@@ -21,7 +21,8 @@
     "build:worker": "vite build --config vite.worker.config.ts",
     "worker": "npm run env:check && node dist-worker/worker.mjs",
     "security:dependencies": "npm audit --omit=dev --audit-level=high",
-    "security:secrets": "gitleaks detect --source . --no-git --redact"
+    "security:secrets": "gitleaks detect --source . --no-git --redact",
+    "test:db-integration": "node --test tests/database-integration.test.mjs"
   },
   "dependencies": {
     "@base-ui/react": "^1.7.0",

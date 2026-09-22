@@ -46,7 +46,7 @@ import {
   XCircle,
 } from "lucide-react";
 import { toast } from "sonner";
-import { AdminApiError, createAccount, fetchDashboardSnapshot, reauthenticateAdmin, revealAccountSecrets, updateAccount, verifyAccountConnection, syncAccountCards, revealLiveCardDetails, syncCardTransactions, fetchCardTransactions, fetchTransactions, fetchTransactionNotificationIssues, reconcileTransactionNotification, setCardFrozenState, refreshCardStatus, connectOutlookMailbox, syncOutlookMailbox, disconnectOutlookMailbox, connectGmailMailbox, syncGmailMailbox, disconnectGmailMailbox, fetchAccountEmailMessages, fetchTelegramBotStatus, configureTelegramWebhook, setTelegramBotToken, clearTelegramBotToken, fetchPaymentCard, updatePaymentCard, notifyClient, fetchClientPipeline, fetchClientKyc, type ClientKyc, type ClientPayment, clientReceiptUrl, activateClient, fetchForceJoinChannels, upsertForceJoinChannel, deleteForceJoinChannel, fetchSupportConversations, updateSupportConversation, retrySupportMessage, fetchClientSupportMessages, sendClientSupportMessage, fetchClientAssignableAccounts, assignClientAccount, unassignClientAccount, unassignAllClientAccounts, fetchCardRequests, reviewCardRequest, issueCardRequest, reconcileCardRequest, fetchFundingRequests, reviewFundingRequest, executeFundingRequest, reconcileFundingRequest, resolveFundingRequest, fundingReceiptDownloadUrl, fetchFundingSettings, updateFundingSettings, type ApiCardRequest, type ApiFundingRequest, type AssignableClientAccount, type LiveCardDetails, type StoredCardTransaction, type StoredEmailMessage, type TelegramBotStatus, fetchProviderReadiness, type ProviderReadinessSnapshot, type TransactionNotificationIssue, type SupportConversationSummary, fetchOperationalSnapshot, updateOperationalAlert, updateRuntimeControl, type OperationalSnapshot, fetchKycSubmissions, reviewKycSubmission, kycDocumentUrl, type ApiKycSubmission } from "@/lib/admin-api";
+import { AdminApiError, createAccount, archiveAccount, fetchDashboardSnapshot, reauthenticateAdmin, revealAccountSecrets, updateAccount, verifyAccountConnection, syncAccountCards, revealLiveCardDetails, syncCardTransactions, fetchCardTransactions, fetchTransactions, fetchTransactionNotificationIssues, reconcileTransactionNotification, setCardFrozenState, refreshCardStatus, connectOutlookMailbox, syncOutlookMailbox, disconnectOutlookMailbox, connectGmailMailbox, syncGmailMailbox, disconnectGmailMailbox, fetchAccountEmailMessages, classifyAccountEmail, revealParsedOtp, fetchTrustedEmailRules, createTrustedEmailRule, updateTrustedEmailRule, fetchTelegramBotStatus, configureTelegramWebhook, setTelegramBotToken, clearTelegramBotToken, fetchPaymentCard, updatePaymentCard, notifyClient, fetchClientPipeline, setClientBanned, fetchClientKyc, type ClientKyc, type ClientPayment, clientReceiptUrl, activateClient, fetchForceJoinChannels, upsertForceJoinChannel, deleteForceJoinChannel, fetchSupportConversations, updateSupportConversation, retrySupportMessage, fetchClientSupportMessages, sendClientSupportMessage, fetchClientAssignableAccounts, assignClientAccount, unassignClientAccount, unassignAllClientAccounts, fetchCardRequests, reviewCardRequest, issueCardRequest, reconcileCardRequest, fetchFundingRequests, reviewFundingRequest, executeFundingRequest, reconcileFundingRequest, resolveFundingRequest, fundingReceiptDownloadUrl, fetchFundingSettings, updateFundingSettings, fetchCardPolicy, updateCardPolicy, type ApiCardRequest, type ApiFundingRequest, type AssignableClientAccount, type LiveCardDetails, type StoredCardTransaction, type StoredEmailMessage, type TelegramBotStatus, fetchProviderReadiness, updateProviderReadinessCheck, type ProviderReadinessSnapshot, type TransactionNotificationIssue, type SupportConversationSummary, fetchOperationalSnapshot, updateOperationalAlert, updateRuntimeControl, type OperationalSnapshot, fetchKycSubmissions, reviewKycSubmission, kycDocumentUrl, type ApiKycSubmission } from "@/lib/admin-api";
 import { disableAdminMfa, enableAdminMfa, fetchCurrentAdmin, logoutAdmin, setupAdminMfa, type CurrentAdmin } from "@/lib/auth-client";
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -203,10 +203,15 @@ type AccountEmail = {
   received: string;
   cardLast4?: string;
   unread: boolean;
+  classificationStatus: string;
+  parserNote: string | null;
+  otpAvailable: boolean;
+  otpDeliveryStatus: string | null;
+  otpCodeLast2: string | null;
+  otpExpiresAt: string | null;
 };
 
 type FundingStatus = "pending_receipt" | "pending_review" | "correction_needed" | "accepted" | "funding" | "funding_failed" | "needs_reconciliation" | "completed" | "rejected" | "cancelled";
-type CryptoPaymentStage = "form" | "payment" | "completed";
 
 type FundingRequest = {
   id: string;
@@ -289,19 +294,6 @@ const fundingMeta: Record<FundingStatus, { label: string; color: string; step: n
   cancelled: { label: "Cancelled", color: "red", step: 0 },
 };
 
-const binOptions = [
-  { value: "539502", label: "539502 · Hong Kong" },
-  { value: "525847", label: "525847 · Hong Kong" },
-  { value: "539578", label: "539578 · Hong Kong" },
-  { value: "525797", label: "525797 · Hong Kong" },
-  { value: "235019", label: "235019 · Hong Kong" },
-  { value: "223600", label: "223600 · Hong Kong" },
-  { value: "238003", label: "238003 · Hong Kong" },
-  { value: "537872", label: "537872 · US", requiresDob: true },
-  { value: "533171", label: "533171 · Singapore", requiresDob: true },
-  { value: "246001", label: "246001 · UK", requiresDob: true },
-];
-
 const navItems: { view: View; label: string; icon: typeof LayoutDashboard; badge?: string }[] = [
   { view: "overview", label: "Overview", icon: LayoutDashboard },
   { view: "accounts", label: "Accounts", icon: WalletCards },
@@ -349,9 +341,15 @@ function mapStoredEmailMessage(accountId: string, message: StoredEmailMessage): 
     sender: message.sender,
     subject: message.subject,
     preview: message.preview,
-    body: message.preview || "Message body storage is intentionally deferred; this is the provider preview synchronized by AccAbad.",
+    body: message.preview || "No preview text was provided by the mailbox provider.",
     received: formatApiDateTime(message.receivedAt),
     unread: message.unread,
+    classificationStatus: message.classificationStatus,
+    parserNote: message.parserNote,
+    otpAvailable: message.otpAvailable,
+    otpDeliveryStatus: message.otpDeliveryStatus,
+    otpCodeLast2: message.otpCodeLast2,
+    otpExpiresAt: message.otpExpiresAt,
   };
 }
 
@@ -648,20 +646,6 @@ export default function DashboardApp() {
   const [activeChatId, setActiveChatId] = useState("");
   const [search, setSearch] = useState("");
   const [accountDialogOpen, setAccountDialogOpen] = useState(false);
-  const [createCardDialogOpen, setCreateCardDialogOpen] = useState(false);
-  const [fundCardDialogOpen, setFundCardDialogOpen] = useState(false);
-  const [fundCardId, setFundCardId] = useState<string | null>(null);
-  const [fundCardScopeAccountId, setFundCardScopeAccountId] = useState<string | null>(null);
-  const [fundCardAmount, setFundCardAmount] = useState(20);
-  const [fundCardStage, setFundCardStage] = useState<CryptoPaymentStage>("form");
-  const [fundCardNetwork, setFundCardNetwork] = useState("TRC20");
-  const [fundCardPaymentId, setFundCardPaymentId] = useState("");
-  const [fundCardRequestId, setFundCardRequestId] = useState<string | null>(null);
-  const [createCardStage, setCreateCardStage] = useState<CryptoPaymentStage>("form");
-  const [createCardNetwork, setCreateCardNetwork] = useState("TRC20");
-  const [createCardPaymentId, setCreateCardPaymentId] = useState("");
-  const [issuingRequestId, setIssuingRequestId] = useState<string | null>(null);
-  const [selectedAccountId, setSelectedAccountId] = useState("");
   const [editingAccountId, setEditingAccountId] = useState<string | null>(null);
   const [deleteAccountId, setDeleteAccountId] = useState<string | null>(null);
   const [rejectDialogOpen, setRejectDialogOpen] = useState(false);
@@ -671,6 +655,8 @@ export default function DashboardApp() {
   const [exchangeRate, setExchangeRate] = useState(2_212_000);
   const [maxCardsPerClient, setMaxCardsPerClient] = useState(3);
   const [minimumFunding, setMinimumFunding] = useState(20);
+  const [minimumCardCreation, setMinimumCardCreation] = useState(20);
+  const [cardPolicyBins, setCardPolicyBins] = useState<Array<{ bin: string; requiresDob: boolean }>>([]);
   const [theme, setTheme] = useState<"light" | "dark">("light");
   const [botToken, setBotToken] = useState("");
   const [showToken, setShowToken] = useState(false);
@@ -678,7 +664,6 @@ export default function DashboardApp() {
   const [channels, setChannels] = useState<string[]>([]);
   const [newChannel, setNewChannel] = useState("");
   const [accountForm, setAccountForm] = useState({ name: "", owner: "", mailbox: "", mailProvider: "Outlook / Hotmail" as Account["mailProvider"], password: "", apiKey: "" });
-  const [cardForm, setCardForm] = useState({ bin: "539502", amount: 20, nameOnCard: "", email: "", dateOfBirth: "" });
 
   useEffect(() => {
     const savedTheme = window.localStorage.getItem("accabad-theme");
@@ -831,6 +816,18 @@ export default function DashboardApp() {
       setServiceFee(settings.serviceFeeBasisPoints / 100);
       setMinimumFunding(settings.minimumUsdCents / 100);
       if (settings.rate) setExchangeRate(Number(settings.rate.rialPerUsd));
+    }).catch(() => {});
+    return () => { cancelled = true; };
+  }, [backendDataLoaded]);
+
+  useEffect(() => {
+    if (!backendDataLoaded) return;
+    let cancelled = false;
+    fetchCardPolicy().then((policy) => {
+      if (cancelled) return;
+      setMaxCardsPerClient(policy.platformCardLimit);
+      setMinimumCardCreation(policy.minimumCardCreationUsdCents / 100);
+      setCardPolicyBins(policy.bins);
     }).catch(() => {});
     return () => { cancelled = true; };
   }, [backendDataLoaded]);
@@ -1012,21 +1009,6 @@ export default function DashboardApp() {
   const activeAccountClient = activeAccount ? clients.find((client) => client.accountIds.includes(activeAccount.id)) ?? null : null;
   const activeRequest = fundingRequests.find((request) => request.id === activeRequestId) ?? null;
   const activeChatClient = clients.find((client) => client.id === activeChatId) ?? clients[0];
-  const issuingRequest = cardRequests.find((request) => request.id === issuingRequestId) ?? null;
-  const issuingRequestClient = clients.find((client) => client.id === issuingRequest?.clientId) ?? null;
-  const eligibleCardAccounts = issuingRequestClient ? accounts.filter((account) => issuingRequestClient.accountIds.includes(account.id)) : accounts;
-  const selectedCardAccount = accounts.find((account) => account.id === selectedAccountId) ?? null;
-  const selectedCardClient = clients.find((client) => client.accountIds.includes(selectedAccountId)) ?? null;
-  const fundCard = cards.find((card) => card.id === fundCardId) ?? null;
-  const fundCardChoices = fundCardScopeAccountId ? cards.filter((card) => card.accountId === fundCardScopeAccountId) : cards;
-  const fundCardAccount = accounts.find((account) => account.id === fundCard?.accountId) ?? null;
-  const fundCardClient = clients.find((client) => fundCard ? client.accountIds.includes(fundCard.accountId) : false) ?? null;
-  const selectedBinRequiresDob = Boolean(binOptions.find((item) => item.value === cardForm.bin)?.requiresDob);
-  const cardProviderFee = 1 + cardForm.amount * 0.04;
-  const fundCardProviderFee = Number((1 + fundCardAmount * 0.04).toFixed(2));
-  const fundCardCryptoTotal = Number((fundCardAmount + fundCardProviderFee).toFixed(2));
-  const createCardCryptoTotal = Number(((cardForm.amount || 0) + cardProviderFee).toFixed(2));
-  const cardTotal = accounts.reduce((sum, account) => sum + account.cardBalance, 0);
   const cardsForClient = (client: Client) => cards.filter((card) => client.accountIds.includes(card.accountId));
   const activeClientCards = activeClient ? cardsForClient(activeClient) : [];
 
@@ -1344,166 +1326,35 @@ export default function DashboardApp() {
     }
   };
 
-  const openCreateCard = (accountId = "") => {
-    if (backendDataLoaded) {
-      toast.info("Live card creation is only available through an approved card request in Request Center. Ad-hoc provider creation is intentionally disabled.");
-      return;
-    }
-    setIssuingRequestId(null);
-    setSelectedAccountId(accountId);
-    setCardForm({ bin: "539502", amount: minimumFunding, nameOnCard: "", email: "", dateOfBirth: "" });
-    setCreateCardStage("form");
-    setCreateCardNetwork("TRC20");
-    setCreateCardPaymentId("");
-    setCreateCardDialogOpen(true);
+  const openCreateCard = (_accountId = "") => {
+    setView("requests");
+    toast.info("Cards are created only from approved card requests in Request Center.");
   };
 
-  const openFundCard = (cardId = "", accountId = "") => {
-    if (backendDataLoaded) {
-      toast.info("Production card funding runs only from an accepted funding request in Request Center. Ad-hoc provider funding is intentionally disabled.");
-      return;
-    }
-    setFundCardId(cardId || null);
-    setFundCardScopeAccountId(accountId || null);
-    setFundCardAmount(minimumFunding);
-    setFundCardStage("form");
-    setFundCardNetwork("TRC20");
-    setFundCardPaymentId("");
-    setFundCardRequestId(null);
-    setFundCardDialogOpen(true);
+  const openFundCard = (_cardId = "", _accountId = "") => {
+    setView("requests");
+    toast.info("Card funding is executed only from accepted funding requests in Request Center.");
   };
 
-  const beginFundCardPayment = () => {
-    if (!fundCard || !fundCardAccount) {
-      toast.error("Choose the card to fund.");
-      return;
-    }
-    if (fundCardAmount < minimumFunding) {
-      toast.error(`Your minimum card funding amount is ${formatUsd(minimumFunding)}.`);
-      return;
-    }
-    setFundCardPaymentId(`CF-${Date.now().toString(36).toUpperCase()}`);
-    setFundCardStage("payment");
-    if (fundCardRequestId) {
-      setFundingRequests((current) => current.map((item) => item.id === fundCardRequestId ? { ...item, status: "funding" } : item));
-    }
-    toast.success("Legacy prototype payment step opened. It does not call Kripicard; production funding is available only from an accepted request in Request Center.");
-  };
-
-  const confirmFundCard = () => {
-    if (!fundCard || !fundCardAccount || fundCardStage !== "payment" || !fundCardPaymentId) return;
-    setCards((current) => current.map((card) => card.id === fundCard.id ? { ...card, balance: card.balance + fundCardAmount } : card));
-    setAccounts((current) => current.map((account) => account.id === fundCardAccount.id ? { ...account, cardBalance: account.cardBalance + fundCardAmount, lastSync: "Just now" } : account));
-    setTransactions((current) => [{ id: `TX-${Date.now().toString().slice(-6)}`, clientId: fundCardClient?.id ?? null, accountId: fundCardAccount.id, cardLast4: fundCard.last4, merchant: "Legacy demo card funding", amount: fundCardAmount, type: "Funding", status: "Success", date: "Now" }, ...current]);
-    if (fundCardRequestId) {
-      setFundingRequests((current) => current.map((item) => item.id === fundCardRequestId ? { ...item, status: "completed" } : item));
-    }
-    if (fundCardClient) {
-      setClients((current) => current.map((client) => client.id === fundCardClient.id ? { ...client, totalFunded: client.totalFunded + fundCardAmount } : client));
-      setMessages((current) => ({
-        ...current,
-        [fundCardClient.id]: [...(current[fundCardClient.id] ?? []), { id: `m-${Date.now()}`, from: "admin", body: `${formatUsd(fundCardAmount)} was added to card •${fundCard.last4} in the legacy local prototype only.`, time: "Now" }],
-      }));
-    }
-    setFundCardStage("completed");
-    toast.success(`${formatUsd(fundCardAmount)} added to card •${fundCard.last4} in the legacy local prototype only.`);
-  };
-
-  const beginCreateCardPayment = () => {
-    const account = accounts.find((item) => item.id === selectedAccountId);
-    if (!account) { toast.error("Select the Kripicard account that will own this card."); return; }
-    if (cardForm.nameOnCard.trim().length < 2) { toast.error("Name on card must contain at least 2 characters."); return; }
-    if (cardForm.amount < minimumFunding) { toast.error(`Your minimum card funding amount is ${formatUsd(minimumFunding)}.`); return; }
-    const selectedBin = binOptions.find((item) => item.value === cardForm.bin);
-    if (selectedBin?.requiresDob && !cardForm.dateOfBirth) { toast.error(`Date of birth is required for BIN ${cardForm.bin}.`); return; }
-    const assignedClient = clients.find((client) => client.accountIds.includes(account.id));
-    if (issuingRequest && assignedClient?.id !== issuingRequest.clientId) { toast.error("Select an account currently assigned to the client who requested this card."); return; }
-    if (assignedClient && cardsForClient(assignedClient).length >= maxCardsPerClient) { toast.error(`${assignedClient.name} has reached your ${maxCardsPerClient}-card platform limit.`); return; }
-    setCreateCardPaymentId(`CC-${Date.now().toString(36).toUpperCase()}`);
-    setCreateCardStage("payment");
-    toast.success("Demo crypto payment instruction created. Confirm payment before issuing the card.");
-  };
-
-  const createCard = () => {
-    const account = accounts.find((item) => item.id === selectedAccountId);
-    if (!account) {
-      toast.error("Select the Kripicard account that will issue this card.");
-      return;
-    }
-    if (cardForm.nameOnCard.trim().length < 2) {
-      toast.error("Name on card must contain at least 2 characters.");
-      return;
-    }
-    if (cardForm.amount < minimumFunding) {
-      toast.error(`Your minimum card funding amount is ${formatUsd(minimumFunding)}.`);
-      return;
-    }
-    const selectedBin = binOptions.find((item) => item.value === cardForm.bin);
-    if (selectedBin?.requiresDob && !cardForm.dateOfBirth) {
-      toast.error(`Date of birth is required for BIN ${cardForm.bin}.`);
-      return;
-    }
-    const assignedClient = clients.find((client) => client.accountIds.includes(account.id));
-    if (issuingRequest && assignedClient?.id !== issuingRequest.clientId) {
-      toast.error("Select an account currently assigned to the client who requested this card.");
-      return;
-    }
-    if (assignedClient && cardsForClient(assignedClient).length >= maxCardsPerClient) {
-      toast.error(`${assignedClient.name} has reached your ${maxCardsPerClient}-card platform limit.`);
-      return;
-    }
-    if (createCardStage !== "payment" || !createCardPaymentId) {
-      toast.error("Legacy prototype payment step must be completed before creating this local demo card.");
-      return;
-    }
-    const stamp = Date.now();
-    const cardId = `MR_${stamp.toString(36).toUpperCase()}`;
-    const last4 = String(stamp).slice(-4);
-    setAccounts((current) => current.map((item) => item.id === account.id ? {
-      ...item,
-      cardBalance: item.cardBalance + cardForm.amount,
-      cards: item.cards + 1,
-      lastSync: "Just now",
-    } : item));
-    setCards((current) => [...current, {
-      id: cardId,
-      accountId: account.id,
-      bin: cardForm.bin,
-      cardholder: cardForm.nameOnCard.trim(),
-      email: cardForm.email.trim() || account.mailbox,
-      last4,
-      label: "Virtual card",
-      balance: cardForm.amount,
-      frozen: false,
-      expiry: "Pending sync",
-    }]);
-    if (issuingRequestId) {
-      setCardRequests((current) => current.map((request) => request.id === issuingRequestId ? { ...request, status: "Issued" } : request));
-    }
-    setCreateCardStage("completed");
-    setCreateCardDialogOpen(false);
-    setIssuingRequestId(null);
-    toast.success(assignedClient ? `Legacy prototype card created for ${assignedClient.name} through ${account.name}.` : `Legacy prototype card created in ${account.name}; assign the account to show it in Telegram.`);
-  };
-
-  const removeAccount = () => {
+  const removeAccount = async () => {
     if (!deleteAccountId) return;
-    if (backendDataLoaded) {
-      toast.info("Account archive/delete is not enabled yet; production records are preserved.");
-      setDeleteAccountId(null);
-      return;
-    }
-    const connectedUsers = clients.filter((client) => client.accountIds.includes(deleteAccountId)).length;
+    const id = deleteAccountId;
+    const connectedUsers = clients.filter((client) => client.accountIds.includes(id)).length;
     if (connectedUsers) {
-      toast.error(`Reassign ${connectedUsers} connected client${connectedUsers > 1 ? "s" : ""} before deleting this account.`);
+      toast.error(`Reassign ${connectedUsers} connected client${connectedUsers > 1 ? "s" : ""} before archiving this account.`);
       setDeleteAccountId(null);
       return;
     }
-    setAccounts((current) => current.filter((account) => account.id !== deleteAccountId));
-    setCards((current) => current.filter((card) => card.accountId !== deleteAccountId));
-    setAccountEmails((current) => current.filter((email) => email.accountId !== deleteAccountId));
-    setDeleteAccountId(null);
-    toast.success("Account deleted.");
+    try {
+      if (backendDataLoaded) await archiveAccount(id);
+      setAccounts((current) => current.filter((account) => account.id !== id));
+      setCards((current) => current.filter((card) => card.accountId !== id));
+      setAccountEmails((current) => current.filter((email) => email.accountId !== id));
+      setDeleteAccountId(null);
+      toast.success(backendDataLoaded ? "Account archived and mailbox authorization disabled." : "Account removed from the local demo.");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Account archive failed.");
+    }
   };
 
   const openAccountEmail = (emailId: string) => {
@@ -1511,14 +1362,49 @@ export default function DashboardApp() {
     setAccountEmails((current) => current.map((email) => email.id === emailId ? { ...email, unread: false } : email));
   };
 
-  const toggleBan = (clientId: string) => {
-    if (backendDataLoaded) {
-      toast.info("Client moderation writes are not enabled yet.");
-      return;
+  const reclassifyActiveAccountEmail = async () => {
+    if (!activeAccount) return;
+    setEmailActionPendingId(activeAccount.id);
+    try {
+      const result = await classifyAccountEmail(activeAccount.id);
+      const messages = await fetchAccountEmailMessages(activeAccount.id);
+      setAccountEmails((current) => [
+        ...current.filter((email) => email.accountId !== activeAccount.id),
+        ...messages.items.filter((message) => !message.providerRemoved).map((message) => mapStoredEmailMessage(activeAccount.id, message)),
+      ]);
+      toast.success(`Email classification complete: ${result.classified} classified, ${result.quarantined} quarantined, ${result.otpCreated} OTP created.`);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Email classification failed.");
+    } finally {
+      setEmailActionPendingId(null);
     }
-    setClients((current) => current.map((client) => client.id === clientId ? { ...client, banned: !client.banned } : client));
+  };
+
+  const revealActiveEmailOtp = async () => {
+    if (!activeAccountEmail?.otpAvailable) return;
+    const password = window.prompt("Re-enter your AccAbad admin password to reveal this OTP:");
+    if (!password) return;
+    const code = window.prompt("If MFA is enabled, enter the 6-digit code. Otherwise leave this blank:") ?? "";
+    try {
+      await reauthenticateAdmin(password, code || undefined);
+      const otp = await revealParsedOtp(activeAccountEmail.id);
+      window.alert(`OTP: ${otp.code}\nExpires: ${formatApiDateTime(otp.expiresAt)}\nDelivery: ${otp.deliveryStatus}`);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "OTP reveal failed.");
+    }
+  };
+
+  const toggleBan = async (clientId: string) => {
     const target = clients.find((client) => client.id === clientId);
-    toast.success(target?.banned ? "Client unbanned." : "Client banned from the bot.");
+    if (!target) return;
+    const nextBanned = !target.banned;
+    try {
+      if (backendDataLoaded) await setClientBanned(clientId, nextBanned);
+      setClients((current) => current.map((client) => client.id === clientId ? { ...client, banned: nextBanned } : client));
+      toast.success(nextBanned ? "Client banned from the bot." : "Client unbanned.");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Client moderation update failed.");
+    }
   };
 
   const toggleCard = async (cardId: string) => {
@@ -1546,7 +1432,7 @@ export default function DashboardApp() {
       toast.success(result.noOp ? `Card is already ${result.status}.` : `Card ${action === "freeze" ? "frozen" : "unfrozen"} by Kripicard${result.reconciled ? " after reconciliation" : ""}.`);
     } catch (error) {
       if (error instanceof AdminApiError && error.code === "feature_disabled") {
-        toast.error("Freeze/unfreeze is installed but disabled. Enable the Phase 6 provider-write flags in deployment configuration after testing.");
+        toast.error("Freeze/unfreeze is installed but disabled. Enable the provider card-state write gates in deployment configuration after testing.");
       } else {
         toast.error(error instanceof Error ? error.message : "Card state update failed.");
       }
@@ -1636,7 +1522,7 @@ export default function DashboardApp() {
     } catch (error) {
       try { await reloadFundingRequests(); } catch { /* keep original error */ }
       if (error instanceof AdminApiError && error.code === "feature_disabled") {
-        toast.error("Card funding is installed but disabled. Enable both provider-write and Phase 16 funding switches after staging validation.");
+        toast.error("Card funding is installed but disabled. Enable both provider-write and card-funding gates after staging validation.");
       } else {
         toast.error(error instanceof Error ? error.message : "Card funding action failed.");
       }
@@ -2044,6 +1930,8 @@ export default function DashboardApp() {
                 exchangeRate={exchangeRate}
                 maxCardsPerClient={maxCardsPerClient}
                 minimumFunding={minimumFunding}
+                minimumCardCreation={minimumCardCreation}
+                cardPolicyBins={cardPolicyBins}
                 botToken={botToken}
                 showToken={showToken}
                 telegramStatus={telegramStatus}
@@ -2053,6 +1941,21 @@ export default function DashboardApp() {
                 onExchangeRate={setExchangeRate}
                 onMaxCardsPerClient={setMaxCardsPerClient}
                 onMinimumFunding={(value) => setMinimumFunding(Math.max(1, value || 1))}
+                onMinimumCardCreation={(value) => setMinimumCardCreation(Math.max(10, value || 10))}
+                onCardPolicyBins={setCardPolicyBins}
+                onSaveCardPolicy={async () => {
+                  try {
+                    const saved = await updateCardPolicy({
+                      platformCardLimit: maxCardsPerClient,
+                      minimumCardCreationUsdCents: Math.round(minimumCardCreation * 100),
+                      bins: cardPolicyBins,
+                    });
+                    setMaxCardsPerClient(saved.platformCardLimit);
+                    setMinimumCardCreation(saved.minimumCardCreationUsdCents / 100);
+                    setCardPolicyBins(saved.bins);
+                    toast.success("Card policy saved. Telegram and admin enforcement now use the same policy.");
+                  } catch (error) { toast.error(error instanceof Error ? error.message : "Could not save card policy."); }
+                }}
                 onSavePricing={async () => {
                   try {
                     const saved = await updateFundingSettings({
@@ -2179,79 +2082,11 @@ export default function DashboardApp() {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={createCardDialogOpen} onOpenChange={(open) => { setCreateCardDialogOpen(open); if (!open) { setIssuingRequestId(null); setCreateCardStage("form"); setCreateCardPaymentId(""); } }}>
-        <DialogContent className="rounded-[24px] border-[#e5e2ee] p-7 shadow-[0_28px_80px_rgba(26,24,48,.18)] sm:max-w-[620px]">
-          <DialogHeader>
-            <DialogTitle>{issuingRequestId ? `Issue card request ${issuingRequestId}` : "Create a virtual card"}</DialogTitle>
-            <DialogDescription>Choose the owning Kripicard account and card details. The admin must complete a crypto payment before the demo issues the card.</DialogDescription>
-          </DialogHeader>
-          <div className="grid gap-5 py-2">
-            <div className="grid gap-2">
-              <Label>Issuing account</Label>
-              <Select value={selectedAccountId} onValueChange={setSelectedAccountId}>
-                <SelectTrigger className="h-11 w-full"><SelectValue placeholder="Select a Kripicard account" /></SelectTrigger>
-                <SelectContent>
-                  {eligibleCardAccounts.map((account) => {
-                    const assignedClient = clients.find((client) => client.accountIds.includes(account.id));
-                    return <SelectItem key={account.id} value={account.id}>{account.name} · {assignedClient?.name ?? "Unassigned"}</SelectItem>;
-                  })}
-                </SelectContent>
-              </Select>
-              {issuingRequestClient && !eligibleCardAccounts.length && <Alert className="border-amber-200 bg-amber-50"><AlertTriangle className="text-amber-700" /><AlertTitle>No account assigned</AlertTitle><AlertDescription>Connect a Kripicard account to {issuingRequestClient.name} before issuing this requested card.</AlertDescription></Alert>}
-              {selectedCardAccount && <div className="flex flex-wrap items-center justify-between gap-2 rounded-[14px] border border-[#e9e6f0] bg-[#faf9fc] px-3.5 py-3 text-sm"><span><strong>Account balance is informational only</strong></span><span className="text-[#777287]">{selectedCardClient ? `Card will appear for ${selectedCardClient.name}` : "No Telegram client assigned"}</span></div>}
-            </div>
-
-            <div className="grid gap-4 sm:grid-cols-2">
-              <div className="grid gap-2"><Label>Card BIN</Label><Select value={cardForm.bin} onValueChange={(value) => setCardForm((current) => ({ ...current, bin: value }))}><SelectTrigger className="h-11"><SelectValue /></SelectTrigger><SelectContent>{binOptions.map((bin) => <SelectItem key={bin.value} value={bin.value}>{bin.label}</SelectItem>)}</SelectContent></Select></div>
-              <div className="grid gap-2"><Label htmlFor="card-amount">Initial balance (USD)</Label><Input id="card-amount" type="number" min={minimumFunding} step="1" value={cardForm.amount} onChange={(event) => setCardForm((current) => ({ ...current, amount: Number(event.target.value) }))} /><p className="text-xs text-[#8f8b9c]">Your configured minimum is {formatUsd(minimumFunding)}.</p></div>
-              <div className="grid gap-2"><Label htmlFor="card-name">Name on card</Label><Input id="card-name" value={cardForm.nameOnCard} onChange={(event) => setCardForm((current) => ({ ...current, nameOnCard: event.target.value }))} placeholder="At least 2 characters" /></div>
-              <div className="grid gap-2"><Label htmlFor="card-email">Cardholder email <span className="font-normal text-[#9692a3]">· optional</span></Label><Input id="card-email" type="email" value={cardForm.email} onChange={(event) => setCardForm((current) => ({ ...current, email: event.target.value }))} placeholder={selectedCardAccount?.mailbox ?? "Defaults to connected inbox"} /></div>
-              {selectedBinRequiresDob && <div className="grid gap-2 sm:col-span-2"><Label htmlFor="card-dob">Date of birth</Label><Input id="card-dob" type="date" value={cardForm.dateOfBirth} onChange={(event) => setCardForm((current) => ({ ...current, dateOfBirth: event.target.value }))} /><p className="text-xs text-[#8f8b9c]">Required by the selected US, Singapore, or UK card product.</p></div>}
-            </div>
-
-            <div className="rounded-[18px] border border-[#ddd9f5] bg-[#f3f1ff] p-4">
-              <div className="flex items-center justify-between text-sm"><span className="text-[#625c86]">Initial card balance</span><strong>{formatUsd(cardForm.amount || 0)}</strong></div>
-              <div className="mt-2 flex items-center justify-between text-sm"><span className="text-[#625c86]">Demo provider fee · $1 + 4%</span><strong>{formatUsd(cardProviderFee)}</strong></div>
-              <div className="mt-3 flex items-center justify-between border-t border-[#d9d4f0] pt-3"><span className="font-semibold text-[#302b68]">Legacy demo total</span><strong className="text-lg text-[#302b68]">{formatUsd(createCardCryptoTotal)}</strong></div>
-              <p className="mt-2 text-xs leading-5 text-[#777287]">Demo uses USDT ≈ USD for the payment preview. Production must display the exact amount/address returned by the approved provider or payment service.</p>
-            </div>
-              {selectedCardClient && cardsForClient(selectedCardClient).length >= maxCardsPerClient && <Alert className="border-red-200 bg-red-50"><AlertTriangle className="text-red-700" /><AlertTitle>Client card limit reached</AlertTitle><AlertDescription>{selectedCardClient.name} already has {cardsForClient(selectedCardClient).length} cards. Raise your platform limit or use another client account.</AlertDescription></Alert>}
-          </div>
-          <DialogFooter>
-            <Button variant="outline" className="rounded-xl" onClick={() => { setCreateCardDialogOpen(false); setIssuingRequestId(null); }}>Cancel</Button>
-            {createCardStage === "form" ? <Button onClick={beginCreateCardPayment} disabled={!selectedAccountId || !cardForm.nameOnCard.trim()} className="rounded-xl bg-[#6157e7] text-white hover:bg-[#554bcf]"><WalletCards className="size-4" />Continue legacy demo</Button> : <Button onClick={createCard} className="rounded-xl bg-[#6157e7] text-white hover:bg-[#554bcf]"><RefreshCw className="size-4" />Complete legacy demo</Button>}
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog open={fundCardDialogOpen} onOpenChange={(open) => { setFundCardDialogOpen(open); if (!open) { setFundCardId(null); setFundCardScopeAccountId(null); setFundCardStage("form"); setFundCardPaymentId(""); setFundCardRequestId(null); } }}>
-        <DialogContent className="max-h-[90vh] overflow-y-auto rounded-[24px] border-[#e5e2ee] p-7 shadow-[0_28px_80px_rgba(26,24,48,.18)] sm:max-w-[580px]">
-          <DialogHeader>
-            <div className="mb-1 flex items-center gap-2"><Badge className="rounded-full bg-[#6157e7] text-white">Legacy prototype</Badge><Badge variant="outline" className="rounded-full">Not a production provider flow</Badge></div>
-            <DialogTitle>{fundCardRequestId ? `Legacy fund demo ${fundCardRequestId}` : "Legacy local funding demo"}</DialogTitle>
-            <DialogDescription>This local fallback is retained only for prototype rendering. It never calls Kripicard; production Phase 16 funding is executed only from an accepted request in Request Center.</DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4 py-2">
-            <div className="grid gap-2"><Label>Card</Label><Select value={fundCardId ?? ""} onValueChange={(value) => { setFundCardId(value); setFundCardStage("form"); setFundCardPaymentId(""); }}><SelectTrigger className="h-11"><SelectValue placeholder="Select a card" /></SelectTrigger><SelectContent>{fundCardChoices.map((card) => { const account = accounts.find((item) => item.id === card.accountId); return <SelectItem key={card.id} value={card.id}>•{card.last4} · {card.label} · {account?.name}</SelectItem>; })}</SelectContent></Select></div>
-            {fundCard && fundCardAccount ? <>
-              <div className="grid grid-cols-2 gap-3"><div className="rounded-[16px] border border-[#eceaf2] bg-[#faf9fc] p-4"><p className="text-xs text-[#9692a3]">Card receives</p><p className="mt-1 text-lg font-semibold">{formatUsd(fundCardAmount || 0)}</p><p className="mt-1 text-xs text-[#9692a3]">Current: {formatUsd(fundCard.balance)}</p></div><div className="rounded-[16px] border border-[#eceaf2] bg-[#faf9fc] p-4"><p className="text-xs text-[#9692a3]">Owning account</p><p className="mt-1 truncate text-sm font-semibold">{fundCardAccount.name}</p><p className="mt-1 text-xs text-[#9692a3]">Legacy prototype only</p></div></div>
-              <div className="grid gap-2"><Label htmlFor="fund-card-amount">Amount to add (USD)</Label><Input id="fund-card-amount" type="number" min={minimumFunding} step="1" value={fundCardAmount} onChange={(event) => { setFundCardAmount(Number(event.target.value)); setFundCardStage("form"); setFundCardPaymentId(""); }} /><p className="text-xs text-[#8f8b9c]">Configured minimum: {formatUsd(minimumFunding)}.</p></div>
-              <div className="rounded-[18px] border border-[#d9d4f0] bg-[#f3f1ff] p-4 text-sm"><div className="flex justify-between"><span className="text-[#625c86]">Card credit</span><strong>{formatUsd(fundCardAmount || 0)}</strong></div><div className="mt-2 flex justify-between"><span className="text-[#625c86]">Demo provider fee · $1 + 4%</span><strong>{formatUsd(fundCardProviderFee)}</strong></div><div className="mt-3 flex justify-between border-t border-[#d9d4f0] pt-3"><span className="font-semibold text-[#302b68]">Legacy demo total</span><strong className="text-lg text-[#302b68]">{formatUsd(fundCardCryptoTotal)}</strong></div></div>
-            </> : <div className="rounded-[18px] border border-dashed border-[#d9d5e4] bg-[#faf9fc] p-6 text-center"><CreditCard className="mx-auto size-7 text-[#aaa6b8]" /><p className="mt-2 text-sm font-semibold text-[#49455a]">Choose a card only when exercising the legacy local prototype.</p></div>}
-          </div>
-          <DialogFooter>
-            <Button variant="outline" className="rounded-xl" onClick={() => setFundCardDialogOpen(false)}>{fundCardStage === "completed" ? "Done" : "Cancel"}</Button>
-            {fundCardStage === "form" && <Button disabled={!fundCard || !fundCardAccount || fundCardAmount < minimumFunding} onClick={beginFundCardPayment} className="rounded-xl bg-[#6157e7] text-white hover:bg-[#554bcf]"><WalletCards className="size-4" />Continue legacy demo</Button>}
-            {fundCardStage === "payment" && <Button onClick={confirmFundCard} className="rounded-xl bg-[#6157e7] text-white hover:bg-[#554bcf]"><RefreshCw className="size-4" />Complete legacy demo</Button>}
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
       <AlertDialog open={Boolean(deleteAccountId)} onOpenChange={(open) => !open && setDeleteAccountId(null)}>
         <AlertDialogContent className="rounded-[24px] border-[#e5e2ee] shadow-[0_28px_80px_rgba(26,24,48,.18)]">
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete this account connection?</AlertDialogTitle>
-            <AlertDialogDescription>This removes the saved API connection. It does not delete cards at Kripicard.</AlertDialogDescription>
+            <AlertDialogTitle>Archive this account connection?</AlertDialogTitle>
+            <AlertDialogDescription>This archives the AccAbad connection and disables its mailbox authorization. It does not delete cards at Kripicard.</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
@@ -2282,6 +2117,7 @@ export default function DashboardApp() {
                     <span className="grid size-10 shrink-0 place-items-center rounded-[13px] bg-white text-[#6157e7]"><Mail className="size-5" /></span>
                     <div className="min-w-0 flex-1"><p className="truncate text-sm font-semibold text-[#302d43]">{activeAccount.mailbox}</p><p className="mt-0.5 text-xs text-[#777287]">{activeAccount.mailProvider} · {activeAccount.emailConnectionStatus === "connected" ? `connected${activeAccount.emailProviderIdentity ? ` as ${activeAccount.emailProviderIdentity}` : ""}` : activeAccount.emailConnectionStatus === "reauth_required" ? "reconnect required" : activeAccount.emailConnectionStatus === "error" ? "sync error" : "not connected"}</p></div>
                     <Badge variant="outline" className="rounded-full border-[#d8d3ff] bg-white text-[#5549ca]">{activeAccountEmails.filter((email) => email.unread).length} unread</Badge>
+                    {backendDataLoaded && activeAccount.emailConnectionStatus === "connected" && <Button size="sm" variant="outline" disabled={emailActionPendingId === activeAccount.id} onClick={() => void reclassifyActiveAccountEmail()} className="rounded-xl"><ShieldCheck className="size-4" />Reclassify</Button>}
                   </div>
                   {backendDataLoaded && activeAccount.mailProvider === "Outlook / Hotmail" && <div className="flex flex-wrap items-center gap-2 border-t border-[#ddd9f5] pt-3">
                     {activeAccount.emailConnectionStatus !== "connected" ? <Button size="sm" disabled={emailActionPendingId === activeAccount.id} onClick={() => void connectOutlook(activeAccount)} className="rounded-xl bg-[#6157e7] text-white hover:bg-[#554bcf]"><Mail className="size-4" />{activeAccount.emailConnectionStatus === "reauth_required" ? "Reconnect Outlook" : "Connect Outlook"}</Button> : <>
@@ -2339,13 +2175,13 @@ export default function DashboardApp() {
 
       <Dialog open={Boolean(activeAccountEmailId)} onOpenChange={(open) => !open && setActiveAccountEmailId(null)}>
         <DialogContent className="rounded-[24px] border-[#e5e2ee] p-7 shadow-[0_28px_80px_rgba(26,24,48,.18)] sm:max-w-[620px]">
-          {activeAccountEmail && <><DialogHeader><div className="flex items-center gap-2"><Badge variant="outline" className="rounded-full">{activeAccountEmail.category}</Badge>{activeAccountEmail.cardLast4 && <Badge variant="outline" className="rounded-full border-[#d8d3ff] bg-[#f2f0ff] text-[#5549ca]">Card •{activeAccountEmail.cardLast4}</Badge>}</div><DialogTitle className="pt-2">{activeAccountEmail.subject}</DialogTitle><DialogDescription>From {activeAccountEmail.sender} · received {activeAccountEmail.received}</DialogDescription></DialogHeader><div className="rounded-[18px] border border-[#e8e6ef] bg-[#faf9fc] p-5 text-sm leading-7 text-[#494558]">{activeAccountEmail.body}</div><DialogFooter><Button variant="outline" className="rounded-xl" onClick={() => setActiveAccountEmailId(null)}>Close</Button>{activeAccountEmail.category === "3DS" && <Button disabled={!activeAccountClient} className="rounded-xl bg-[#6157e7] text-white hover:bg-[#554bcf]" onClick={() => toast.success(`Code queued for ${activeAccountClient?.name}.`)}><Send className="size-4" />{activeAccountClient ? `Send to ${activeAccountClient.name}` : "No user assigned"}</Button>}</DialogFooter></>}
+          {activeAccountEmail && <><DialogHeader><div className="flex items-center gap-2"><Badge variant="outline" className="rounded-full">{activeAccountEmail.category}</Badge>{activeAccountEmail.cardLast4 && <Badge variant="outline" className="rounded-full border-[#d8d3ff] bg-[#f2f0ff] text-[#5549ca]">Card •{activeAccountEmail.cardLast4}</Badge>}</div><DialogTitle className="pt-2">{activeAccountEmail.subject}</DialogTitle><DialogDescription>From {activeAccountEmail.sender} · received {activeAccountEmail.received}</DialogDescription></DialogHeader><div className="rounded-[18px] border border-[#e8e6ef] bg-[#faf9fc] p-5 text-sm leading-7 text-[#494558]">{activeAccountEmail.body}</div>{activeAccountEmail.parserNote && <p className="text-xs text-[#8f8b9c]">{activeAccountEmail.parserNote}</p>}<DialogFooter><Button variant="outline" className="rounded-xl" onClick={() => setActiveAccountEmailId(null)}>Close</Button>{activeAccountEmail.otpAvailable && <Button className="rounded-xl bg-[#6157e7] text-white hover:bg-[#554bcf]" onClick={() => void revealActiveEmailOtp()}><KeyRound className="size-4" />Reveal OTP{activeAccountEmail.otpCodeLast2 ? ` · ••${activeAccountEmail.otpCodeLast2}` : ""}</Button>}</DialogFooter></>}
         </DialogContent>
       </Dialog>
 
       <Dialog open={Boolean(activeCardId)} onOpenChange={(open) => { if (!open) { setActiveCardId(null); setLiveCardDetails(null); } }}>
         <DialogContent className="rounded-[24px] border-[#e5e2ee] p-7 shadow-[0_28px_80px_rgba(26,24,48,.18)] sm:max-w-[580px]">
-          {activeCard && <><DialogHeader><DialogTitle>{activeCard.label} · •{activeCard.last4}</DialogTitle><DialogDescription>Live card details are retrieved from the Kripicard account that owns this card.</DialogDescription></DialogHeader><dl className="grid gap-3 rounded-[18px] border border-[#e8e6ef] bg-[#faf9fc] p-5 text-sm sm:grid-cols-2"><div><dt className="text-[#9692a3]">Card ID</dt><dd className="mt-1 font-mono font-semibold">{activeCard.providerCardId ?? activeCard.id}</dd></div><div><dt className="text-[#9692a3]">BIN / last four</dt><dd className="mt-1 font-semibold">{activeCard.bin} · •{activeCard.last4}</dd></div><div><dt className="text-[#9692a3]">Cardholder</dt><dd className="mt-1 font-semibold">{activeCard.cardholder}</dd></div><div><dt className="text-[#9692a3]">Expiry</dt><dd className="mt-1 font-semibold">{activeCard.expiry}</dd></div><div><dt className="text-[#9692a3]">Balance</dt><dd className="mt-1 font-semibold">{formatUsd(activeCard.balance)}</dd></div><div><dt className="text-[#9692a3]">Status</dt><dd className="mt-1 font-semibold">{activeCard.frozen ? "Frozen" : "Active"}</dd></div><div className="sm:col-span-2"><dt className="text-[#9692a3]">3DS delivery address</dt><dd className="mt-1 break-all font-semibold">{activeCard.email}</dd></div></dl>{liveCardDetails && <div className="grid gap-3 rounded-[18px] border border-amber-200 bg-amber-50 p-5 text-sm sm:grid-cols-3"><div className="sm:col-span-2"><p className="text-xs font-semibold uppercase tracking-[.08em] text-amber-700">Live card number</p><p className="mt-1 break-all font-mono text-base font-bold text-amber-950">{liveCardDetails.cardNumber}</p></div><div><p className="text-xs font-semibold uppercase tracking-[.08em] text-amber-700">CVV</p><p className="mt-1 font-mono text-base font-bold text-amber-950">{liveCardDetails.cvv}</p></div><div><p className="text-xs font-semibold uppercase tracking-[.08em] text-amber-700">Expiry</p><p className="mt-1 font-semibold text-amber-950">{liveCardDetails.expiry}</p></div><div className="sm:col-span-2"><p className="text-xs text-amber-700">Sensitive details auto-hide after 30 seconds and are not written to the AccAbad database.</p></div></div>}{backendDataLoaded && <div className="rounded-[18px] border border-[#e8e6ef] bg-white p-4"><div className="mb-3 flex items-center justify-between gap-2"><div><p className="text-sm font-semibold text-[#353146]">Stored provider transactions</p><p className="text-xs text-[#9692a3]">Synced from Kripicard and deduplicated in PostgreSQL.</p></div><Badge variant="outline" className="rounded-full">{activeCardTransactions.length}</Badge></div><div className="max-h-52 space-y-2 overflow-y-auto">{activeCardTransactions.slice(0, 20).map((tx) => <div key={tx.id} className="flex items-center justify-between gap-3 rounded-xl border border-[#f0eef4] px-3 py-2.5"><div className="min-w-0"><p className="truncate text-sm font-medium">{tx.merchant || tx.type || "Provider transaction"}</p><p className="text-xs text-[#9692a3]">{new Date(tx.occurredAt).toLocaleString()} · {tx.type || "Unknown"} · {tx.status}</p></div><span className="shrink-0 text-sm font-semibold">{formatUsd(Number(tx.amountMinor) / 100)}</span></div>)}{activeCardTransactions.length === 0 && <p className="rounded-xl border border-dashed p-3 text-center text-sm text-[#9692a3]">No synchronized transactions yet. Use Sync transactions.</p>}</div></div>}<Alert className="border-[#ddd9f5] bg-[#f3f1ff]"><ShieldCheck className="text-[#6157e7]" /><AlertTitle>Protected card data</AlertTitle><AlertDescription>AccAbad fetches PAN, expiry, and CVV from Kripicard only after an explicit, reauthenticated reveal. They are never persisted to PostgreSQL and are cleared from this view automatically.</AlertDescription></Alert><DialogFooter><Button disabled={backendDataLoaded} className="rounded-xl bg-[#6157e7] text-white hover:bg-[#554bcf]" onClick={() => { const cardId = activeCard.id; setActiveCardId(null); openFundCard(cardId); }}><CircleDollarSign className="size-4" />{backendDataLoaded ? "Funding disabled" : "Add funds"}</Button><Button variant="outline" className="rounded-xl" disabled={cardStatePendingId === activeCard.id} onClick={() => void toggleCard(activeCard.id)}>{activeCard.frozen ? <Unlock className="size-4" /> : <Snowflake className="size-4" />}{cardStatePendingId === activeCard.id ? "Working…" : activeCard.frozen ? "Unfreeze" : "Freeze"}</Button><Button variant="outline" className="rounded-xl" disabled={cardStatePendingId === activeCard.id} onClick={() => void refreshProviderCardStatus(activeCard)}><RefreshCw className="size-4" />Refresh status</Button><Button variant="outline" className="rounded-xl" onClick={() => void revealProviderCardDetails(activeCard)}><Eye className="size-4" />Reveal number & CVV</Button><Button variant="outline" className="rounded-xl" onClick={() => void syncProviderCardTransactions(activeCard)}><ArrowLeftRight className="size-4" />Sync transactions</Button></DialogFooter></>}
+          {activeCard && <><DialogHeader><DialogTitle>{activeCard.label} · •{activeCard.last4}</DialogTitle><DialogDescription>Live card details are retrieved from the Kripicard account that owns this card.</DialogDescription></DialogHeader><dl className="grid gap-3 rounded-[18px] border border-[#e8e6ef] bg-[#faf9fc] p-5 text-sm sm:grid-cols-2"><div><dt className="text-[#9692a3]">Card ID</dt><dd className="mt-1 font-mono font-semibold">{activeCard.providerCardId ?? activeCard.id}</dd></div><div><dt className="text-[#9692a3]">BIN / last four</dt><dd className="mt-1 font-semibold">{activeCard.bin} · •{activeCard.last4}</dd></div><div><dt className="text-[#9692a3]">Cardholder</dt><dd className="mt-1 font-semibold">{activeCard.cardholder}</dd></div><div><dt className="text-[#9692a3]">Expiry</dt><dd className="mt-1 font-semibold">{activeCard.expiry}</dd></div><div><dt className="text-[#9692a3]">Balance</dt><dd className="mt-1 font-semibold">{formatUsd(activeCard.balance)}</dd></div><div><dt className="text-[#9692a3]">Status</dt><dd className="mt-1 font-semibold">{activeCard.frozen ? "Frozen" : "Active"}</dd></div><div className="sm:col-span-2"><dt className="text-[#9692a3]">3DS delivery address</dt><dd className="mt-1 break-all font-semibold">{activeCard.email}</dd></div></dl>{liveCardDetails && <div className="grid gap-3 rounded-[18px] border border-amber-200 bg-amber-50 p-5 text-sm sm:grid-cols-3"><div className="sm:col-span-2"><p className="text-xs font-semibold uppercase tracking-[.08em] text-amber-700">Live card number</p><p className="mt-1 break-all font-mono text-base font-bold text-amber-950">{liveCardDetails.cardNumber}</p></div><div><p className="text-xs font-semibold uppercase tracking-[.08em] text-amber-700">CVV</p><p className="mt-1 font-mono text-base font-bold text-amber-950">{liveCardDetails.cvv}</p></div><div><p className="text-xs font-semibold uppercase tracking-[.08em] text-amber-700">Expiry</p><p className="mt-1 font-semibold text-amber-950">{liveCardDetails.expiry}</p></div><div className="sm:col-span-2"><p className="text-xs text-amber-700">Sensitive details auto-hide after 30 seconds and are not written to the AccAbad database.</p></div></div>}{backendDataLoaded && <div className="rounded-[18px] border border-[#e8e6ef] bg-white p-4"><div className="mb-3 flex items-center justify-between gap-2"><div><p className="text-sm font-semibold text-[#353146]">Stored provider transactions</p><p className="text-xs text-[#9692a3]">Synced from Kripicard and deduplicated in PostgreSQL.</p></div><Badge variant="outline" className="rounded-full">{activeCardTransactions.length}</Badge></div><div className="max-h-52 space-y-2 overflow-y-auto">{activeCardTransactions.slice(0, 20).map((tx) => <div key={tx.id} className="flex items-center justify-between gap-3 rounded-xl border border-[#f0eef4] px-3 py-2.5"><div className="min-w-0"><p className="truncate text-sm font-medium">{tx.merchant || tx.type || "Provider transaction"}</p><p className="text-xs text-[#9692a3]">{new Date(tx.occurredAt).toLocaleString()} · {tx.type || "Unknown"} · {tx.status}</p></div><span className="shrink-0 text-sm font-semibold">{formatUsd(Number(tx.amountMinor) / 100)}</span></div>)}{activeCardTransactions.length === 0 && <p className="rounded-xl border border-dashed p-3 text-center text-sm text-[#9692a3]">No synchronized transactions yet. Use Sync transactions.</p>}</div></div>}<Alert className="border-[#ddd9f5] bg-[#f3f1ff]"><ShieldCheck className="text-[#6157e7]" /><AlertTitle>Protected card data</AlertTitle><AlertDescription>AccAbad fetches PAN, expiry, and CVV from Kripicard only after an explicit, reauthenticated reveal. They are never persisted to PostgreSQL and are cleared from this view automatically.</AlertDescription></Alert><DialogFooter><Button className="rounded-xl bg-[#6157e7] text-white hover:bg-[#554bcf]" onClick={() => { setActiveCardId(null); setView("requests"); }}><CircleDollarSign className="size-4" />Open funding requests</Button><Button variant="outline" className="rounded-xl" disabled={cardStatePendingId === activeCard.id} onClick={() => void toggleCard(activeCard.id)}>{activeCard.frozen ? <Unlock className="size-4" /> : <Snowflake className="size-4" />}{cardStatePendingId === activeCard.id ? "Working…" : activeCard.frozen ? "Unfreeze" : "Freeze"}</Button><Button variant="outline" className="rounded-xl" disabled={cardStatePendingId === activeCard.id} onClick={() => void refreshProviderCardStatus(activeCard)}><RefreshCw className="size-4" />Refresh status</Button><Button variant="outline" className="rounded-xl" onClick={() => void revealProviderCardDetails(activeCard)}><Eye className="size-4" />Reveal number & CVV</Button><Button variant="outline" className="rounded-xl" onClick={() => void syncProviderCardTransactions(activeCard)}><ArrowLeftRight className="size-4" />Sync transactions</Button></DialogFooter></>}
         </DialogContent>
       </Dialog>
 
@@ -2892,7 +2728,7 @@ function TransactionsView({ transactions, clientName, search, issues, onReconcil
   const paging = usePaginatedItems(matchingTransactions);
   return (
     <>
-      <PageIntro title="Card transactions" description="Scheduled Kripicard activity with fingerprint deduplication and current-owner Telegram notifications." action={<Button variant="outline" className="h-11 rounded-[14px] border-[#dedbe8] bg-white" onClick={() => toast.info("Phase 17 scheduled sync runs through the protected Kripicard transaction job. Manual per-card sync remains available from card details.")}><RefreshCw className="size-4" />Sync status</Button>} />
+      <PageIntro title="Card transactions" description="Scheduled Kripicard activity with fingerprint deduplication and current-owner Telegram notifications." action={<Button variant="outline" className="h-11 rounded-[14px] border-[#dedbe8] bg-white" onClick={() => toast.info("Scheduled sync runs through the protected Kripicard transaction job. Manual per-card sync remains available from card details.")}><RefreshCw className="size-4" />Sync status</Button>} />
       {issues.length > 0 && <Card className="mb-4 surface-card rounded-[22px] border-amber-200 bg-amber-50/40"><CardHeader><div className="flex items-center justify-between gap-3"><div><CardTitle className="text-base">Notification reconciliation</CardTitle><p className="mt-1 text-sm text-[#777287]">Failed deliveries can be safely retried only while the original user still owns the account. Ownership-change skips are never resent automatically.</p></div><Badge variant="outline" className="rounded-full border-amber-300 bg-white text-amber-800">{issues.length} issue{issues.length === 1 ? "" : "s"}</Badge></div></CardHeader><CardContent className="space-y-2">{issues.slice(0, 8).map((issue) => <div key={issue.id} className="flex flex-col gap-3 rounded-[14px] border border-amber-200 bg-white p-3 sm:flex-row sm:items-center"><div className="min-w-0 flex-1"><p className="truncate text-sm font-semibold">•{issue.last4 ?? "????"} · {issue.merchant || issue.transactionType || "Provider transaction"}</p><p className="mt-1 text-xs text-[#8f8b9c]">{issue.notificationStatus} · {issue.notificationError || "delivery mismatch"} · {new Date(issue.occurredAt).toLocaleString()}</p></div><div className="flex gap-2">{issue.notificationStatus === "failed" && <Button size="sm" variant="outline" className="rounded-xl" onClick={() => void onReconcileIssue(issue.id, "retry")}>Retry safely</Button>}<Button size="sm" variant="outline" className="rounded-xl" onClick={() => void onReconcileIssue(issue.id, "acknowledge")}>Acknowledge</Button></div></div>)}</CardContent></Card>}
       <div className="mb-4 grid gap-4 sm:grid-cols-3"><MetricCard icon={CheckCircle2} label="Successful volume" value={formatUsd(338.99)} foot="Across the visible period" tone="cyan" /><MetricCard icon={XCircle} label="Declined" value={formatUsd(9.99)} foot="Insufficient balance" tone="amber" /><MetricCard icon={ShieldCheck} label="Verification events" value="1" foot="OTP event — no code exposed" tone="violet" /></div>
       <Card className="data-table overflow-hidden surface-card rounded-[24px]"><div className="overflow-x-auto"><Table><TableHeader><TableRow className="bg-[#faf9fc]"><TableHead className="pl-6">Transaction</TableHead><TableHead>Client</TableHead><TableHead>Merchant</TableHead><TableHead>Type</TableHead><TableHead>Amount</TableHead><TableHead>Status</TableHead><TableHead>Telegram</TableHead></TableRow></TableHeader><TableBody>{paging.pageItems.map((tx) => <TableRow key={tx.id}><TableCell className="pl-6"><span className="font-semibold text-[#353146]">{tx.id}</span><span className="mt-0.5 block text-xs text-[#9692a3]">{tx.date}</span></TableCell><TableCell>{clientName(tx.clientId)}<span className="block text-xs text-[#9d99aa]">card •{tx.cardLast4}</span></TableCell><TableCell className="font-semibold text-[#353146]">{tx.merchant}</TableCell><TableCell>{tx.type}</TableCell><TableCell className="font-semibold text-[#353146]">{formatUsd(tx.amount)}</TableCell><TableCell><Badge variant="outline" className={`${tx.status === "Success" ? "border-[#bfe9d9] bg-[#eaf8f2] text-[#167957]" : "border-[#f1c7cc] bg-[#fff0f2] text-[#b53847]"} rounded-full`}>{tx.status}</Badge></TableCell><TableCell><Badge variant="outline" className="rounded-full">{tx.notificationStatus ?? "demo"}</Badge></TableCell></TableRow>)}</TableBody></Table></div><ListPagination page={paging.page} pageSize={paging.pageSize} totalItems={paging.totalItems} totalPages={paging.totalPages} onPageChange={paging.setPage} /></Card>
@@ -2979,7 +2815,7 @@ function InboxView({ clients, activeClient, activeClientId, messages, draft, sea
           {!atBottom && (
             <button onClick={scrollToBottom} aria-label="Scroll to latest" className="absolute right-5 bottom-32 grid size-10 place-items-center rounded-full bg-[#6157e7] text-white shadow-[0_8px_24px_rgba(97,87,231,.4)] transition hover:bg-[#554bcf]">↓</button>
           )}
-          <div className="shrink-0 border-t border-[#eceaf2] p-4"><div className="flex items-end gap-2"><label className="inline-flex size-10 shrink-0 cursor-pointer items-center justify-center rounded-xl text-[#777287] hover:bg-[#f2f0f8]"><Paperclip className="size-4" /><input type="file" accept="application/pdf,image/jpeg,image/png,image/webp" className="hidden" onChange={(event) => onAttachment(event.target.files?.[0] ?? null)} /><span className="sr-only">Attach PDF or image</span></label><Textarea value={draft} onChange={(event) => onDraftChange(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); onSend(); } }} placeholder="Write a message…" className="min-h-11 resize-none rounded-[14px] border-[#e3e0eb]" /><Button size="icon" className="size-11 shrink-0 rounded-[14px] bg-[#6157e7] text-white shadow-[0_8px_18px_rgba(97,87,231,.18)] hover:bg-[#554bcf]" onClick={onSend}><Send className="size-4" /><span className="sr-only">Send</span></Button></div>{attachment && <div className="mt-2 flex items-center justify-between rounded-xl border bg-[#faf9fc] px-3 py-2 text-xs"><span className="truncate"><Paperclip className="mr-1 inline size-3.5" />{attachment.name}</span><button className="font-semibold text-[#b53847]" onClick={() => onAttachment(null)}>Remove</button></div>}<p className="mt-2 text-center text-xs text-[#aaa6b8]">PDF/JPEG/PNG/WebP attachments are private, type-checked and passed through the configured malware scanner before Telegram delivery.</p></div>
+          <div className="shrink-0 border-t border-[#eceaf2] p-4"><div className="flex items-end gap-2"><label className="inline-flex size-10 shrink-0 cursor-pointer items-center justify-center rounded-xl text-[#777287] hover:bg-[#f2f0f8]"><Paperclip className="size-4" /><input type="file" accept="application/pdf,image/jpeg,image/png,image/webp" className="hidden" onChange={(event) => onAttachment(event.target.files?.[0] ?? null)} /><span className="sr-only">Attach PDF or image</span></label><Textarea value={draft} onChange={(event) => onDraftChange(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); onSend(); } }} placeholder="Write a message…" className="min-h-11 resize-none rounded-[14px] border-[#e3e0eb]" /><Button size="icon" className="size-11 shrink-0 rounded-[14px] bg-[#6157e7] text-white shadow-[0_8px_18px_rgba(97,87,231,.18)] hover:bg-[#554bcf]" onClick={onSend}><Send className="size-4" /><span className="sr-only">Send</span></Button></div>{attachment && <div className="mt-2 flex items-center justify-between rounded-xl border bg-[#faf9fc] px-3 py-2 text-xs"><span className="truncate"><Paperclip className="mr-1 inline size-3.5" />{attachment.name}</span><button className="font-semibold text-[#b53847]" onClick={() => onAttachment(null)}>Remove</button></div>}<p className="mt-2 text-center text-xs text-[#aaa6b8]">PDF/JPEG/PNG/WebP attachments are private and validated for allowed type and structure. Malware scanning is also applied when a scanner is configured.</p></div>
         </section>
       </Card>
     </>
@@ -3023,7 +2859,7 @@ function OperationsView({ snapshot, onAlertAction, onControlAction }: { snapshot
   </div>;
 }
 
-function SettingsView({ serviceFee, exchangeRate, maxCardsPerClient, minimumFunding, botToken, showToken, telegramStatus, channels, newChannel, onServiceFee, onExchangeRate, onMaxCardsPerClient, onMinimumFunding, onSavePricing, onBotToken, onSaveBotToken, onClearBotToken, onShowToken, onConfigureWebhook, onNewChannel, onAddChannel, onRemoveChannel }: { serviceFee: number; exchangeRate: number; maxCardsPerClient: number; minimumFunding: number; botToken: string; showToken: boolean; telegramStatus: TelegramBotStatus | null; channels: string[]; newChannel: string; onServiceFee: (value: number) => void; onExchangeRate: (value: number) => void; onMaxCardsPerClient: (value: number) => void; onMinimumFunding: (value: number) => void; onSavePricing: () => void | Promise<void>; onBotToken: (value: string) => void; onSaveBotToken: () => void | Promise<void>; onClearBotToken: () => void | Promise<void>; onShowToken: (value: boolean) => void; onConfigureWebhook: () => void | Promise<void>; onNewChannel: (value: string) => void; onAddChannel: () => void | Promise<void>; onRemoveChannel: (channel: string) => void | Promise<void> }) {
+function SettingsView({ serviceFee, exchangeRate, maxCardsPerClient, minimumFunding, minimumCardCreation, cardPolicyBins, botToken, showToken, telegramStatus, channels, newChannel, onServiceFee, onExchangeRate, onMaxCardsPerClient, onMinimumFunding, onMinimumCardCreation, onCardPolicyBins, onSaveCardPolicy, onSavePricing, onBotToken, onSaveBotToken, onClearBotToken, onShowToken, onConfigureWebhook, onNewChannel, onAddChannel, onRemoveChannel }: { serviceFee: number; exchangeRate: number; maxCardsPerClient: number; minimumFunding: number; minimumCardCreation: number; cardPolicyBins: Array<{ bin: string; requiresDob: boolean }>; botToken: string; showToken: boolean; telegramStatus: TelegramBotStatus | null; channels: string[]; newChannel: string; onServiceFee: (value: number) => void; onExchangeRate: (value: number) => void; onMaxCardsPerClient: (value: number) => void; onMinimumFunding: (value: number) => void; onMinimumCardCreation: (value: number) => void; onCardPolicyBins: (value: Array<{ bin: string; requiresDob: boolean }>) => void; onSaveCardPolicy: () => void | Promise<void>; onSavePricing: () => void | Promise<void>; onBotToken: (value: string) => void; onSaveBotToken: () => void | Promise<void>; onClearBotToken: () => void | Promise<void>; onShowToken: (value: boolean) => void; onConfigureWebhook: () => void | Promise<void>; onNewChannel: (value: string) => void; onAddChannel: () => void | Promise<void>; onRemoveChannel: (channel: string) => void | Promise<void> }) {
   const [securityAdmin, setSecurityAdmin] = useState<CurrentAdmin | null>(null);
   const [securityPassword, setSecurityPassword] = useState("");
   const [securityCode, setSecurityCode] = useState("");
@@ -3052,6 +2888,29 @@ function SettingsView({ serviceFee, exchangeRate, maxCardsPerClient, minimumFund
     setProviderReadinessLoading(true);
     try { setProviderReadiness(await fetchProviderReadiness()); }
     catch (error) { toast.error(error instanceof Error ? error.message : "Could not load provider readiness."); }
+    finally { setProviderReadinessLoading(false); }
+  };
+
+  const editProviderReadiness = async (check: ProviderReadinessSnapshot["checks"][number]) => {
+    const statusRaw = window.prompt("Status: confirmed, partial, unresolved, or not_applicable", check.status);
+    if (!statusRaw) return;
+    if (!["confirmed","partial","unresolved","not_applicable"].includes(statusRaw)) { toast.error("Invalid readiness status."); return; }
+    const sourceRaw = window.prompt("Source: provider_written, live_test, official_public, or none", check.sourceKind === "supplied_pdf" ? "none" : check.sourceKind);
+    if (!sourceRaw) return;
+    if (!["provider_written","live_test","official_public","none"].includes(sourceRaw)) { toast.error("Invalid source kind."); return; }
+    const sourceReference = window.prompt("Source reference (ticket/email/test reference, optional)", check.sourceReference ?? "") ?? "";
+    const note = window.prompt("Internal note (optional)", check.note ?? "") ?? "";
+    setProviderReadinessLoading(true);
+    try {
+      await updateProviderReadinessCheck(check.key, {
+        status: statusRaw as "confirmed" | "partial" | "unresolved" | "not_applicable",
+        sourceKind: sourceRaw as "provider_written" | "live_test" | "official_public" | "none",
+        sourceReference: sourceReference.trim() || null,
+        note: note.trim() || null,
+      });
+      setProviderReadiness(await fetchProviderReadiness());
+      toast.success("Provider readiness check updated.");
+    } catch (error) { toast.error(error instanceof Error ? error.message : "Could not update provider readiness."); }
     finally { setProviderReadinessLoading(false); }
   };
 
@@ -3116,35 +2975,83 @@ function SettingsView({ serviceFee, exchangeRate, maxCardsPerClient, minimumFund
   const total = exampleAmount + providerFee + ownFee;
   return (
     <>
-      <PageIntro title="Operations settings" description="Configure the amounts and access rules clients see in Telegram." action={<Button className="h-11 rounded-[14px] bg-[#6157e7] px-4 text-white shadow-[0_8px_22px_rgba(97,87,231,.18)] hover:bg-[#554bcf]" onClick={() => toast.info("Settings persistence is not implemented yet; no production setting was changed.")}><Check className="size-4" />Save settings</Button>} />
-      <div className="mb-4 flex flex-wrap gap-2">{([["general","General"],["telegram","Telegram"],["security","Security"],["policy","Card policy"]] as const).map(([v,l]) => <Button key={v} size="sm" variant={settingsTab===v?"default":"outline"} className="rounded-full" onClick={() => setSettingsTab(v)}>{l}</Button>)}</div>
+      <PageIntro title="Operations settings" description="Configure pricing, card policy, Telegram, security, and provider readiness. Each section saves directly to the server." />
+      <div className="mb-4 flex flex-wrap gap-2">{([["general","General"],["telegram","Telegram"],["email","Email / 3DS"],["security","Security"],["policy","Card policy"]] as const).map(([v,l]) => <Button key={v} size="sm" variant={settingsTab===v?"default":"outline"} className="rounded-full" onClick={() => setSettingsTab(v)}>{l}</Button>)}</div>
       <div className="grid gap-5 xl:grid-cols-2">
         <Card className={`surface-card rounded-[24px] xl:col-span-2 ${settingsTab==="security"?"":"hidden"}`}><CardHeader><div className="flex items-center gap-3"><span className="grid size-10 place-items-center rounded-[13px] bg-[#eeecff] text-[#6157e7]"><ShieldCheck className="size-5" /></span><div><CardTitle className="text-[17px] tracking-[-.02em] text-[#2c2940]">Admin security</CardTitle><p className="mt-1 text-sm text-[#8f8b9c]">Server-side session, recent reauthentication, and TOTP multi-factor authentication.</p></div></div></CardHeader><CardContent className="space-y-4"><div className="flex flex-wrap items-center gap-2"><Badge variant="outline" className="rounded-full">{securityAdmin?.email ?? "Loading admin…"}</Badge><Badge variant="outline" className={securityAdmin?.mfaEnabled ? "rounded-full border-emerald-200 bg-emerald-50 text-emerald-700" : "rounded-full border-amber-200 bg-amber-50 text-amber-700"}>{securityAdmin?.mfaEnabled ? "MFA enabled" : "MFA not enabled"}</Badge><Badge variant="outline" className="rounded-full">{securityAdmin?.role ?? "—"}</Badge></div><div className="grid gap-3 md:grid-cols-[1fr_220px_auto]"><Input type="password" value={securityPassword} onChange={(event) => setSecurityPassword(event.target.value)} placeholder="Admin password for reauthentication" /><Input inputMode="numeric" value={securityCode} onChange={(event) => setSecurityCode(event.target.value.replace(/\D/g, "").slice(0, 6))} placeholder="6-digit MFA code (if enabled)" /><Button variant="outline" disabled={securityBusy} onClick={() => void handleReauthenticate()} className="rounded-xl">Reauthenticate</Button></div>{!securityAdmin?.mfaEnabled && !mfaSetup && <div className="space-y-2"><Button disabled={securityBusy} onClick={() => void handleMfaSetup()} className="rounded-xl bg-[#6157e7] text-white hover:bg-[#554bcf]">Set up authenticator MFA</Button><p className="text-xs leading-5 text-[#8f8b9c]">Before setting up MFA, enter your admin password above and click <b>Reauthenticate</b> — the server requires a recent re-authentication for this action.</p></div>}{mfaSetup && <div className="space-y-3 rounded-[16px] border border-[#dedaff] bg-[#f8f7ff] p-4"><p className="text-sm font-semibold">Add this secret to your authenticator app</p><p className="break-all rounded-xl bg-white p-3 font-mono text-sm">{mfaSetup.secret}</p><p className="break-all text-xs text-[#777287]">{mfaSetup.otpauthUri}</p><div className="flex gap-2"><Input inputMode="numeric" value={securityCode} onChange={(event) => setSecurityCode(event.target.value.replace(/\D/g, "").slice(0, 6))} placeholder="Current 6-digit code" /><Button disabled={securityBusy} onClick={() => void handleMfaEnable()} className="rounded-xl bg-[#6157e7] text-white hover:bg-[#554bcf]">Enable MFA</Button></div></div>}{securityAdmin?.mfaEnabled && <div className="flex items-center gap-2"><Button variant="outline" disabled={securityBusy} onClick={() => void handleMfaDisable()} className="rounded-xl border-red-200 text-red-700 hover:bg-red-50">Disable MFA</Button><p className="text-xs text-[#8f8b9c]">Requires recent reauthentication plus the current authenticator code.</p></div>}<p className="text-xs leading-5 text-[#8f8b9c]">Sensitive credential reveal requires a recent reauthentication window. Session and secret events are recorded in the immutable audit log.</p></CardContent></Card>
-        <Card className={`surface-card rounded-[24px] ${settingsTab==="general"?"":"hidden"}`}><CardHeader><div className="flex items-center gap-3"><span className="grid size-10 place-items-center rounded-[13px] bg-[#eeecff] text-[#6157e7]"><CircleDollarSign className="size-5" /></span><div><CardTitle className="text-[17px] tracking-[-.02em] text-[#2c2940]">Pricing and exchange</CardTitle><p className="mt-1 text-sm text-[#8f8b9c]">Calculate the Rial amount before a request is created.</p></div></div></CardHeader><CardContent className="space-y-5"><div className="grid gap-4 sm:grid-cols-2"><div className="grid gap-2"><Label htmlFor="service-fee">Your funding fee (%)</Label><Input id="service-fee" type="number" min="0" step="0.1" value={serviceFee} onChange={(event) => onServiceFee(Number(event.target.value))} /></div><div className="grid gap-2"><Label>Provider card fee</Label><Input value="4% + $1.00" readOnly className="bg-[#f8f7fb]" /></div><div className="grid gap-2 sm:col-span-2"><Label htmlFor="minimum-funding">Minimum card funding / card creation (USD)</Label><Input id="minimum-funding" type="number" min="1" step="1" value={minimumFunding} onChange={(event) => onMinimumFunding(Number(event.target.value))} /><p className="text-xs text-[#8f8b9c]">Enforced for card creation and card-funding operations. Funding requests snapshot pricing. Phase 16 can execute accepted requests through the guarded Kripicard fundcard workflow when its deployment switches and provider-readiness checks are enabled.</p></div></div><div className="grid gap-2"><div className="flex items-center justify-between gap-2"><Label htmlFor="exchange-rate">Rial per 1 USD</Label><Badge variant="outline" className="rounded-full border-amber-200 bg-amber-50 text-amber-800">Manual snapshot</Badge></div><Input id="exchange-rate" type="number" min="1" value={exchangeRate} onChange={(event) => onExchangeRate(Number(event.target.value))} /><div className="rounded-[14px] border border-[#ece9f2] bg-[#faf9fc] p-3 text-xs leading-5 text-[#777287]"><p className="font-semibold text-[#353146]">Source: admin-approved manual snapshot</p><p>Saving creates a new immutable exchange-rate row used by new funding quotes until it expires.</p><p className="mt-1 text-[#9692a3]">Existing funding requests never recalculate when this value changes.</p></div><Button variant="outline" className="mt-3 rounded-xl" onClick={() => void onSavePricing()}><Check className="size-4" />Save pricing & rate snapshot</Button></div><div className="hero-grid rounded-[20px] p-5 text-white"><p className="text-xs font-medium uppercase tracking-[.14em] text-[#c8c3ff]">Example · $100 card funding request</p><div className="mt-3 grid grid-cols-2 gap-4"><div><p className="text-sm text-[#aaa5c8]">USD basis</p><p className="mt-1 text-xl font-semibold">{formatUsd(total)}</p></div><div><p className="text-sm text-[#aaa5c8]">Client pays</p><p className="mt-1 text-xl font-semibold">{formatRial(total * exchangeRate)}</p></div></div><div className="mt-3 border-t border-white/10 pt-3 text-xs text-[#aaa5c8]">$100 + {formatUsd(providerFee)} provider + {formatUsd(ownFee)} service fee</div></div></CardContent></Card>
+        <Card className={`surface-card rounded-[24px] ${settingsTab==="general"?"":"hidden"}`}><CardHeader><div className="flex items-center gap-3"><span className="grid size-10 place-items-center rounded-[13px] bg-[#eeecff] text-[#6157e7]"><CircleDollarSign className="size-5" /></span><div><CardTitle className="text-[17px] tracking-[-.02em] text-[#2c2940]">Pricing and exchange</CardTitle><p className="mt-1 text-sm text-[#8f8b9c]">Calculate the Rial amount before a request is created.</p></div></div></CardHeader><CardContent className="space-y-5"><div className="grid gap-4 sm:grid-cols-2"><div className="grid gap-2"><Label htmlFor="service-fee">Your funding fee (%)</Label><Input id="service-fee" type="number" min="0" step="0.1" value={serviceFee} onChange={(event) => onServiceFee(Number(event.target.value))} /></div><div className="grid gap-2"><Label>Provider card fee</Label><Input value="4% + $1.00" readOnly className="bg-[#f8f7fb]" /></div><div className="grid gap-2 sm:col-span-2"><Label htmlFor="minimum-funding">Minimum card funding / card creation (USD)</Label><Input id="minimum-funding" type="number" min="1" step="1" value={minimumFunding} onChange={(event) => onMinimumFunding(Number(event.target.value))} /><p className="text-xs text-[#8f8b9c]">Enforced for card creation and card-funding operations. Funding requests snapshot pricing. Accepted requests can execute through the guarded Kripicard funding workflow when deployment gates and provider-readiness checks are enabled.</p></div></div><div className="grid gap-2"><div className="flex items-center justify-between gap-2"><Label htmlFor="exchange-rate">Rial per 1 USD</Label><Badge variant="outline" className="rounded-full border-amber-200 bg-amber-50 text-amber-800">Manual snapshot</Badge></div><Input id="exchange-rate" type="number" min="1" value={exchangeRate} onChange={(event) => onExchangeRate(Number(event.target.value))} /><div className="rounded-[14px] border border-[#ece9f2] bg-[#faf9fc] p-3 text-xs leading-5 text-[#777287]"><p className="font-semibold text-[#353146]">Source: admin-approved manual snapshot</p><p>Saving creates a new immutable exchange-rate row used by new funding quotes until it expires.</p><p className="mt-1 text-[#9692a3]">Existing funding requests never recalculate when this value changes.</p></div><Button variant="outline" className="mt-3 rounded-xl" onClick={() => void onSavePricing()}><Check className="size-4" />Save pricing & rate snapshot</Button></div><div className="hero-grid rounded-[20px] p-5 text-white"><p className="text-xs font-medium uppercase tracking-[.14em] text-[#c8c3ff]">Example · $100 card funding request</p><div className="mt-3 grid grid-cols-2 gap-4"><div><p className="text-sm text-[#aaa5c8]">USD basis</p><p className="mt-1 text-xl font-semibold">{formatUsd(total)}</p></div><div><p className="text-sm text-[#aaa5c8]">Client pays</p><p className="mt-1 text-xl font-semibold">{formatRial(total * exchangeRate)}</p></div></div><div className="mt-3 border-t border-white/10 pt-3 text-xs text-[#aaa5c8]">$100 + {formatUsd(providerFee)} provider + {formatUsd(ownFee)} service fee</div></div></CardContent></Card>
 
         <Card className={`surface-card rounded-[24px] ${settingsTab==="general"?"":"hidden"}`}><CardHeader><div className="flex items-center gap-3"><span className="grid size-10 place-items-center rounded-[13px] bg-[#eeecff] text-[#6157e7]"><CreditCard className="size-5" /></span><div><CardTitle className="text-[17px] tracking-[-.02em] text-[#2c2940]">Payment card (customer payments)</CardTitle><p className="mt-1 text-sm text-[#8f8b9c]">The card customers are shown when they need to pay. Changeable anytime.</p></div></div></CardHeader><CardContent className="space-y-4"><div className="grid gap-3 sm:grid-cols-2"><div className="grid gap-2"><Label htmlFor="pay-card-number">Card number</Label><Input id="pay-card-number" value={payCard.cardNumber} onChange={(e) => setPayCard((c) => ({ ...c, cardNumber: e.target.value }))} placeholder="6037-9911-2233-4455" className="bg-white" /></div><div className="grid gap-2"><Label htmlFor="pay-card-holder">Card holder name</Label><Input id="pay-card-holder" value={payCard.cardHolder} onChange={(e) => setPayCard((c) => ({ ...c, cardHolder: e.target.value }))} placeholder="Full name as on the card" className="bg-white" /></div>
 <div className="grid gap-2"><Label htmlFor="pay-min-load">Minimum load (USD)</Label><Input id="pay-min-load" type="number" min={1} value={payCard.minLoadUsd ?? 25} onChange={(e) => setPayCard((c) => ({ ...c, minLoadUsd: Number(e.target.value) || 25 }))} className="bg-white" /></div></div><Button className="rounded-xl bg-[#6157e7] text-white hover:bg-[#554bcf]" disabled={payBusy} onClick={() => void savePayCard()}><Check className="size-4" />Save payment card</Button></CardContent></Card>
-        <Card className={`surface-card rounded-[24px] ${settingsTab==="telegram"?"":"hidden"}`}><CardHeader><div className="flex items-center gap-3"><span className="grid size-10 place-items-center rounded-[13px] bg-[#f1eefe] text-[#7864c9]"><Bot className="size-5" /></span><div><CardTitle className="text-[17px] tracking-[-.02em] text-[#2c2940]">Telegram bot</CardTitle><p className="mt-1 text-sm text-[#8f8b9c]">Webhook readiness, server-side token status, and required channels.</p></div></div></CardHeader><CardContent className="space-y-5"><div className="grid gap-2"><Label htmlFor="bot-token">Bot token</Label><div className="flex flex-wrap gap-2"><div className="relative min-w-[220px] flex-1"><Input id="bot-token" type={showToken ? "text" : "password"} value={botToken} onChange={(event) => onBotToken(event.target.value)} placeholder={telegramStatus?.tokenHint ? `Update token (current ends ${telegramStatus.tokenHint})` : "Paste bot token from @BotFather"} className="pr-10" autoComplete="off" /><button type="button" aria-label={showToken ? "Hide token" : "Show token"} onClick={() => onShowToken(!showToken)} className="absolute right-3 top-1/2 -translate-y-1/2 text-[#9692a3]">{showToken ? <EyeOff className="size-4" /> : <Eye className="size-4" />}</button></div><Button className="rounded-xl bg-[#6157e7] text-white hover:bg-[#554bcf]" disabled={!botToken.trim()} onClick={() => void onSaveBotToken()}><Check className="size-4" />Save token</Button><Button variant="outline" className="rounded-xl" disabled={!telegramStatus?.configured} onClick={() => void onConfigureWebhook()}><Radio className="size-4" />Configure webhook</Button>{telegramStatus?.tokenSource === "database" && <Button variant="outline" className="rounded-xl border-red-200 text-red-700 hover:bg-red-50" onClick={() => void onClearBotToken()}><Trash2 className="size-4" />Clear</Button>}</div><p className="text-xs text-[#8f8b9c]">{telegramStatus?.tokenHint ? <>Current token: <code>••••{telegramStatus.tokenHint}</code> · stored {telegramStatus.tokenSource === "database" ? "encrypted in the database (set here)" : "in the server environment"}. Only the last 4 characters are ever shown.</> : <>Paste a token from <b>@BotFather</b> and click <b>Save token</b>. It is stored encrypted (AES-256-GCM); only the last 4 characters are shown afterward.</>}</p></div><div className="rounded-[14px] border border-[#ece9f2] bg-[#faf9fc] p-3 text-sm"><div className="flex flex-wrap gap-2"><Badge variant="outline" className={telegramStatus?.configured ? "rounded-full border-emerald-200 bg-emerald-50 text-emerald-700" : "rounded-full border-amber-200 bg-amber-50 text-amber-700"}>{telegramStatus?.configured ? "Bot configured" : "Bot not configured"}</Badge>{telegramStatus?.bot?.username && <Badge variant="outline" className="rounded-full">@{telegramStatus.bot.username}</Badge>}{telegramStatus?.webhook?.url && <Badge variant="outline" className="rounded-full border-emerald-200 text-emerald-700">Webhook connected</Badge>}</div><p className="mt-2 break-all text-xs text-[#777287]">Expected webhook: {telegramStatus?.expectedWebhookUrl ?? "Configure Telegram environment variables to inspect status."}</p>{telegramStatus?.webhook?.lastErrorMessage && <p className="mt-1 text-xs text-red-600">Telegram: {telegramStatus.webhook.lastErrorMessage}</p>}{telegramStatus?.error && <p className="mt-1 text-xs text-red-600">Telegram: {telegramStatus.error}</p>}</div><div><div className="mb-2 flex items-center justify-between"><Label>Force-join channels</Label><Badge variant="outline" className="rounded-full">{channels.length} required</Badge></div><div className="space-y-2">{channels.map((channel) => <div key={channel} className="flex items-center gap-3 rounded-[14px] border border-[#ebe9f1] bg-[#fbfafc] p-3"><Hash className="size-4 text-[#9692a3]" /><span className="flex-1 text-sm font-medium">{channel}</span><button onClick={() => void onRemoveChannel(channel)} className="text-[#9692a3] hover:text-red-600"><Trash2 className="size-4" /><span className="sr-only">Remove {channel}</span></button></div>)}</div><div className="mt-2 flex gap-2"><Input value={newChannel} onChange={(event) => onNewChannel(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); void onAddChannel(); } }} placeholder="@channel_username" /><Button variant="outline" className="rounded-xl" onClick={() => void onAddChannel()}><Plus className="size-4" />Add</Button></div><p className="mt-2 text-xs text-[#8f8b9c]">Membership checks fail open on Telegram/API configuration errors so one broken channel cannot lock out every client; explicit left/kicked status is enforced.</p></div><Alert className="rounded-[16px] border-[#cfeadf] bg-[#f0faf6]"><CheckCircle2 className="text-[#167957]" /><AlertTitle className="text-[#245f4c]">Telegram backend implemented</AlertTitle><AlertDescription className="text-[#4f7669]">Phase 10 includes verified/deduplicated webhooks, assignment and ban gates, opaque callbacks, cards/transactions, guarded freeze/unfreeze, support relay, and encrypted OTP delivery through the Telegram outbox worker.</AlertDescription></Alert></CardContent></Card>
+        <Card className={`surface-card rounded-[24px] ${settingsTab==="telegram"?"":"hidden"}`}><CardHeader><div className="flex items-center gap-3"><span className="grid size-10 place-items-center rounded-[13px] bg-[#f1eefe] text-[#7864c9]"><Bot className="size-5" /></span><div><CardTitle className="text-[17px] tracking-[-.02em] text-[#2c2940]">Telegram bot</CardTitle><p className="mt-1 text-sm text-[#8f8b9c]">Webhook readiness, server-side token status, and required channels.</p></div></div></CardHeader><CardContent className="space-y-5"><div className="grid gap-2"><Label htmlFor="bot-token">Bot token</Label><div className="flex flex-wrap gap-2"><div className="relative min-w-[220px] flex-1"><Input id="bot-token" type={showToken ? "text" : "password"} value={botToken} onChange={(event) => onBotToken(event.target.value)} placeholder={telegramStatus?.tokenHint ? `Update token (current ends ${telegramStatus.tokenHint})` : "Paste bot token from @BotFather"} className="pr-10" autoComplete="off" /><button type="button" aria-label={showToken ? "Hide token" : "Show token"} onClick={() => onShowToken(!showToken)} className="absolute right-3 top-1/2 -translate-y-1/2 text-[#9692a3]">{showToken ? <EyeOff className="size-4" /> : <Eye className="size-4" />}</button></div><Button className="rounded-xl bg-[#6157e7] text-white hover:bg-[#554bcf]" disabled={!botToken.trim()} onClick={() => void onSaveBotToken()}><Check className="size-4" />Save token</Button><Button variant="outline" className="rounded-xl" disabled={!telegramStatus?.configured} onClick={() => void onConfigureWebhook()}><Radio className="size-4" />Configure webhook</Button>{telegramStatus?.tokenSource === "database" && <Button variant="outline" className="rounded-xl border-red-200 text-red-700 hover:bg-red-50" onClick={() => void onClearBotToken()}><Trash2 className="size-4" />Clear</Button>}</div><p className="text-xs text-[#8f8b9c]">{telegramStatus?.tokenHint ? <>Current token: <code>••••{telegramStatus.tokenHint}</code> · stored {telegramStatus.tokenSource === "database" ? "encrypted in the database (set here)" : "in the server environment"}. Only the last 4 characters are ever shown.</> : <>Paste a token from <b>@BotFather</b> and click <b>Save token</b>. It is stored encrypted (AES-256-GCM); only the last 4 characters are shown afterward.</>}</p></div><div className="rounded-[14px] border border-[#ece9f2] bg-[#faf9fc] p-3 text-sm"><div className="flex flex-wrap gap-2"><Badge variant="outline" className={telegramStatus?.configured ? "rounded-full border-emerald-200 bg-emerald-50 text-emerald-700" : "rounded-full border-amber-200 bg-amber-50 text-amber-700"}>{telegramStatus?.configured ? "Bot configured" : "Bot not configured"}</Badge>{telegramStatus?.bot?.username && <Badge variant="outline" className="rounded-full">@{telegramStatus.bot.username}</Badge>}{telegramStatus?.webhook?.url && <Badge variant="outline" className="rounded-full border-emerald-200 text-emerald-700">Webhook connected</Badge>}</div><p className="mt-2 break-all text-xs text-[#777287]">Expected webhook: {telegramStatus?.expectedWebhookUrl ?? "Configure Telegram environment variables to inspect status."}</p>{telegramStatus?.webhook?.lastErrorMessage && <p className="mt-1 text-xs text-red-600">Telegram: {telegramStatus.webhook.lastErrorMessage}</p>}{telegramStatus?.error && <p className="mt-1 text-xs text-red-600">Telegram: {telegramStatus.error}</p>}</div><div><div className="mb-2 flex items-center justify-between"><Label>Force-join channels</Label><Badge variant="outline" className="rounded-full">{channels.length} required</Badge></div><div className="space-y-2">{channels.map((channel) => <div key={channel} className="flex items-center gap-3 rounded-[14px] border border-[#ebe9f1] bg-[#fbfafc] p-3"><Hash className="size-4 text-[#9692a3]" /><span className="flex-1 text-sm font-medium">{channel}</span><button onClick={() => void onRemoveChannel(channel)} className="text-[#9692a3] hover:text-red-600"><Trash2 className="size-4" /><span className="sr-only">Remove {channel}</span></button></div>)}</div><div className="mt-2 flex gap-2"><Input value={newChannel} onChange={(event) => onNewChannel(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); void onAddChannel(); } }} placeholder="@channel_username" /><Button variant="outline" className="rounded-xl" onClick={() => void onAddChannel()}><Plus className="size-4" />Add</Button></div><p className="mt-2 text-xs text-[#8f8b9c]">Membership checks fail open on Telegram/API configuration errors so one broken channel cannot lock out every client; explicit left/kicked status is enforced.</p></div><Alert className="rounded-[16px] border-[#cfeadf] bg-[#f0faf6]"><CheckCircle2 className="text-[#167957]" /><AlertTitle className="text-[#245f4c]">Telegram backend implemented</AlertTitle><AlertDescription className="text-[#4f7669]">The bot uses verified and deduplicated webhooks, assignment and ban gates, opaque callbacks, guarded card actions, support relay, and durable OTP delivery.</AlertDescription></Alert></CardContent></Card>
 
+        <EmailRulesCard hidden={settingsTab !== "email"} />
         <Card className={`surface-card rounded-[24px] ${settingsTab==="policy"?"":"hidden"}`}>
           <CardHeader><div className="flex items-center gap-3"><span className="grid size-10 place-items-center rounded-[13px] bg-[#e6f8f1] text-[#16815e]"><ShieldCheck className="size-5" /></span><div><CardTitle className="text-[17px] tracking-[-.02em] text-[#2c2940]">Client card policy</CardTitle><p className="mt-1 text-sm text-[#8f8b9c]">Control card exposure across all accounts connected to a client.</p></div></div></CardHeader>
           <CardContent className="space-y-4">
-            <div className="grid gap-2"><Label htmlFor="client-card-limit">Maximum cards per client</Label><Input id="client-card-limit" type="number" min="1" max="50" value={maxCardsPerClient} onChange={(event) => onMaxCardsPerClient(Math.max(1, Number(event.target.value) || 1))} /><p className="text-xs leading-5 text-[#8f8b9c]">This is your own system-wide rule. It counts cards across every account assigned to the same Telegram user.</p></div>
-            <div className="rounded-[16px] border border-[#cfeadf] bg-[#f0faf6] p-4 text-sm leading-6 text-[#336b59]"><strong>Separate concern:</strong> identity verification for registering in your service should live in a dedicated onboarding workflow. No verification status or document is sent to Kripicard here.</div>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="grid gap-2"><Label htmlFor="client-card-limit">Maximum cards per client</Label><Input id="client-card-limit" type="number" min="1" max="50" value={maxCardsPerClient} onChange={(event) => onMaxCardsPerClient(Math.max(1, Number(event.target.value) || 1))} /><p className="text-xs leading-5 text-[#8f8b9c]">Counts active cards plus open card requests across every assigned account.</p></div>
+              <div className="grid gap-2"><Label htmlFor="card-creation-minimum">Minimum new-card balance (USD)</Label><Input id="card-creation-minimum" type="number" min="10" step="1" value={minimumCardCreation} onChange={(event) => onMinimumCardCreation(Number(event.target.value))} /><p className="text-xs leading-5 text-[#8f8b9c]">Separate from the existing-card funding minimum in General settings.</p></div>
+            </div>
+            <div className="space-y-3">
+              <div className="flex items-center justify-between gap-3"><div><Label>Requestable card BINs</Label><p className="text-xs text-[#8f8b9c]">These are the exact products Telegram users can request.</p></div><Button type="button" variant="outline" size="sm" className="rounded-xl" onClick={() => onCardPolicyBins([...cardPolicyBins, { bin: "", requiresDob: false }])}><Plus className="size-4" />Add BIN</Button></div>
+              {cardPolicyBins.map((item, index) => <div key={`${item.bin}-${index}`} className="grid gap-2 rounded-xl border p-3 sm:grid-cols-[1fr_auto_auto] sm:items-center"><Input inputMode="numeric" maxLength={6} value={item.bin} onChange={(event) => { const next=[...cardPolicyBins]; next[index]={...item,bin:event.target.value.replace(/\D/g,"").slice(0,6)}; onCardPolicyBins(next); }} placeholder="6-digit BIN" /><label className="flex items-center gap-2 text-sm text-[#625c6f]"><input type="checkbox" checked={item.requiresDob} onChange={(event) => { const next=[...cardPolicyBins]; next[index]={...item,requiresDob:event.target.checked}; onCardPolicyBins(next); }} />DOB required</label><Button type="button" variant="outline" size="icon" className="rounded-xl" onClick={() => onCardPolicyBins(cardPolicyBins.filter((_, i) => i !== index))}><Trash2 className="size-4" /><span className="sr-only">Remove BIN</span></Button></div>)}
+            </div>
+            <Button className="rounded-xl bg-[#6157e7] text-white hover:bg-[#554bcf]" onClick={() => void onSaveCardPolicy()}><Check className="size-4" />Save card policy</Button>
+            <div className="rounded-[16px] border border-[#cfeadf] bg-[#f0faf6] p-4 text-sm leading-6 text-[#336b59]">This policy is stored server-side and enforced by Telegram card requests as well as the admin interface.</div>
           </CardContent>
         </Card>
 
-        <Card className="surface-card rounded-[24px]"><CardHeader><div className="flex items-center gap-3"><span className="grid size-10 place-items-center rounded-xl bg-amber-100 text-amber-800"><KeyRound className="size-5" /></span><div><CardTitle className="text-base">3DS code delivery</CardTitle><p className="mt-1 text-sm text-slate-500">Protect the mailbox while giving clients only their code.</p></div></div></CardHeader><CardContent className="space-y-4"><Alert className="border-amber-200 bg-amber-50"><AlertTriangle className="text-amber-700" /><AlertTitle className="text-amber-950">3DS comes from the connected mailbox, not the Kripicard API</AlertTitle><AlertDescription className="text-amber-900/70">Phase 9 classifies trusted Outlook/Gmail verification messages, encrypts short-lived OTPs, and quarantines unknown templates. Add issuer sender/template rules only after validating real test messages.</AlertDescription></Alert><div className="space-y-3"><RoutingStep icon={Mail} title="Use a dedicated external mailbox" detail="Create or choose a mailbox from Outlook/Hotmail or Gmail and associate it with the Kripicard account." /><RoutingStep icon={ShieldCheck} title="Extract only the one-time code" detail="Read the mailbox through Microsoft Graph or the Gmail API, then parse only trusted verification messages." /><RoutingStep icon={Send} title="Relay to the assigned Telegram user" detail="Expire the code after delivery and keep a minimal audit event, not the message content." /></div><div className="rounded-xl border border-dashed p-3 text-sm text-slate-500"><strong>AccAbad email policy:</strong> use only Outlook/Hotmail or Gmail mailboxes. Connect them with OAuth using Microsoft Graph or the Gmail API. Do not depend on a custom AccAbad mail domain and do not store mailbox passwords for inbox access.</div><div className="overflow-hidden rounded-xl border text-sm"><div className="grid grid-cols-[1.1fr_1fr_1.4fr] bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-500"><span>Provider</span><span>Inbox access</span><span>AccAbad approach</span></div>{[["Outlook / Hotmail","API","Microsoft Graph OAuth"],["Gmail","API","Gmail API OAuth"]].map(([provider, access, approach]) => <div key={provider} className="grid grid-cols-[1.1fr_1fr_1.4fr] border-t px-3 py-2.5"><span className="font-medium text-slate-700">{provider}</span><span className="text-slate-500">{access}</span><span className="text-slate-500">{approach}</span></div>)}</div></CardContent></Card>
+        <Card className="surface-card rounded-[24px]"><CardHeader><div className="flex items-center gap-3"><span className="grid size-10 place-items-center rounded-xl bg-amber-100 text-amber-800"><KeyRound className="size-5" /></span><div><CardTitle className="text-base">3DS code delivery</CardTitle><p className="mt-1 text-sm text-slate-500">Protect the mailbox while giving clients only their code.</p></div></div></CardHeader><CardContent className="space-y-4"><Alert className="border-amber-200 bg-amber-50"><AlertTriangle className="text-amber-700" /><AlertTitle className="text-amber-950">3DS comes from the connected mailbox, not the Kripicard API</AlertTitle><AlertDescription className="text-amber-900/70">Trusted Outlook/Gmail verification messages are classified, short-lived OTPs are encrypted, and unknown templates are quarantined. Add issuer sender/template rules only after validating real messages.</AlertDescription></Alert><div className="space-y-3"><RoutingStep icon={Mail} title="Use a dedicated external mailbox" detail="Create or choose a mailbox from Outlook/Hotmail or Gmail and associate it with the Kripicard account." /><RoutingStep icon={ShieldCheck} title="Extract only the one-time code" detail="Read the mailbox through Microsoft Graph or the Gmail API, then parse only trusted verification messages." /><RoutingStep icon={Send} title="Relay to the assigned Telegram user" detail="Expire the code after delivery and keep a minimal audit event, not the message content." /></div><div className="rounded-xl border border-dashed p-3 text-sm text-slate-500"><strong>AccAbad email policy:</strong> use only Outlook/Hotmail or Gmail mailboxes. Connect them with OAuth using Microsoft Graph or the Gmail API. Do not depend on a custom AccAbad mail domain and do not store mailbox passwords for inbox access.</div><div className="overflow-hidden rounded-xl border text-sm"><div className="grid grid-cols-[1.1fr_1fr_1.4fr] bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-500"><span>Provider</span><span>Inbox access</span><span>AccAbad approach</span></div>{[["Outlook / Hotmail","API","Microsoft Graph OAuth"],["Gmail","API","Gmail API OAuth"]].map(([provider, access, approach]) => <div key={provider} className="grid grid-cols-[1.1fr_1fr_1.4fr] border-t px-3 py-2.5"><span className="font-medium text-slate-700">{provider}</span><span className="text-slate-500">{access}</span><span className="text-slate-500">{approach}</span></div>)}</div></CardContent></Card>
 
-        <Card className="surface-card rounded-[24px]"><CardHeader><div className="flex items-center justify-between gap-3"><div className="flex items-center gap-3"><span className={`grid size-10 place-items-center rounded-xl ${providerReadiness?.readyForMoneyWrites ? "bg-emerald-100 text-emerald-800" : "bg-amber-100 text-amber-800"}`}><ShieldCheck className="size-5" /></span><div><CardTitle className="text-base">Kripicard money readiness</CardTitle><p className="mt-1 text-sm text-slate-500">Provider contract gate for deposits, card creation, and card funding. Phase 16 evaluates card creation and card funding independently from still-blocked deposit behavior.</p></div></div><Button variant="outline" size="sm" disabled={providerReadinessLoading} onClick={() => void reloadProviderReadiness()} className="rounded-xl"><RefreshCw className={`size-4 ${providerReadinessLoading ? "animate-spin" : ""}`} />Refresh</Button></div></CardHeader><CardContent className="space-y-4">
+        <Card className="surface-card rounded-[24px]"><CardHeader><div className="flex items-center justify-between gap-3"><div className="flex items-center gap-3"><span className={`grid size-10 place-items-center rounded-xl ${providerReadiness?.readyForMoneyWrites ? "bg-emerald-100 text-emerald-800" : "bg-amber-100 text-amber-800"}`}><ShieldCheck className="size-5" /></span><div><CardTitle className="text-base">Kripicard money readiness</CardTitle><p className="mt-1 text-sm text-slate-500">Provider contract gate for deposits, card creation, and card funding. Card creation and card funding are evaluated independently from deposit behavior.</p></div></div><Button variant="outline" size="sm" disabled={providerReadinessLoading} onClick={() => void reloadProviderReadiness()} className="rounded-xl"><RefreshCw className={`size-4 ${providerReadinessLoading ? "animate-spin" : ""}`} />Refresh</Button></div></CardHeader><CardContent className="space-y-4">
           <Alert className={providerReadiness?.readyForMoneyWrites ? "border-emerald-200 bg-emerald-50" : "border-amber-200 bg-amber-50"}><AlertTriangle className={providerReadiness?.readyForMoneyWrites ? "text-emerald-700" : "text-amber-700"} /><AlertTitle>{providerReadiness?.readyByOperation?.card_create?.ready && providerReadiness?.readyByOperation?.card_fund?.ready ? "Card create + funding contracts cleared" : providerReadiness?.readyForMoneyWrites ? "Provider contract checks cleared" : "Some live money operations remain blocked"}</AlertTitle><AlertDescription>{providerReadiness ? `Card creation: ${providerReadiness.readyByOperation?.card_create?.ready ? "ready" : `blocked by ${(providerReadiness.readyByOperation?.card_create?.blockers ?? []).join(", ")}`}. Card funding: ${providerReadiness.readyByOperation?.card_fund?.ready ? "ready" : `blocked by ${(providerReadiness.readyByOperation?.card_fund?.blockers ?? []).join(", ")}`}. Deposit creation remains independently gated. ${providerReadiness.summary.blockers} broader provider question${providerReadiness.summary.blockers === 1 ? "" : "s"} remain. The supplied contract is wallet-based.` : "Loading provider readiness checks…"}</AlertDescription></Alert>
           {providerReadiness && <div className="flex flex-wrap gap-2 text-xs"><Badge variant="outline">Base: {providerReadiness.providerBaseUrl}</Badge><Badge variant="outline">Model: account wallet</Badge><Badge variant="outline">Confirmed: {providerReadiness.summary.confirmed}/{providerReadiness.summary.total}</Badge><Badge variant="outline" className="border-amber-200 text-amber-700">Blockers: {providerReadiness.summary.blockers}</Badge></div>}
-          <div className="divide-y rounded-xl border">{providerReadiness?.checks.map((check) => { const cleared = check.status === "confirmed" || check.status === "not_applicable"; return <div key={check.key} className="p-3"><div className="flex items-start gap-3"><span className={`mt-0.5 grid size-7 shrink-0 place-items-center rounded-lg ${cleared ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700"}`}>{cleared ? <CheckCircle2 className="size-4" /> : <AlertTriangle className="size-4" />}</span><div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-2"><p className="text-sm font-medium">{check.label}</p>{check.blocksLiveMoney && <Badge variant="outline" className="border-red-200 text-red-700">blocks live money</Badge>}</div><p className="mt-0.5 text-xs leading-5 text-slate-500">{check.requirement}</p>{check.note && <p className="mt-1 text-xs leading-5 text-slate-500">{check.note}</p>}{check.sourceReference && <p className="mt-1 text-[11px] text-slate-400">Evidence: {check.sourceReference}</p>}</div><Badge variant="outline" className={cleared ? "border-emerald-200 text-emerald-700" : check.status === "partial" ? "border-amber-200 text-amber-700" : "border-slate-200 text-slate-600"}>{check.status.replace("_", " ")}</Badge></div></div>; }) ?? <div className="p-4 text-sm text-slate-500">Provider readiness data is unavailable.</div>}</div>
-          <p className="text-xs leading-5 text-slate-500">Super admins can record written provider confirmations through the protected readiness API. Public marketing material can add context but cannot clear a blocking appapi contract check; a provider-written answer or controlled live/sandbox test is required.</p>
+          <div className="divide-y rounded-xl border">{providerReadiness?.checks.map((check) => { const cleared = check.status === "confirmed" || check.status === "not_applicable"; return <div key={check.key} className="p-3"><div className="flex items-start gap-3"><span className={`mt-0.5 grid size-7 shrink-0 place-items-center rounded-lg ${cleared ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700"}`}>{cleared ? <CheckCircle2 className="size-4" /> : <AlertTriangle className="size-4" />}</span><div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-2"><p className="text-sm font-medium">{check.label}</p>{check.blocksLiveMoney && <Badge variant="outline" className="border-red-200 text-red-700">blocks live money</Badge>}</div><p className="mt-0.5 text-xs leading-5 text-slate-500">{check.requirement}</p>{check.note && <p className="mt-1 text-xs leading-5 text-slate-500">{check.note}</p>}{check.sourceReference && <p className="mt-1 text-[11px] text-slate-400">Evidence: {check.sourceReference}</p>}</div><div className="flex shrink-0 items-center gap-2"><Badge variant="outline" className={cleared ? "border-emerald-200 text-emerald-700" : check.status === "partial" ? "border-amber-200 text-amber-700" : "border-slate-200 text-slate-600"}>{check.status.replace("_", " ")}</Badge>{check.sourceKind !== "supplied_pdf" && <Button size="sm" variant="outline" disabled={providerReadinessLoading} onClick={() => void editProviderReadiness(check)} className="rounded-xl">Edit</Button>}</div></div></div>; }) ?? <div className="p-4 text-sm text-slate-500">Provider readiness data is unavailable.</div>}</div>
+          <p className="text-xs leading-5 text-slate-500">Use Edit on unresolved checks to record provider-written confirmation or controlled test evidence. Public marketing material can add context but should not clear a blocking provider-contract check by itself.</p>
         </CardContent></Card>
       </div>
     </>
   );
+}
+
+function EmailRulesCard({ hidden }: { hidden: boolean }) {
+  const [rules, setRules] = useState<Array<{ id: string; label: string; sender_match: string; subject_contains: string | null; category: string; otp_expiry_minutes: number; enabled: boolean }>>([]);
+  const [draft, setDraft] = useState({ label: "", senderMatch: "", subjectContains: "", category: "otp_3ds" as "verification" | "security" | "otp_3ds", otpExpiryMinutes: 10 });
+  const [busy, setBusy] = useState(false);
+  const reload = async () => {
+    try { setRules((await fetchTrustedEmailRules()).items); }
+    catch (error) { toast.error(error instanceof Error ? error.message : "Could not load trusted email rules."); }
+  };
+  useEffect(() => {
+    if (hidden) return;
+    let cancelled = false;
+    fetchTrustedEmailRules()
+      .then((result) => { if (!cancelled) setRules(result.items); })
+      .catch((error) => { if (!cancelled) toast.error(error instanceof Error ? error.message : "Could not load trusted email rules."); });
+    return () => { cancelled = true; };
+  }, [hidden]);
+  const add = async () => {
+    if (!draft.label.trim() || !draft.senderMatch.trim()) { toast.error("Rule label and sender are required."); return; }
+    setBusy(true);
+    try {
+      await createTrustedEmailRule({ ...draft, subjectContains: draft.subjectContains.trim() || null });
+      setDraft({ label: "", senderMatch: "", subjectContains: "", category: "otp_3ds", otpExpiryMinutes: 10 });
+      await reload();
+      toast.success("Trusted email rule created.");
+    } catch (error) { toast.error(error instanceof Error ? error.message : "Could not create trusted rule."); }
+    finally { setBusy(false); }
+  };
+  const toggle = async (id: string, enabled: boolean) => {
+    setBusy(true);
+    try { await updateTrustedEmailRule(id, enabled); await reload(); }
+    catch (error) { toast.error(error instanceof Error ? error.message : "Could not update trusted rule."); }
+    finally { setBusy(false); }
+  };
+  return <Card className={`surface-card rounded-[24px] xl:col-span-2 ${hidden ? "hidden" : ""}`}><CardHeader><CardTitle>Email / 3DS trusted rules</CardTitle><p className="text-sm text-[#8f8b9c]">Only trusted sender/template matches can create OTP deliveries. Unknown OTP-like messages are quarantined.</p></CardHeader><CardContent className="space-y-4">
+    <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5"><Input value={draft.label} onChange={(e)=>setDraft((d)=>({...d,label:e.target.value}))} placeholder="Rule label" /><Input value={draft.senderMatch} onChange={(e)=>setDraft((d)=>({...d,senderMatch:e.target.value}))} placeholder="issuer@example.com or @domain.com" /><Input value={draft.subjectContains} onChange={(e)=>setDraft((d)=>({...d,subjectContains:e.target.value}))} placeholder="Subject contains (optional)" /><Select value={draft.category} onValueChange={(value)=>setDraft((d)=>({...d,category:value as typeof d.category}))}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="otp_3ds">3DS OTP</SelectItem><SelectItem value="security">Security</SelectItem><SelectItem value="verification">Verification</SelectItem></SelectContent></Select><Button disabled={busy} onClick={() => void add()} className="rounded-xl bg-[#6157e7] text-white hover:bg-[#554bcf]"><Plus className="size-4" />Add rule</Button></div>
+    <div className="space-y-2">{rules.map((rule)=><div key={rule.id} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border p-3"><div><p className="text-sm font-semibold">{rule.label}</p><p className="text-xs text-[#8f8b9c]">{rule.sender_match}{rule.subject_contains ? ` · subject: ${rule.subject_contains}` : ""} · {rule.category} · {rule.otp_expiry_minutes} min</p></div><Button size="sm" variant="outline" disabled={busy} onClick={() => void toggle(rule.id,!rule.enabled)} className="rounded-xl">{rule.enabled ? "Disable" : "Enable"}</Button></div>)}{rules.length===0 && <p className="rounded-xl border border-dashed p-4 text-sm text-[#8f8b9c]">No trusted rules yet. Add a validated issuer sender/template before relying on OTP delivery.</p>}</div>
+  </CardContent></Card>;
 }
 
 function RoutingStep({ icon: Icon, title, detail }: { icon: typeof Mail; title: string; detail: string }) {
