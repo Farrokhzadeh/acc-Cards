@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { apiRoute, ApiError } from "@/server/http/api";
-import { requireAdmin, requireCsrf, auditAdminEvent } from "@/server/auth/service";
+import { requireAdmin, requireCsrf, requireRecentReauthentication, auditAdminEvent } from "@/server/auth/service";
 import { requireUuid } from "@/server/http/ids";
 import { getPool } from "@/server/database/pool";
 import { assignAccount } from "@/server/clients/assignments";
@@ -85,6 +85,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     }
 
     if (input.action === "create_card") {
+      requireRecentReauthentication(session);
       if (current !== "accepted" && current !== "card_creating") throw new ApiError(409, "invalid_state", "Accept the payment before creating the first card.");
       if (!input.accountId) throw new ApiError(400, "validation_error", "Choose the Kripicard account that will own this customer's first card.");
       await assignAccount({ clientId: userId, accountId: input.accountId, adminId: session.principal.id, requestId, ip: requestIp(request) });
@@ -117,6 +118,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     }
 
     if (input.action === "reconcile_card") {
+      requireRecentReauthentication(session);
       if (current !== "card_reconciliation") throw new ApiError(409, "invalid_state", "This onboarding is not waiting for card reconciliation.");
       const link = await getOnboardingCardLink(userId);
       if (!link?.onboarding_card_request_id) throw new ApiError(409, "onboarding_request_missing", "No first-card issuance is linked to this customer.");
