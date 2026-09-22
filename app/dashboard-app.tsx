@@ -1117,12 +1117,14 @@ export default function DashboardApp() {
     }
   };
 
-  const openCreateCard = () => {
+  const openCreateCard = (...args: [accountId?: string]) => {
+    void args;
     setView("clients");
     toast.info("A customer's first card is created from the First-card onboarding panel after KYC and receipt approval.");
   };
 
-  const openFundCard = () => {
+  const openFundCard = (...args: [cardId?: string, accountId?: string]) => {
+    void args;
     setView("requests");
     toast.info("Card funding is executed only from accepted funding requests in Request Center.");
   };
