@@ -344,7 +344,7 @@ async function reconcileWithList(args: {
   return persistIssued({ operationId: args.operationId, row: args.row, accountId: args.account.id, providerCard: match, providerResponse: null, reconciled: true, session: args.session, request: args.request, requestId: args.requestId });
 }
 
-export async function issueApprovedCardRequest(requestId: string, session: AuthSession, request: Request, traceId: string) {
+export async function assertCardCreationAvailable() {
   const env = parseServerEnv(process.env);
   if (!env.ENABLE_LIVE_PROVIDER_WRITES || !env.ENABLE_KRIPICARD_CARD_CREATION) {
     throw new ApiError(503, "feature_disabled", "Kripicard card creation is disabled by deployment configuration.");
@@ -353,6 +353,10 @@ export async function issueApprovedCardRequest(requestId: string, session: AuthS
     throw new ApiError(503, "runtime_kill_switch", "Kripicard card creation is disabled by an emergency runtime control.");
   }
   await assertProviderMoneyReadiness("card_create");
+}
+
+export async function issueApprovedCardRequest(requestId: string, session: AuthSession, request: Request, traceId: string) {
+  await assertCardCreationAvailable();
 
   let prepared;
   try {
