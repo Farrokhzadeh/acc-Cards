@@ -363,6 +363,13 @@ export async function fetchClientPipeline() {
   return apiJson<{ items: Array<{ id: string; declared: boolean; status: string | null }> }>("/api/v1/clients/pipeline", { method: "GET" });
 }
 
+export async function setClientBanned(id: string, banned: boolean) {
+  return apiJson<{ banned: boolean; bannedAt: string | null }>(`/api/v1/clients/${encodeURIComponent(id)}`, {
+    method: "PATCH",
+    body: JSON.stringify({ banned }),
+  });
+}
+
 export type ClientKyc = {
   id: string; status: string; fullName: string; dateOfBirth: string | null; country: string;
   nationalId: string; phone: string; hasDocument: boolean; documentMimeType: string | null;
