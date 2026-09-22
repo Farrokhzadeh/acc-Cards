@@ -313,6 +313,10 @@ export async function createTrustedEmailRule(input: { label: string; senderMatch
   return apiJson<{ id: string }>("/api/v1/email/trusted-rules", { method: "POST", body: JSON.stringify(input) });
 }
 
+export async function updateTrustedEmailRule(id: string, enabled: boolean) {
+  return apiJson<{ ok: true }>(`/api/v1/email/trusted-rules/${encodeURIComponent(id)}`, { method: "PATCH", body: JSON.stringify({ enabled }) });
+}
+
 export type TelegramBotStatus = {
   configured: boolean;
   tokenSource?: "database" | "environment" | "none";
@@ -663,6 +667,20 @@ export async function fetchFundingSettings() {
 
 export async function updateFundingSettings(input: { serviceFeeBasisPoints?: number; minimumUsdCents?: number; rialPerUsd?: number; rateValidMinutes?: number }) {
   return apiJson<FundingSettings>("/api/v1/funding-settings", { method: "PATCH", body: JSON.stringify(input) });
+}
+
+export type CardPolicy = {
+  platformCardLimit: number;
+  minimumCardCreationUsdCents: number;
+  bins: Array<{ bin: string; requiresDob: boolean }>;
+};
+
+export async function fetchCardPolicy() {
+  return apiJson<CardPolicy>("/api/v1/settings/card-policy", { method: "GET" });
+}
+
+export async function updateCardPolicy(input: Partial<CardPolicy>) {
+  return apiJson<CardPolicy>("/api/v1/settings/card-policy", { method: "PATCH", body: JSON.stringify(input) });
 }
 
 export type ProviderReadinessCheck = {
