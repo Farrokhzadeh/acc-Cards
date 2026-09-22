@@ -169,6 +169,33 @@ export async function assignAccount(args: {
   return withTransaction((db) => assignAccountInTransaction(db, args));
 }
 
+export async function unassignAccountInTransaction(db: DatabaseQueryable, args: {
+  clientId: string;
+  accountId: string;
+  adminId: string;
+  requestId: string;
+  ip?: string | null;
+}) {
+  await assertClientExists(db, args.clientId, true);
+  const result = await db.query<{ account_id: string }>(
+    `DELETE FROM telegram_account_assignments
+      WHERE telegram_user_id = $1::uuid AND account_id = $2::uuid
+      RETURNING account_id`,
+    [args.clientId, args.accountId],
+  );
+  if (!result.rows[0]) {
+    const owner = await db.query<{ telegram_user_id: string }>(
+      `SELECT telegram_user_id FROM telegram_account_assignments WHERE account_id = $1::uuid`,
+      [args.accountId],
+    );
+    if (owner.rows[0]) throw new ApiError(409, "assignment_changed", "That account is no longer assigned to this client. Refresh and try again.");
+    return { accountIds: await currentAccountIds(db, args.clientId), changed: false };
+  }
+  await insertAssignmentEvents(db, { clientId: args.clientId, accountIds: [args.accountId], eventType: "unassigned", adminId: args.adminId, requestId: args.requestId });
+  await writeAssignmentAudit(db, { adminId: args.adminId, clientId: args.clientId, accountIds: [args.accountId], action: "unassign", requestId: args.requestId, ip: args.ip });
+  return { accountIds: await currentAccountIds(db, args.clientId), changed: true };
+}
+
 export async function unassignAccount(args: {
   clientId: string;
   accountId: string;
@@ -176,26 +203,7 @@ export async function unassignAccount(args: {
   requestId: string;
   ip?: string | null;
 }) {
-  return withTransaction(async (db) => {
-    await assertClientExists(db, args.clientId, true);
-    const result = await db.query<{ account_id: string }>(
-      `DELETE FROM telegram_account_assignments
-        WHERE telegram_user_id = $1::uuid AND account_id = $2::uuid
-        RETURNING account_id`,
-      [args.clientId, args.accountId],
-    );
-    if (!result.rows[0]) {
-      const owner = await db.query<{ telegram_user_id: string }>(
-        `SELECT telegram_user_id FROM telegram_account_assignments WHERE account_id = $1::uuid`,
-        [args.accountId],
-      );
-      if (owner.rows[0]) throw new ApiError(409, "assignment_changed", "That account is no longer assigned to this client. Refresh and try again.");
-      return { accountIds: await currentAccountIds(db, args.clientId), changed: false };
-    }
-    await insertAssignmentEvents(db, { clientId: args.clientId, accountIds: [args.accountId], eventType: "unassigned", adminId: args.adminId, requestId: args.requestId });
-    await writeAssignmentAudit(db, { adminId: args.adminId, clientId: args.clientId, accountIds: [args.accountId], action: "unassign", requestId: args.requestId, ip: args.ip });
-    return { accountIds: await currentAccountIds(db, args.clientId), changed: true };
-  });
+  return withTransaction((db) => unassignAccountInTransaction(db, args));
 }
 
 export async function unassignAllAccounts(args: {
