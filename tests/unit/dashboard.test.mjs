@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 
-const dashboard = await readFile(new URL("../app/dashboard-app.tsx", import.meta.url), "utf8");
+const dashboard = await readFile(new URL("../../app/dashboard-app.tsx", import.meta.url), "utf8");
 
 test("admin dashboard never performs local demo mutations when the backend is unavailable", () => {
   assert.doesNotMatch(dashboard, /Demo card status updated/);

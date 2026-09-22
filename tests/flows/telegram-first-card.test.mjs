@@ -2,17 +2,17 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 
-const migration = await readFile(new URL("../db/migrations/0009_telegram_bot.sql", import.meta.url), "utf8");
-const bot = await readFile(new URL("../server/telegram/bot.ts", import.meta.url), "utf8");
-const telegramClient = await readFile(new URL("../server/providers/telegram/client.ts", import.meta.url), "utf8");
-const webhookRoute = await readFile(new URL("../app/api/telegram/webhook/route.ts", import.meta.url), "utf8");
-const outbox = await readFile(new URL("../server/telegram/outbox.ts", import.meta.url), "utf8");
-const outboxRoute = await readFile(new URL("../app/api/internal/jobs/telegram-outbox/route.ts", import.meta.url), "utf8");
-const env = await readFile(new URL("../config/env-schema.mjs", import.meta.url), "utf8");
-const cardService = await readFile(new URL("../server/providers/kripicard/service.ts", import.meta.url), "utf8");
-const messagesRoute = await readFile(new URL("../app/api/v1/clients/[id]/messages/route.ts", import.meta.url), "utf8");
-const activateRoute = await readFile(new URL("../app/api/v1/clients/[id]/activate/route.ts", import.meta.url), "utf8");
-const kycService = await readFile(new URL("../server/kyc/service.ts", import.meta.url), "utf8");
+const migration = await readFile(new URL("../../db/migrations/0009_telegram_bot.sql", import.meta.url), "utf8");
+const bot = await readFile(new URL("../../server/telegram/bot.ts", import.meta.url), "utf8");
+const telegramClient = await readFile(new URL("../../server/providers/telegram/client.ts", import.meta.url), "utf8");
+const webhookRoute = await readFile(new URL("../../app/api/telegram/webhook/route.ts", import.meta.url), "utf8");
+const outbox = await readFile(new URL("../../server/telegram/outbox.ts", import.meta.url), "utf8");
+const outboxRoute = await readFile(new URL("../../app/api/internal/jobs/telegram-outbox/route.ts", import.meta.url), "utf8");
+const env = await readFile(new URL("../../config/env-schema.mjs", import.meta.url), "utf8");
+const cardService = await readFile(new URL("../../server/providers/kripicard/service.ts", import.meta.url), "utf8");
+const messagesRoute = await readFile(new URL("../../app/api/v1/clients/[id]/messages/route.ts", import.meta.url), "utf8");
+const activateRoute = await readFile(new URL("../../app/api/v1/clients/[id]/activate/route.ts", import.meta.url), "utf8");
+const kycService = await readFile(new URL("../../server/kyc/service.ts", import.meta.url), "utf8");
 
 
 test("Phase 10 adds persistent force-join, callback token, and bot-state tables", () => {
@@ -52,7 +52,7 @@ test("bot rechecks ban, force-join membership, and completed first-card onboardi
 });
 
 test("misconfigured force-join checks fail open instead of locking every user out", () => {
-  assert.match(bot, /Misconfigured channels must not silently lock every user out/);
+  assert.match(bot, /catch \(error\)[\s\S]*telegram\.force_join\.check_failed/);
   assert.match(bot, /telegram\.force_join\.check_failed/);
 });
 

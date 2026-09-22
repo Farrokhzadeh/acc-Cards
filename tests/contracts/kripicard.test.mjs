@@ -2,16 +2,16 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 
-const client = await readFile(new URL("../server/providers/kripicard/client.ts", import.meta.url), "utf8");
-const service = await readFile(new URL("../server/providers/kripicard/service.ts", import.meta.url), "utf8");
-const migration = await readFile(new URL("../db/migrations/0004_kripicard_read_integration.sql", import.meta.url), "utf8");
-const stateMigration = await readFile(new URL("../db/migrations/0005_card_state_actions.sql", import.meta.url), "utf8");
-const env = await readFile(new URL("../.env.example", import.meta.url), "utf8");
-const dashboard = await readFile(new URL("../app/dashboard-app.tsx", import.meta.url), "utf8");
-const list = JSON.parse(await readFile(new URL("./fixtures/kripicard/cards-list.json", import.meta.url), "utf8"));
-const details = JSON.parse(await readFile(new URL("./fixtures/kripicard/card-details.json", import.meta.url), "utf8"));
-const transactions = JSON.parse(await readFile(new URL("./fixtures/kripicard/transactions.json", import.meta.url), "utf8"));
-const freeze = JSON.parse(await readFile(new URL("./fixtures/kripicard/freeze-unfreeze.json", import.meta.url), "utf8"));
+const client = await readFile(new URL("../../server/providers/kripicard/client.ts", import.meta.url), "utf8");
+const service = await readFile(new URL("../../server/providers/kripicard/service.ts", import.meta.url), "utf8");
+const migration = await readFile(new URL("../../db/migrations/0004_kripicard_read_integration.sql", import.meta.url), "utf8");
+const stateMigration = await readFile(new URL("../../db/migrations/0005_card_state_actions.sql", import.meta.url), "utf8");
+const env = await readFile(new URL("../../.env.example", import.meta.url), "utf8");
+const dashboard = await readFile(new URL("../../app/dashboard-app.tsx", import.meta.url), "utf8");
+const list = JSON.parse(await readFile(new URL("../fixtures/kripicard/cards-list.json", import.meta.url), "utf8"));
+const details = JSON.parse(await readFile(new URL("../fixtures/kripicard/card-details.json", import.meta.url), "utf8"));
+const transactions = JSON.parse(await readFile(new URL("../fixtures/kripicard/transactions.json", import.meta.url), "utf8"));
+const freeze = JSON.parse(await readFile(new URL("../fixtures/kripicard/freeze-unfreeze.json", import.meta.url), "utf8"));
 
 test("provider base URL and documented read endpoints are wired", () => {
   assert.match(env, /KRIPICARD_BASE_URL=https:\/\/appapi\.kripicard\.com/);
@@ -58,7 +58,7 @@ test("Phase 5 records the confirmed wallet-based provider payment model", () => 
 
 
 test("freeze/unfreeze writes are single-attempt and reconciled instead of automatically retried", () => {
-  assert.match(client, /Provider writes are deliberately never retried/);
+  assert.match(client, /private write<[\s\S]*return this\.requestOnce\(path, body, schema\)/);
   assert.match(service, /ambiguous_write_outcome/);
   assert.match(service, /reconciled_by_cards_list/);
   assert.match(stateMigration, /card_state_active_operation_uq/);

@@ -2,11 +2,11 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 
-const pool = await readFile(new URL("../server/database/pool.ts", import.meta.url), "utf8");
-const repos = await readFile(new URL("../server/repositories/postgres.ts", import.meta.url), "utf8");
-const api = await readFile(new URL("../server/http/api.ts", import.meta.url), "utf8");
-const dashboard = await readFile(new URL("../app/api/v1/dashboard/route.ts", import.meta.url), "utf8");
-const ui = await readFile(new URL("../app/dashboard-app.tsx", import.meta.url), "utf8");
+const pool = await readFile(new URL("../../server/database/pool.ts", import.meta.url), "utf8");
+const repos = await readFile(new URL("../../server/repositories/postgres.ts", import.meta.url), "utf8");
+const api = await readFile(new URL("../../server/http/api.ts", import.meta.url), "utf8");
+const dashboard = await readFile(new URL("../../app/api/v1/dashboard/route.ts", import.meta.url), "utf8");
+const ui = await readFile(new URL("../../app/dashboard-app.tsx", import.meta.url), "utf8");
 
 test("uses a bounded PostgreSQL pool with transaction support", () => {
   assert.match(pool, /new Pool\(/);

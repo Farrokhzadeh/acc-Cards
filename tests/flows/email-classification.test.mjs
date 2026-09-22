@@ -2,14 +2,14 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 
-const migration = await readFile(new URL("../db/migrations/0008_email_classification_otp.sql", import.meta.url), "utf8");
-const classifier = await readFile(new URL("../server/email/classifier.ts", import.meta.url), "utf8");
-const otpRoute = await readFile(new URL("../app/api/v1/email/messages/[messageId]/otp/route.ts", import.meta.url), "utf8");
-const rulesRoute = await readFile(new URL("../app/api/v1/email/trusted-rules/route.ts", import.meta.url), "utf8");
-const jobRoute = await readFile(new URL("../app/api/internal/jobs/email-classify/route.ts", import.meta.url), "utf8");
-const outlook = await readFile(new URL("../server/providers/microsoft/service.ts", import.meta.url), "utf8");
-const gmail = await readFile(new URL("../server/providers/google/service.ts", import.meta.url), "utf8");
-const env = await readFile(new URL("../config/env-schema.mjs", import.meta.url), "utf8");
+const migration = await readFile(new URL("../../db/migrations/0008_email_classification_otp.sql", import.meta.url), "utf8");
+const classifier = await readFile(new URL("../../server/email/classifier.ts", import.meta.url), "utf8");
+const otpRoute = await readFile(new URL("../../app/api/v1/email/messages/[messageId]/otp/route.ts", import.meta.url), "utf8");
+const rulesRoute = await readFile(new URL("../../app/api/v1/email/trusted-rules/route.ts", import.meta.url), "utf8");
+const jobRoute = await readFile(new URL("../../app/api/internal/jobs/email-classify/route.ts", import.meta.url), "utf8");
+const outlook = await readFile(new URL("../../server/providers/microsoft/service.ts", import.meta.url), "utf8");
+const gmail = await readFile(new URL("../../server/providers/google/service.ts", import.meta.url), "utf8");
+const env = await readFile(new URL("../../config/env-schema.mjs", import.meta.url), "utf8");
 
 test("Phase 9 adds trusted sender/template rules and classification state", () => {
   assert.match(migration, /email_trusted_rules/);
@@ -20,7 +20,7 @@ test("Phase 9 adds trusted sender/template rules and classification state", () =
 
 test("OTP extraction uses fixed parser patterns rather than admin supplied regex", () => {
   assert.match(classifier, /extractOtpCandidate/);
-  assert.match(classifier, /Deliberately fixed patterns/);
+  assert.match(classifier, /const contextual = normalized\.match/);
   assert.doesNotMatch(classifier, /new RegExp\(.*sender|new RegExp\(.*subject/s);
 });
 
@@ -69,5 +69,5 @@ test("background classification hook is protected with a timing safe secret", ()
 test("trusted OTP classification accepts transient provider message text", () => {
   assert.match(classifier, /resolveMessageText/);
   assert.match(classifier, /provider_message_id/);
-  assert.match(classifier, /Full-body retrieval is best-effort/);
+  assert.match(classifier, /if \(resolvedText\?\.trim\(\)\)/);
 });

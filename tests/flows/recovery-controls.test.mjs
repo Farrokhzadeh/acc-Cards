@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 
-const read = (path) => fs.readFileSync(new URL(`../${path}`, import.meta.url), "utf8");
+const read = (path) => fs.readFileSync(new URL(`../../${path}`, import.meta.url), "utf8");
 
 test("phase 21 migration installs durable emergency controls with safe defaults", () => {
   const sql = read("db/migrations/0020_backup_recovery_kill_switches.sql");

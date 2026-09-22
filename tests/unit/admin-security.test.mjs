@@ -2,10 +2,10 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 
-const migration = await readFile(new URL("../db/migrations/0003_admin_security.sql", import.meta.url), "utf8");
-const authService = await readFile(new URL("../server/auth/service.ts", import.meta.url), "utf8");
-const accountService = await readFile(new URL("../server/accounts/service.ts", import.meta.url), "utf8");
-const envExample = await readFile(new URL("../.env.example", import.meta.url), "utf8");
+const migration = await readFile(new URL("../../db/migrations/0003_admin_security.sql", import.meta.url), "utf8");
+const authService = await readFile(new URL("../../server/auth/service.ts", import.meta.url), "utf8");
+const accountService = await readFile(new URL("../../server/accounts/service.ts", import.meta.url), "utf8");
+const envExample = await readFile(new URL("../../.env.example", import.meta.url), "utf8");
 
 test("phase 4 adds server-side admin session and MFA structures", () => {
   assert.match(migration, /admin_auth_challenges/);

@@ -2,16 +2,16 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 
-const migration = await readFile(new URL("../db/migrations/0016_transaction_sync_notifications.sql", import.meta.url), "utf8");
-const worker = await readFile(new URL("../server/providers/kripicard/transaction-sync.ts", import.meta.url), "utf8");
-const route = await readFile(new URL("../app/api/internal/jobs/kripicard-transactions/route.ts", import.meta.url), "utf8");
-const outbox = await readFile(new URL("../server/telegram/outbox.ts", import.meta.url), "utf8");
-const reconciliation = await readFile(new URL("../server/transactions/notifications.ts", import.meta.url), "utf8");
-const reconciliationRoute = await readFile(new URL("../app/api/v1/transactions/[id]/notification/reconcile/route.ts", import.meta.url), "utf8");
-const env = await readFile(new URL("../config/env-schema.mjs", import.meta.url), "utf8");
-const providerClient = await readFile(new URL("../server/providers/kripicard/client.ts", import.meta.url), "utf8");
-const manualSync = await readFile(new URL("../server/providers/kripicard/service.ts", import.meta.url), "utf8");
-const dashboard = await readFile(new URL("../app/dashboard-app.tsx", import.meta.url), "utf8");
+const migration = await readFile(new URL("../../db/migrations/0016_transaction_sync_notifications.sql", import.meta.url), "utf8");
+const worker = await readFile(new URL("../../server/providers/kripicard/transaction-sync.ts", import.meta.url), "utf8");
+const route = await readFile(new URL("../../app/api/internal/jobs/kripicard-transactions/route.ts", import.meta.url), "utf8");
+const outbox = await readFile(new URL("../../server/telegram/outbox.ts", import.meta.url), "utf8");
+const reconciliation = await readFile(new URL("../../server/transactions/notifications.ts", import.meta.url), "utf8");
+const reconciliationRoute = await readFile(new URL("../../app/api/v1/transactions/[id]/notification/reconcile/route.ts", import.meta.url), "utf8");
+const env = await readFile(new URL("../../config/env-schema.mjs", import.meta.url), "utf8");
+const providerClient = await readFile(new URL("../../server/providers/kripicard/client.ts", import.meta.url), "utf8");
+const manualSync = await readFile(new URL("../../server/providers/kripicard/service.ts", import.meta.url), "utf8");
+const dashboard = await readFile(new URL("../../app/dashboard-app.tsx", import.meta.url), "utf8");
 
 test("Phase 17 adds durable per-card sync state and transaction notification state", () => {
   assert.match(migration, /CREATE TABLE IF NOT EXISTS transaction_sync_state/);
@@ -90,7 +90,7 @@ test("read retry handling honors provider Retry-After metadata", () => {
 });
 
 test("manual transaction synchronization establishes the scheduled notification baseline", () => {
-  assert.match(manualSync, /manual sync is an explicit operator baseline/i);
+  assert.match(manualSync, /INSERT INTO transaction_sync_state/);
   assert.match(manualSync, /baseline_completed=true/);
 });
 

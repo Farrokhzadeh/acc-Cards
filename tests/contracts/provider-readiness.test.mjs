@@ -2,20 +2,20 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 
-const migration = await readFile(new URL("../db/migrations/0013_provider_operational_readiness.sql", import.meta.url), "utf8");
-const readiness = await readFile(new URL("../server/providers/kripicard/readiness.ts", import.meta.url), "utf8");
-const client = await readFile(new URL("../server/providers/kripicard/client.ts", import.meta.url), "utf8");
-const schemas = await readFile(new URL("../server/providers/kripicard/schemas.ts", import.meta.url), "utf8");
-const getRoute = await readFile(new URL("../app/api/v1/provider-readiness/route.ts", import.meta.url), "utf8");
-const patchRoute = await readFile(new URL("../app/api/v1/provider-readiness/[key]/route.ts", import.meta.url), "utf8");
-const dashboard = await readFile(new URL("../app/dashboard-app.tsx", import.meta.url), "utf8");
-const contract = await readFile(new URL("../docs/KRIPICARD-PROVIDER-CONTRACT.md", import.meta.url), "utf8");
-const questionnaire = await readFile(new URL("../docs/PROVIDER-READINESS-QUESTIONS.md", import.meta.url), "utf8");
+const migration = await readFile(new URL("../../db/migrations/0013_provider_operational_readiness.sql", import.meta.url), "utf8");
+const readiness = await readFile(new URL("../../server/providers/kripicard/readiness.ts", import.meta.url), "utf8");
+const client = await readFile(new URL("../../server/providers/kripicard/client.ts", import.meta.url), "utf8");
+const schemas = await readFile(new URL("../../server/providers/kripicard/schemas.ts", import.meta.url), "utf8");
+const getRoute = await readFile(new URL("../../app/api/v1/provider-readiness/route.ts", import.meta.url), "utf8");
+const patchRoute = await readFile(new URL("../../app/api/v1/provider-readiness/[key]/route.ts", import.meta.url), "utf8");
+const dashboard = await readFile(new URL("../../app/dashboard-app.tsx", import.meta.url), "utf8");
+const contract = await readFile(new URL("../../docs/KRIPICARD-PROVIDER-CONTRACT.md", import.meta.url), "utf8");
+const questionnaire = await readFile(new URL("../../docs/PROVIDER-READINESS-QUESTIONS.md", import.meta.url), "utf8");
 
-const coins = JSON.parse(await readFile(new URL("./fixtures/kripicard/deposit-coins.json", import.meta.url), "utf8"));
-const networks = JSON.parse(await readFile(new URL("./fixtures/kripicard/deposit-networks.json", import.meta.url), "utf8"));
-const create = JSON.parse(await readFile(new URL("./fixtures/kripicard/deposit-create.json", import.meta.url), "utf8"));
-const status = JSON.parse(await readFile(new URL("./fixtures/kripicard/deposit-status.json", import.meta.url), "utf8"));
+const coins = JSON.parse(await readFile(new URL("../fixtures/kripicard/deposit-coins.json", import.meta.url), "utf8"));
+const networks = JSON.parse(await readFile(new URL("../fixtures/kripicard/deposit-networks.json", import.meta.url), "utf8"));
+const create = JSON.parse(await readFile(new URL("../fixtures/kripicard/deposit-create.json", import.meta.url), "utf8"));
+const status = JSON.parse(await readFile(new URL("../fixtures/kripicard/deposit-status.json", import.meta.url), "utf8"));
 
 test("Phase 14 stores money-critical provider assumptions as evidence-backed readiness checks", () => {
   assert.match(migration, /provider_readiness_checks/);

@@ -2,20 +2,20 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 
-const migration = await readFile(new URL("../db/migrations/0017_support_messaging.sql", import.meta.url), "utf8");
-const bot = await readFile(new URL("../server/telegram/bot.ts", import.meta.url), "utf8");
-const outbox = await readFile(new URL("../server/telegram/outbox.ts", import.meta.url), "utf8");
-const storage = await readFile(new URL("../server/support/storage.ts", import.meta.url), "utf8");
-const fileValidation = await readFile(new URL("../server/security/file-validation.ts", import.meta.url), "utf8");
-const telegramClient = await readFile(new URL("../server/providers/telegram/client.ts", import.meta.url), "utf8");
-const messageRoute = await readFile(new URL("../app/api/v1/clients/[id]/messages/route.ts", import.meta.url), "utf8");
-const conversationsRoute = await readFile(new URL("../app/api/v1/conversations/[id]/route.ts", import.meta.url), "utf8");
-const conversationListRoute = await readFile(new URL("../app/api/v1/conversations/route.ts", import.meta.url), "utf8");
-const retryRoute = await readFile(new URL("../app/api/v1/messages/[id]/retry/route.ts", import.meta.url), "utf8");
-const attachmentRoute = await readFile(new URL("../app/api/v1/messages/[id]/attachment/route.ts", import.meta.url), "utf8");
-const adminApi = await readFile(new URL("../lib/admin-api.ts", import.meta.url), "utf8");
-const dashboard = await readFile(new URL("../app/dashboard-app.tsx", import.meta.url), "utf8");
-const compose = await readFile(new URL("../docker-compose.yml", import.meta.url), "utf8");
+const migration = await readFile(new URL("../../db/migrations/0017_support_messaging.sql", import.meta.url), "utf8");
+const bot = await readFile(new URL("../../server/telegram/bot.ts", import.meta.url), "utf8");
+const outbox = await readFile(new URL("../../server/telegram/outbox.ts", import.meta.url), "utf8");
+const storage = await readFile(new URL("../../server/support/storage.ts", import.meta.url), "utf8");
+const fileValidation = await readFile(new URL("../../server/security/file-validation.ts", import.meta.url), "utf8");
+const telegramClient = await readFile(new URL("../../server/providers/telegram/client.ts", import.meta.url), "utf8");
+const messageRoute = await readFile(new URL("../../app/api/v1/clients/[id]/messages/route.ts", import.meta.url), "utf8");
+const conversationsRoute = await readFile(new URL("../../app/api/v1/conversations/[id]/route.ts", import.meta.url), "utf8");
+const conversationListRoute = await readFile(new URL("../../app/api/v1/conversations/route.ts", import.meta.url), "utf8");
+const retryRoute = await readFile(new URL("../../app/api/v1/messages/[id]/retry/route.ts", import.meta.url), "utf8");
+const attachmentRoute = await readFile(new URL("../../app/api/v1/messages/[id]/attachment/route.ts", import.meta.url), "utf8");
+const adminApi = await readFile(new URL("../../lib/admin-api.ts", import.meta.url), "utf8");
+const dashboard = await readFile(new URL("../../app/dashboard-app.tsx", import.meta.url), "utf8");
+const compose = await readFile(new URL("../../docker-compose.yml", import.meta.url), "utf8");
 
 
 test("Phase 18 adds durable conversation state, unread counters, attachments, and append-only events", () => {
