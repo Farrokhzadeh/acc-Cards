@@ -151,3 +151,15 @@ export async function getMicrosoftInboxDeltaPage(accessToken: string, cursor?: s
   const body = await graphJson(cursor ?? initial.toString(), accessToken);
   return microsoftDeltaSchema.parse(body);
 }
+
+
+export async function getMicrosoftMessageText(accessToken: string, id: string) {
+  const url = new URL(`https://graph.microsoft.com/v1.0/me/messages/${encodeURIComponent(id)}`);
+  url.searchParams.set("$select", "body");
+  const body = await graphJson(url.toString(), accessToken) as { body?: { contentType?: string; content?: string } };
+  const content = body.body?.content ?? "";
+  if ((body.body?.contentType ?? "").toLowerCase() === "html") {
+    return content.replace(/<style[\s\S]*?<\/style>/gi, " ").replace(/<script[\s\S]*?<\/script>/gi, " ").replace(/<[^>]+>/g, " ").replace(/&nbsp;/gi, " ").replace(/&amp;/gi, "&").replace(/\s+/g, " ").trim().slice(0, 100_000);
+  }
+  return content.replace(/\s+/g, " ").trim().slice(0, 100_000);
+}
