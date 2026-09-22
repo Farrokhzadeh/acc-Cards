@@ -3152,48 +3152,106 @@ function ClientPaymentSection({ clientId }: { clientId: string | null }) {
   const [accountId, setAccountId] = useState("");
   const [busy, setBusy] = useState(false);
   const [tick, setTick] = useState(0);
+
   useEffect(() => {
     if (!clientId) return;
     let cancelled = false;
-    fetchClientKyc(clientId).then((r) => { if (!cancelled) setPayment(r.payment ?? null); }).catch(() => { if (!cancelled) setPayment(null); });
-    fetchClientAssignableAccounts(clientId).then((r) => { if (!cancelled) setAccounts(r.items); }).catch(() => {});
+    Promise.all([fetchClientKyc(clientId), fetchClientAssignableAccounts(clientId)])
+      .then(([detail, assignable]) => {
+        if (cancelled) return;
+        setPayment(detail.payment ?? null);
+        setAccounts(assignable.items);
+        const selected = assignable.items.find((item) => item.selected);
+        if (selected) setAccountId(selected.id);
+      })
+      .catch(() => { if (!cancelled) setPayment(null); });
     return () => { cancelled = true; };
   }, [clientId, tick]);
-  if (!clientId || !payment || (!payment.declaredAt && !payment.hasReceipt)) return null;
-  const act = async (action: "accept" | "deny" | "complete") => {
+
+  if (!clientId || !payment || (!payment.declaredAt && !payment.hasReceipt && !payment.status)) return null;
+
+  const act = async (action: "accept" | "deny" | "create_card" | "reconcile_card" | "complete") => {
     setBusy(true);
     try {
-      await activateClient(clientId, { action, accountId: accountId || undefined });
-      if (action === "complete" && accountId) { await syncAccountCards(accountId).catch(() => {}); }
-      toast.success(action === "complete" ? "Activation completed, cards synced, customer notified." : `Payment ${action === "accept" ? "accepted" : "denied"}.`);
-      setTick((t) => t + 1);
-    } catch (error) { toast.error(error instanceof Error ? error.message : "Action failed."); }
-    finally { setBusy(false); }
+      const result = await activateClient(clientId, { action, accountId: accountId || undefined });
+      if (action === "accept") toast.success("Receipt accepted. Choose a Kripicard account and create the first card.");
+      else if (action === "deny") toast.success("Payment denied. The customer can submit a new amount and receipt.");
+      else if (action === "create_card") {
+        if (result.needsReconciliation) toast.warning("Provider outcome is uncertain. Do not retry card creation; use Reconcile first card.");
+        else toast.success(`First card created${result.cardLast4 ? ` · •${result.cardLast4}` : ""}. Review it, then complete onboarding.`);
+      } else if (action === "reconcile_card") {
+        if (result.needsReconciliation) toast.warning("The provider outcome is still uncertain.");
+        else toast.success(`First-card issuance reconciled${result.cardLast4 ? ` · •${result.cardLast4}` : ""}.`);
+      } else toast.success("Onboarding completed. The customer was notified and can now use the card menu.");
+      setTick((value) => value + 1);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Onboarding action failed.");
+    } finally {
+      setBusy(false);
+    }
   };
-  const statusBadge = payment.status === "complete" ? "border-emerald-200 bg-emerald-50 text-emerald-700" : payment.status === "denied" ? "border-red-200 bg-red-50 text-red-700" : payment.status === "accepted" ? "border-indigo-200 bg-indigo-50 text-indigo-700" : "border-amber-200 bg-amber-50 text-amber-800";
+
+  const status = payment.status ?? "waiting";
+  const labels: Record<string, string> = {
+    pending: "Receipt pending review",
+    accepted: "Payment accepted",
+    card_creating: "Creating first card",
+    card_reconciliation: "Card needs reconciliation",
+    card_ready: "First card ready",
+    complete: "Complete",
+    denied: "Payment denied",
+  };
+  const badgeClass = status === "complete" || status === "card_ready"
+    ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+    : status === "denied"
+      ? "border-red-200 bg-red-50 text-red-700"
+      : status === "card_reconciliation"
+        ? "border-amber-300 bg-amber-50 text-amber-900"
+        : status === "accepted"
+          ? "border-indigo-200 bg-indigo-50 text-indigo-700"
+          : "border-amber-200 bg-amber-50 text-amber-800";
+
   return (
-    <div className="border-b border-[#eceaf2] bg-[#efeaff] px-6 py-3">
+    <div className="border-b border-[#eceaf2] bg-[#efeaff] px-6 py-4">
       <div className="flex flex-wrap items-center gap-2">
-        <p className="text-xs font-bold uppercase tracking-[.14em] text-[#8179e8]">Payment (Acard)</p>
-        {payment.status && <Badge variant="outline" className={`rounded-full ${statusBadge}`}>{payment.status}</Badge>}
-        {payment.amountUsdCents && <Badge variant="outline" className="rounded-full border-emerald-200 bg-emerald-50 text-emerald-700">${(Number(payment.amountUsdCents) / 100).toFixed(2)} paid</Badge>}
-        {payment.hasReceipt ? <a href={clientReceiptUrl(clientId)} target="_blank" rel="noreferrer" className="text-xs font-semibold text-[#6157e7] underline-offset-2 hover:underline">View receipt</a> : <span className="text-xs text-[#9692a3]">no receipt</span>}
+        <p className="text-xs font-bold uppercase tracking-[.14em] text-[#8179e8]">First-card onboarding</p>
+        <Badge variant="outline" className={`rounded-full ${badgeClass}`}>{labels[status] ?? status.replaceAll("_", " ")}</Badge>
+        {payment.amountUsdCents && <Badge variant="outline" className="rounded-full border-emerald-200 bg-emerald-50 text-emerald-700">{formatUsd(Number(payment.amountUsdCents) / 100)} first-card balance</Badge>}
+        {payment.onboardingCardLast4 && <Badge variant="outline" className="rounded-full border-indigo-200 bg-white text-indigo-700">Card •{payment.onboardingCardLast4}</Badge>}
+        {payment.hasReceipt
+          ? <a href={clientReceiptUrl(clientId)} target="_blank" rel="noreferrer" className="text-xs font-semibold text-[#6157e7] underline-offset-2 hover:underline">View receipt</a>
+          : <span className="text-xs font-semibold text-red-600">Receipt required</span>}
       </div>
-      {payment.status !== "complete" && payment.status !== "denied" && (
-        <div className="mt-2 flex flex-wrap items-center gap-2">
-          {payment.status === "pending" && (
-            <>
-              <Button size="sm" className="rounded-xl bg-[#6157e7] text-white hover:bg-[#554bcf]" disabled={busy} onClick={() => { if (!payment.hasReceipt && !window.confirm("No receipt on file for this payment. Accept anyway?")) return; void act("accept"); }}>Accept receipt</Button>
-              <Button size="sm" variant="outline" className="rounded-xl border-red-200 text-red-700 hover:bg-red-50" disabled={busy} onClick={() => void act("deny")}>Deny</Button>
-            </>
-          )}
-          <select value={accountId} onChange={(e) => setAccountId(e.target.value)} className="h-9 rounded-xl border border-[#e3e0eb] bg-white px-2 text-sm">
-            <option value="">Choose account to assign…</option>
-            {accounts.map((a) => <option key={a.id} value={a.id}>{a.label}</option>)}
+
+      {status === "pending" && <div className="mt-3 flex flex-wrap items-center gap-2">
+        <Button size="sm" className="rounded-xl bg-[#6157e7] text-white hover:bg-[#554bcf]" disabled={busy || !payment.hasReceipt} onClick={() => void act("accept")}><Check className="size-4" />Accept receipt</Button>
+        <Button size="sm" variant="outline" className="rounded-xl border-red-200 text-red-700 hover:bg-red-50" disabled={busy} onClick={() => void act("deny")}><XCircle className="size-4" />Deny</Button>
+      </div>}
+
+      {(status === "accepted" || status === "card_creating") && <div className="mt-3 space-y-2">
+        <p className="text-xs leading-5 text-[#6f6982]">Select the Kripicard account that will own this customer&apos;s first card. The accepted payment amount becomes the card&apos;s initial balance.</p>
+        <div className="flex flex-wrap items-center gap-2">
+          <select value={accountId} onChange={(event) => setAccountId(event.target.value)} className="h-9 min-w-[220px] rounded-xl border border-[#e3e0eb] bg-white px-2 text-sm">
+            <option value="">Choose Kripicard account…</option>
+            {accounts.map((account) => <option key={account.id} value={account.id}>{account.label}{account.selected ? " · assigned" : ""}</option>)}
           </select>
-          <Button size="sm" className="rounded-xl bg-[#167957] text-white hover:bg-[#116144]" disabled={busy || !accountId} onClick={() => void act("complete")}>Complete + Notify</Button>
+          <Button size="sm" className="rounded-xl bg-[#167957] text-white hover:bg-[#116144]" disabled={busy || !accountId} onClick={() => void act("create_card")}><CreditCard className="size-4" />Create first card</Button>
         </div>
-      )}
+      </div>}
+
+      {status === "card_reconciliation" && <div className="mt-3 space-y-2">
+        <Alert className="border-amber-200 bg-amber-50"><AlertTriangle className="text-amber-700" /><AlertTitle>Provider outcome uncertain</AlertTitle><AlertDescription>Do not send another create-card request. Reconcile the existing provider operation.</AlertDescription></Alert>
+        <Button size="sm" variant="outline" className="rounded-xl border-amber-300 bg-white text-amber-900" disabled={busy} onClick={() => void act("reconcile_card")}><RefreshCw className="size-4" />Reconcile first card</Button>
+      </div>}
+
+      {status === "card_ready" && <div className="mt-3 flex flex-wrap items-center gap-2">
+        <p className="text-sm text-[#5f596f]">The real provider card exists{payment.onboardingCardLast4 ? ` as •${payment.onboardingCardLast4}` : ""}. Complete onboarding to unlock the customer&apos;s Telegram card menu.</p>
+        <Button size="sm" className="rounded-xl bg-[#167957] text-white hover:bg-[#116144]" disabled={busy} onClick={() => void act("complete")}><CheckCircle2 className="size-4" />Complete & notify</Button>
+      </div>}
+
+      {status === "complete" && <p className="mt-2 text-xs text-emerald-700">Onboarding is complete. The customer can view the card, balance, transactions, support, and add-funds flow.</p>}
+      {status === "denied" && <p className="mt-2 text-xs text-red-700">The customer was notified and can choose a new amount and upload a replacement receipt.</p>}
     </div>
   );
 }
+
