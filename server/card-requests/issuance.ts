@@ -92,6 +92,13 @@ async function event(db: DatabaseQueryable, args: {
 }
 
 async function notify(db: DatabaseQueryable, requestId: string, status: string) {
+  const onboarding = await db.query<{ onboarding: boolean }>(
+    `SELECT EXISTS(
+       SELECT 1 FROM telegram_users WHERE onboarding_card_request_id=$1::uuid
+     ) AS onboarding`,
+    [requestId],
+  );
+  if (onboarding.rows[0]?.onboarding) return;
   await db.query(
     `INSERT INTO outbox_events(topic,aggregate_type,aggregate_id,event_type,payload,status,available_at)
      VALUES('telegram','card_request',$1::uuid,'card_request.status_changed',$2::jsonb,'pending',now())`,
@@ -121,6 +128,29 @@ async function lockCapacity(db: DatabaseQueryable, userId: string) {
 }
 
 async function assertCapacity(db: DatabaseQueryable, row: IssueRequestRow) {
+  const onboarding = await db.query<{ onboarding: boolean; active_cards: number }>(
+    `SELECT
+       EXISTS (
+         SELECT 1 FROM telegram_users
+          WHERE id=$1::uuid AND onboarding_card_request_id=$2::uuid
+       ) AS onboarding,
+       (
+         SELECT COUNT(*)::int
+           FROM cards c
+           JOIN telegram_account_assignments taa ON taa.account_id=c.account_id
+          WHERE taa.telegram_user_id=$1::uuid
+            AND c.archived_at IS NULL
+            AND c.status NOT IN ('closed','expired')
+       ) AS active_cards`,
+    [row.user_id,row.id],
+  );
+  if (onboarding.rows[0]?.onboarding) {
+    if ((onboarding.rows[0]?.active_cards ?? 0) > 0) {
+      throw new ApiError(409, "first_card_already_exists", "This customer already has an active card. First-card onboarding cannot create another one.");
+    }
+    return;
+  }
+
   const policy = await getCardRequestPolicy(db);
   const counts = await db.query<{ active_cards: number; other_open_requests: number }>(
     `SELECT

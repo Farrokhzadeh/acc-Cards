@@ -11,6 +11,7 @@ const issueRoute = await readFile(new URL("../app/api/v1/card-requests/[id]/issu
 const reconcileRoute = await readFile(new URL("../app/api/v1/card-requests/[id]/reconcile/route.ts", import.meta.url), "utf8");
 const env = await readFile(new URL("../config/env-schema.mjs", import.meta.url), "utf8");
 const dashboard = await readFile(new URL("../app/dashboard-app.tsx", import.meta.url), "utf8");
+const activateRoute = await readFile(new URL("../app/api/v1/clients/[id]/activate/route.ts", import.meta.url), "utf8");
 const readiness = await readFile(new URL("../server/providers/kripicard/readiness.ts", import.meta.url), "utf8");
 const contract = await readFile(new URL("../docs/KRIPICARD-PROVIDER-CONTRACT.md", import.meta.url), "utf8");
 const success = JSON.parse(await readFile(new URL("./fixtures/kripicard/create-card.json", import.meta.url), "utf8"));
@@ -104,11 +105,14 @@ test("readiness is operation-specific so unresolved deposit/funding questions do
   assert.match(readiness, /readyByOperation/);
 });
 
-test("admin UI exposes explicit Issue and Reconcile actions rather than an automatic write after approval", () => {
-  assert.match(dashboard, />Issue card</);
-  assert.match(dashboard, />Reconcile</);
-  assert.match(dashboard, /recent admin reauthentication/);
-  assert.match(dashboard, /createcard once/);
+test("first-card onboarding exposes explicit Create and Reconcile actions with guarded provider writes", () => {
+  assert.match(dashboard, /Create first card/);
+  assert.match(dashboard, /Reconcile first card/);
+  assert.match(activateRoute, /input\.action === "create_card"/);
+  assert.match(activateRoute, /input\.action === "reconcile_card"/);
+  assert.match(activateRoute, /requireRecentReauthentication\(session\)/);
+  assert.match(activateRoute, /issueApprovedCardRequest/);
+  assert.match(activateRoute, /reconcileCardIssuance/);
 });
 
 test("provider contract states the one-shot purchase rule", () => {

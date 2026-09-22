@@ -305,44 +305,38 @@ async function deliverSupportMessage(client: TelegramClient, row: OutboxRow) {
 async function deliverKycDecision(client: TelegramClient, row: Awaited<ReturnType<typeof claimOne>>) {
   if (!row) return;
   const payload = row.payload as { userId?: string; decision?: string };
-  if (!payload.userId) return;
+  if (!payload.userId) { await finish(row.id); return; }
   const lookup = await getPool().query<{ telegram_user_id: string | bigint; lang: string | null }>(
     `SELECT telegram_user_id, lang FROM telegram_users WHERE id = $1::uuid`,
     [payload.userId],
   );
   const u = lookup.rows[0];
-  if (!u) return;
+  if (!u) { await finish(row.id); return; }
   const chatId = Number(u.telegram_user_id);
   const lang = u.lang;
   const approved = payload.decision === "approve";
   const text = approved ? pick(KYC.approvedNotice, lang) : pick(KYC.rejectedNotice, lang);
-  let replyMarkup;
-  if (approved) {
-    const L = (mm: { en: string; fa: string }) => pick(mm, lang);
-    const mk = async (label: string, action: string) => ({ text: label, callback_data: await createCallbackToken({ userId: payload.userId!, action }) });
-    replyMarkup = {
-      inline_keyboard: [
-        [await mk(L(MENU.cards), "menu.cards"), await mk(L(MENU.requests), "menu.requests")],
-        [await mk(L(MENU.addFunds), "menu.add_funds"), await mk(L(MENU.requestCard), "menu.request_card")],
-        [await mk(L(MENU.verify), "menu.kyc"), await mk(L(MENU.support), "support.start")],
-        [await mk(L(MENU.language), "menu.lang")],
-      ],
-    };
-  }
+  const replyMarkup = approved ? {
+    inline_keyboard: [[{
+      text: pick(MENU.paidBtn, lang),
+      callback_data: await createCallbackToken({ userId: payload.userId, action: "menu.paid" }),
+    }]],
+  } : undefined;
   await client.sendMessage({ chatId, text, replyMarkup });
   logChatMessage({ id: payload.userId }, "admin_to_client", text).catch(() => {});
+  await finish(row.id);
 }
 
 async function deliverClientNotify(client: TelegramClient, row: Awaited<ReturnType<typeof claimOne>>) {
   if (!row) return;
   const payload = row.payload as { userId?: string };
-  if (!payload.userId) return;
+  if (!payload.userId) { await finish(row.id); return; }
   const lookup = await getPool().query<{ telegram_user_id: string | bigint; lang: string | null }>(
     `SELECT telegram_user_id, lang FROM telegram_users WHERE id = $1::uuid`,
     [payload.userId],
   );
   const u = lookup.rows[0];
-  if (!u) return;
+  if (!u) { await finish(row.id); return; }
   const chatId = Number(u.telegram_user_id);
   const card = await getPool().query<{ last4: string | null }>(
     `SELECT c.last4 FROM cards c JOIN telegram_account_assignments taa ON taa.account_id = c.account_id
@@ -357,14 +351,14 @@ async function deliverClientNotify(client: TelegramClient, row: Awaited<ReturnTy
   const mk = async (label: string, action: string) => ({ text: label, callback_data: await createCallbackToken({ userId: payload.userId!, action }) });
   const replyMarkup = {
     inline_keyboard: [
-      [await mk(L(MENU.cards), "menu.cards"), await mk(L(MENU.requests), "menu.requests")],
-      [await mk(L(MENU.addFunds), "menu.add_funds"), await mk(L(MENU.requestCard), "menu.request_card")],
-      [await mk(L(MENU.verify), "menu.kyc"), await mk(L(MENU.support), "support.start")],
+      [await mk(L(MENU.cards), "menu.cards"), await mk(L(MENU.addFunds), "menu.add_funds")],
+      [await mk(L(MENU.requests), "menu.requests"), await mk(L(MENU.support), "support.start")],
       [await mk(L(MENU.language), "menu.lang")],
     ],
   };
   await client.sendMessage({ chatId, text, replyMarkup });
   logChatMessage({ id: payload.userId }, "admin_to_client", text).catch(() => {});
+  await finish(row.id);
 }
 
 async function deliverClientPayment(client: TelegramClient, row: Awaited<ReturnType<typeof claimOne>>) {
@@ -385,13 +379,14 @@ async function deliverClientPayment(client: TelegramClient, row: Awaited<ReturnT
     const mk = async (label: string, action: string) => ({ text: label, callback_data: await createCallbackToken({ userId: payload.userId!, action }) });
     replyMarkup = {
       inline_keyboard: [
-        [await mk(L(MENU.cards), "menu.cards"), await mk(L(MENU.requests), "menu.requests")],
-        [await mk(L(MENU.addFunds), "menu.add_funds"), await mk(L(MENU.support), "support.start")],
+        [await mk(L(MENU.cards), "menu.cards"), await mk(L(MENU.addFunds), "menu.add_funds")],
+        [await mk(L(MENU.requests), "menu.requests"), await mk(L(MENU.support), "support.start")],
       ],
     };
   }
   await client.sendMessage({ chatId, text, replyMarkup });
   logChatMessage({ id: payload.userId }, "admin_to_client", text).catch(() => {});
+  await finish(row.id);
 }
 
 export async function processTelegramOutbox(limit = 100) {

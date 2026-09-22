@@ -10,6 +10,7 @@ const bodySchema = z.object({
   cardNumber: z.string().trim().max(40),
   cardHolder: z.string().trim().max(80),
   minLoadUsd: z.number().min(1).max(100000).optional(),
+  onboardingBin: z.string().regex(/^\d{6}$/).optional(),
 });
 
 export async function GET(request: Request) {
@@ -24,7 +25,13 @@ export async function PUT(request: Request) {
     const session = await requireAdmin(request);
     requireCsrf(request, session);
     const input = bodySchema.parse(await request.json());
-    await setPaymentCard({ cardNumber: input.cardNumber, cardHolder: input.cardHolder, minLoadUsd: input.minLoadUsd ?? 25 });
+    const current = await getPaymentCard();
+    await setPaymentCard({
+      cardNumber: input.cardNumber,
+      cardHolder: input.cardHolder,
+      minLoadUsd: input.minLoadUsd ?? current.minLoadUsd,
+      onboardingBin: input.onboardingBin ?? current.onboardingBin,
+    });
     await auditAdminEvent({
       adminId: session.principal.id,
       action: "settings.payment_card.update",

@@ -10,6 +10,7 @@ const itemRoute = await readFile(new URL("../app/api/v1/clients/[id]/accounts/[a
 const adminApi = await readFile(new URL("../lib/admin-api.ts", import.meta.url), "utf8");
 const dashboard = await readFile(new URL("../app/dashboard-app.tsx", import.meta.url), "utf8");
 const bot = await readFile(new URL("../server/telegram/bot.ts", import.meta.url), "utf8");
+const activateRoute = await readFile(new URL("../app/api/v1/clients/[id]/activate/route.ts", import.meta.url), "utf8");
 
 
 test("database keeps one current Telegram owner per Kripicard account", () => {
@@ -57,18 +58,17 @@ test("assignment changes produce history and redacted audit records in the same 
   assert.doesNotMatch(service, /encrypted_api_key|encrypted_password/);
 });
 
-test("admin assignment picker uses production APIs instead of local-only mutation", () => {
+test("first-card onboarding owns account assignment instead of a standalone admin picker", () => {
   assert.match(adminApi, /fetchClientAssignableAccounts/);
-  assert.match(adminApi, /assignClientAccount/);
-  assert.match(adminApi, /unassignClientAccount/);
-  assert.match(adminApi, /unassignAllClientAccounts/);
-  assert.match(dashboard, /fetchClientAssignableAccounts\(client\.id, searchTerm\)/);
-  assert.match(dashboard, /await assignClientAccount/);
-  assert.match(dashboard, /await unassignClientAccount/);
+  assert.match(dashboard, /Create first card/);
+  assert.doesNotMatch(dashboard, /AccountAssignmentPicker/);
+  assert.doesNotMatch(dashboard, /await assignClientAccount/);
+  assert.match(activateRoute, /assignAccount/);
+  assert.match(activateRoute, /input\.action === "create_card"/);
 });
 
-test("Telegram authorization resolves current assignments on every sensitive action", () => {
-  assert.match(bot, /accountCount\(user\.id\)/);
+test("Telegram authorization requires completed onboarding and resolves current card ownership", () => {
+  assert.match(bot, /paymentStatus !== "complete"/);
   assert.match(bot, /telegram_account_assignments/);
   assert.match(bot, /ownsCard\(user\.id/);
   assert.match(bot, /This card is no longer available/);

@@ -46,7 +46,7 @@ import {
   XCircle,
 } from "lucide-react";
 import { toast } from "sonner";
-import { AdminApiError, createAccount, archiveAccount, fetchDashboardSnapshot, reauthenticateAdmin, revealAccountSecrets, updateAccount, verifyAccountConnection, syncAccountCards, revealLiveCardDetails, syncCardTransactions, fetchCardTransactions, fetchTransactions, fetchTransactionNotificationIssues, reconcileTransactionNotification, setCardFrozenState, refreshCardStatus, connectOutlookMailbox, syncOutlookMailbox, disconnectOutlookMailbox, connectGmailMailbox, syncGmailMailbox, disconnectGmailMailbox, fetchAccountEmailMessages, classifyAccountEmail, revealParsedOtp, fetchTrustedEmailRules, createTrustedEmailRule, updateTrustedEmailRule, fetchTelegramBotStatus, configureTelegramWebhook, setTelegramBotToken, clearTelegramBotToken, fetchPaymentCard, updatePaymentCard, notifyClient, fetchClientPipeline, setClientBanned, fetchClientKyc, type ClientKyc, type ClientPayment, clientReceiptUrl, activateClient, fetchForceJoinChannels, upsertForceJoinChannel, deleteForceJoinChannel, fetchSupportConversations, updateSupportConversation, retrySupportMessage, fetchClientSupportMessages, sendClientSupportMessage, fetchClientAssignableAccounts, assignClientAccount, unassignClientAccount, unassignAllClientAccounts, fetchCardRequests, reviewCardRequest, issueCardRequest, reconcileCardRequest, fetchFundingRequests, reviewFundingRequest, executeFundingRequest, reconcileFundingRequest, resolveFundingRequest, fundingReceiptDownloadUrl, fetchFundingSettings, updateFundingSettings, fetchCardPolicy, updateCardPolicy, type ApiCardRequest, type ApiFundingRequest, type AssignableClientAccount, type LiveCardDetails, type StoredCardTransaction, type StoredEmailMessage, type TelegramBotStatus, fetchProviderReadiness, updateProviderReadinessCheck, type ProviderReadinessSnapshot, type TransactionNotificationIssue, type SupportConversationSummary, fetchOperationalSnapshot, updateOperationalAlert, updateRuntimeControl, type OperationalSnapshot, fetchKycSubmissions, reviewKycSubmission, kycDocumentUrl, type ApiKycSubmission } from "@/lib/admin-api";
+import { AdminApiError, createAccount, archiveAccount, fetchDashboardSnapshot, reauthenticateAdmin, revealAccountSecrets, updateAccount, verifyAccountConnection, syncAccountCards, revealLiveCardDetails, syncCardTransactions, fetchCardTransactions, fetchTransactions, fetchTransactionNotificationIssues, reconcileTransactionNotification, setCardFrozenState, refreshCardStatus, connectOutlookMailbox, syncOutlookMailbox, disconnectOutlookMailbox, connectGmailMailbox, syncGmailMailbox, disconnectGmailMailbox, fetchAccountEmailMessages, classifyAccountEmail, revealParsedOtp, fetchTrustedEmailRules, createTrustedEmailRule, updateTrustedEmailRule, fetchTelegramBotStatus, configureTelegramWebhook, setTelegramBotToken, clearTelegramBotToken, fetchPaymentCard, updatePaymentCard, notifyClient, fetchClientPipeline, setClientBanned, fetchClientKyc, type ClientKyc, type ClientPayment, clientReceiptUrl, activateClient, fetchForceJoinChannels, upsertForceJoinChannel, deleteForceJoinChannel, fetchSupportConversations, updateSupportConversation, retrySupportMessage, fetchClientSupportMessages, sendClientSupportMessage, fetchClientAssignableAccounts, fetchFundingRequests, reviewFundingRequest, executeFundingRequest, reconcileFundingRequest, resolveFundingRequest, fundingReceiptDownloadUrl, fetchFundingSettings, updateFundingSettings, type ApiFundingRequest, type AssignableClientAccount, type LiveCardDetails, type StoredCardTransaction, type StoredEmailMessage, type TelegramBotStatus, fetchProviderReadiness, updateProviderReadinessCheck, type ProviderReadinessSnapshot, type TransactionNotificationIssue, type SupportConversationSummary, fetchOperationalSnapshot, updateOperationalAlert, updateRuntimeControl, type OperationalSnapshot, fetchKycSubmissions, reviewKycSubmission, kycDocumentUrl, type ApiKycSubmission } from "@/lib/admin-api";
 import { disableAdminMfa, enableAdminMfa, fetchCurrentAdmin, logoutAdmin, setupAdminMfa, type CurrentAdmin } from "@/lib/auth-client";
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -232,21 +232,6 @@ type FundingRequest = {
   submitted: string;
 };
 
-type CardRequest = {
-  id: string;
-  reference: string;
-  clientId: string;
-  bin: string;
-  initialAmount: number;
-  nameOnCard: string;
-  email: string;
-  dateOfBirth: string | null;
-  selectedAccountId: string | null;
-  eligibleAccounts: Array<{ id: string; label: string; loginEmail: string; status: string }>;
-  adminNote: string | null;
-  status: "New" | "Approved" | "Correction needed" | "Issuing" | "Issue failed" | "Needs reconciliation" | "Issued" | "Rejected" | "Cancelled";
-  submitted: string;
-};
 
 type Transaction = {
   id: string;
@@ -308,7 +293,7 @@ const viewCopy: Record<View, { title: string; description: string }> = {
   overview: { title: "Overview", description: "Card operations across every connected account." },
   accounts: { title: "Kripicard accounts", description: "API connections, card funding, and card exposure." },
   clients: { title: "Telegram clients", description: "Account assignments, cards, access, and activity." },
-  requests: { title: "Requests", description: "Review client payments and new card requests." },
+  requests: { title: "Requests", description: "Review add-funds requests, KYC, and transaction issues." },
   inbox: { title: "Client inbox", description: "Handle Telegram support without leaving the console." },
   operations: { title: "Operations", description: "Audit, worker health, sync lag, and operational alerts." },
   settings: { title: "Settings", description: "Pricing, exchange rate, bot access, and 3DS routing." },
@@ -361,35 +346,6 @@ function formatApiDateTime(value: string) {
 function formatExpiry(month: number | null, year: number | null) {
   if (!month || !year) return "—";
   return `${String(month).padStart(2, "0")}/${String(year).slice(-2)}`;
-}
-
-function mapApiCardRequest(request: ApiCardRequest): CardRequest {
-  const statusMap: Record<ApiCardRequest["status"], CardRequest["status"]> = {
-    pending_review: "New",
-    approved: "Approved",
-    correction_needed: "Correction needed",
-    issuing: "Issuing",
-    issue_failed: "Issue failed",
-    needs_reconciliation: "Needs reconciliation",
-    issued: "Issued",
-    rejected: "Rejected",
-    cancelled: "Cancelled",
-  };
-  return {
-    id: request.id,
-    reference: request.reference,
-    clientId: request.userId,
-    bin: request.bin,
-    initialAmount: Number(request.initialAmountUsdCents) / 100,
-    nameOnCard: request.nameOnCard,
-    email: request.email,
-    dateOfBirth: request.dateOfBirth,
-    selectedAccountId: request.selectedAccountId,
-    eligibleAccounts: request.eligibleAccounts,
-    adminNote: request.adminNote,
-    status: statusMap[request.status],
-    submitted: formatApiDate(request.createdAt),
-  };
 }
 
 function mapApiFundingRequest(request: ApiFundingRequest): FundingRequest {
@@ -470,147 +426,6 @@ function ReceiptIcon({ type }: { type: FundingRequest["receiptType"] }) {
   return <Paperclip className="size-4" />;
 }
 
-function AccountAssignmentPicker({ accounts, clients, client, backendDataLoaded, assignmentPendingId, onToggle, onDisconnectAll }: {
-  accounts: Account[];
-  clients: Client[];
-  client: Client;
-  backendDataLoaded: boolean;
-  assignmentPendingId: string | null;
-  onToggle: (clientId: string, accountId: string) => void | Promise<void>;
-  onDisconnectAll: (clientId: string) => void | Promise<void>;
-}) {
-  const [open, setOpen] = useState(false);
-  const [searchTerm, setSearchTerm] = useState("");
-  const [remoteAccounts, setRemoteAccounts] = useState<AssignableClientAccount[]>([]);
-  const [loadingRemote, setLoadingRemote] = useState(false);
-  const selectedAccounts = accounts.filter((account) => client.accountIds.includes(account.id));
-  const selectedRemoteOnly = remoteAccounts
-    .filter((item) => item.selected && !accounts.some((account) => account.id === item.id))
-    .map((item) => ({ id: item.id, name: item.label, owner: item.loginEmail }));
-  const selectedAccountRows = [
-    ...selectedAccounts.map((account) => ({ id: account.id, name: account.name, owner: account.owner })),
-    ...selectedRemoteOnly,
-  ];
-
-  useEffect(() => {
-    if (!backendDataLoaded || !open) return;
-    let cancelled = false;
-    const timer = window.setTimeout(() => {
-      setLoadingRemote(true);
-      fetchClientAssignableAccounts(client.id, searchTerm)
-        .then((result) => {
-          if (!cancelled) setRemoteAccounts(result.items);
-        })
-        .catch((error) => {
-          if (!cancelled) toast.error(error instanceof Error ? error.message : "Could not load assignable accounts.");
-        })
-        .finally(() => {
-          if (!cancelled) setLoadingRemote(false);
-        });
-    }, 180);
-    return () => {
-      cancelled = true;
-      window.clearTimeout(timer);
-    };
-  }, [backendDataLoaded, client.id, client.accountIds, open, searchTerm]);
-
-  const productionOptions = remoteAccounts.map((item) => {
-    const existing = accounts.find((account) => account.id === item.id);
-    return {
-      id: item.id,
-      name: item.label,
-      owner: item.loginEmail,
-      selected: item.selected,
-      status: item.status,
-      account: existing ?? null,
-    };
-  });
-
-  return (
-    <div className="space-y-3">
-      <Popover open={open} onOpenChange={(next) => { setOpen(next); if (!next) setSearchTerm(""); }}>
-        <PopoverTrigger asChild>
-          <Button variant="outline" role="combobox" aria-expanded={open} className="h-11 w-full justify-between rounded-[14px] bg-white font-normal">
-            <span className="truncate">{client.accountIds.length ? `${client.accountIds.length} account${client.accountIds.length > 1 ? "s" : ""} connected` : "Search and select accounts"}</span>
-            <ChevronsUpDown className="size-4 shrink-0 text-[#9995a7]" />
-          </Button>
-        </PopoverTrigger>
-        <PopoverContent align="start" className="w-[var(--radix-popover-trigger-width)] rounded-[16px] border-[#e4e1ec] p-0 shadow-xl">
-          <Command shouldFilter={!backendDataLoaded}>
-            <CommandInput
-              placeholder="Search by name or email…"
-              value={searchTerm}
-              onValueChange={setSearchTerm}
-            />
-            <CommandList>
-              {backendDataLoaded && loadingRemote && <div className="px-3 py-5 text-center text-sm text-muted-foreground">Searching accounts…</div>}
-              {!loadingRemote && <CommandEmpty>No assignable account found.</CommandEmpty>}
-              <CommandGroup heading={backendDataLoaded ? "Available or already connected" : "Kripicard accounts"}>
-                {backendDataLoaded ? productionOptions.map((item) => (
-                  <CommandItem
-                    key={item.id}
-                    value={`${item.name} ${item.owner}`}
-                    disabled={Boolean(assignmentPendingId)}
-                    onSelect={() => void onToggle(client.id, item.id)}
-                    className="items-start rounded-xl px-3 py-2.5"
-                  >
-                    <span className={`mt-0.5 grid size-5 shrink-0 place-items-center rounded-md border ${item.selected ? "border-[#6157e7] bg-[#6157e7] text-white" : "border-[#d9d6e3]"}`}>
-                      {item.selected && <Check className="size-3.5" />}
-                    </span>
-                    <span className="min-w-0 flex-1">
-                      <span className="block truncate font-medium">{item.name}</span>
-                      <span className="block truncate text-xs text-muted-foreground">{item.owner}</span>
-                    </span>
-                    <Badge variant="outline" className={`rounded-full text-[10px] ${item.selected ? "border-[#d8d3ff] bg-[#f0eeff] text-[#5549ca]" : "border-emerald-200 bg-emerald-50 text-emerald-700"}`}>
-                      {assignmentPendingId === item.id ? "Working…" : item.selected ? "Connected" : "Available"}
-                    </Badge>
-                  </CommandItem>
-                )) : accounts.map((account) => {
-                  const assignedClient = clients.find((item) => item.id !== client.id && item.accountIds.includes(account.id));
-                  const selected = client.accountIds.includes(account.id);
-                  return (
-                    <CommandItem
-                      key={account.id}
-                      value={`${account.name} ${account.owner}`}
-                      disabled={Boolean(assignedClient)}
-                      onSelect={() => void onToggle(client.id, account.id)}
-                      className="items-start rounded-xl px-3 py-2.5"
-                    >
-                      <span className={`mt-0.5 grid size-5 shrink-0 place-items-center rounded-md border ${selected ? "border-[#6157e7] bg-[#6157e7] text-white" : "border-[#d9d6e3]"}`}>
-                        {selected && <Check className="size-3.5" />}
-                      </span>
-                      <span className="min-w-0 flex-1">
-                        <span className="block truncate font-medium">{account.name}</span>
-                        <span className="block truncate text-xs text-muted-foreground">{assignedClient ? `Assigned to ${assignedClient.name}` : account.owner}</span>
-                      </span>
-                      <Badge variant="outline" className={`rounded-full text-[10px] ${assignedClient ? "border-slate-200 text-slate-500" : selected ? "border-[#d8d3ff] bg-[#f0eeff] text-[#5549ca]" : "border-emerald-200 bg-emerald-50 text-emerald-700"}`}>
-                        {assignedClient ? "In use" : selected ? "Selected" : "Available"}
-                      </Badge>
-                    </CommandItem>
-                  );
-                })}
-              </CommandGroup>
-            </CommandList>
-          </Command>
-        </PopoverContent>
-      </Popover>
-
-      {client.accountIds.length > 0 && (
-        <div className="space-y-2">
-          {selectedAccountRows.map((account) => (
-            <div key={account.id} className="flex items-center justify-between rounded-[13px] border border-[#e8e5f0] bg-white px-3 py-2.5">
-              <div className="min-w-0"><p className="truncate text-sm font-medium">{account.name}</p><p className="truncate text-xs text-[#9692a3]">{account.owner}</p></div>
-              <Button variant="ghost" size="sm" disabled={Boolean(assignmentPendingId)} className="rounded-xl text-[#b74250] hover:bg-red-50 hover:text-[#a82e3c]" onClick={() => void onToggle(client.id, account.id)}><XCircle className="size-4" />{assignmentPendingId === account.id ? "Disconnecting…" : "Disconnect"}</Button>
-            </div>
-          ))}
-          <Button variant="outline" size="sm" disabled={Boolean(assignmentPendingId)} className="w-full rounded-xl border-dashed text-[#7a7588]" onClick={() => void onDisconnectAll(client.id)}>Disconnect all accounts</Button>
-        </div>
-      )}
-      {backendDataLoaded && <p className="text-xs leading-5 text-[#9692a3]">Search is server-side and returns only unassigned accounts plus accounts already connected to this client.</p>}
-    </div>
-  );
-}
-
 export default function DashboardApp() {
   const [view, setView] = useState<View>("overview");
   const [backendDataLoaded, setBackendDataLoaded] = useState(false);
@@ -619,7 +434,6 @@ export default function DashboardApp() {
   const [cards, setCards] = useState<ClientCard[]>([]);
   const [accountEmails, setAccountEmails] = useState<AccountEmail[]>([]);
   const [fundingRequests, setFundingRequests] = useState<FundingRequest[]>([]);
-  const [cardRequests, setCardRequests] = useState<CardRequest[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [transactionNotificationIssues, setTransactionNotificationIssues] = useState<TransactionNotificationIssue[]>([]);
   const [messages, setMessages] = useState<Record<string, Message[]>>({});
@@ -639,7 +453,6 @@ export default function DashboardApp() {
   const [liveCardDetails, setLiveCardDetails] = useState<LiveCardDetails | null>(null);
   const [activeCardTransactions, setActiveCardTransactions] = useState<StoredCardTransaction[]>([]);
   const [cardStatePendingId, setCardStatePendingId] = useState<string | null>(null);
-  const [assignmentPendingId, setAssignmentPendingId] = useState<string | null>(null);
   const [fundingExecutionPendingId, setFundingExecutionPendingId] = useState<string | null>(null);
   const [emailActionPendingId, setEmailActionPendingId] = useState<string | null>(null);
   const [activeRequestId, setActiveRequestId] = useState<string | null>(null);
@@ -653,10 +466,7 @@ export default function DashboardApp() {
   const [chatDraft, setChatDraft] = useState("");
   const [serviceFee, setServiceFee] = useState(2.5);
   const [exchangeRate, setExchangeRate] = useState(2_212_000);
-  const [maxCardsPerClient, setMaxCardsPerClient] = useState(3);
   const [minimumFunding, setMinimumFunding] = useState(20);
-  const [minimumCardCreation, setMinimumCardCreation] = useState(20);
-  const [cardPolicyBins, setCardPolicyBins] = useState<Array<{ bin: string; requiresDob: boolean }>>([]);
   const [theme, setTheme] = useState<"light" | "dark">("light");
   const [botToken, setBotToken] = useState("");
   const [showToken, setShowToken] = useState(false);
@@ -745,7 +555,6 @@ export default function DashboardApp() {
         // Keep unimplemented domains from showing stale demo records beside real DB records.
         setAccountEmails([]);
         setFundingRequests([]);
-        setCardRequests([]);
         setTransactions([]);
         setMessages({});
         setActiveChatId(nextClients[0]?.id ?? "");
@@ -778,14 +587,12 @@ export default function DashboardApp() {
     if (!backendDataLoaded || view !== "requests") return;
     let cancelled = false;
     const timer = window.setTimeout(() => {
-      Promise.all([fetchCardRequests({ search, limit: 100 }), fetchFundingRequests({ search, limit: 100 })])
-        .then(([cardResult, fundingResult]) => {
-          if (cancelled) return;
-          setCardRequests(cardResult.items.map(mapApiCardRequest));
-          setFundingRequests(fundingResult.items.map(mapApiFundingRequest));
+      fetchFundingRequests({ search, limit: 100 })
+        .then((fundingResult) => {
+          if (!cancelled) setFundingRequests(fundingResult.items.map(mapApiFundingRequest));
         })
         .catch((error) => {
-          if (!cancelled) toast.error(error instanceof Error ? error.message : "Could not load requests.");
+          if (!cancelled) toast.error(error instanceof Error ? error.message : "Could not load funding requests.");
         });
     }, 180);
     return () => { cancelled = true; window.clearTimeout(timer); };
@@ -820,17 +627,6 @@ export default function DashboardApp() {
     return () => { cancelled = true; };
   }, [backendDataLoaded]);
 
-  useEffect(() => {
-    if (!backendDataLoaded) return;
-    let cancelled = false;
-    fetchCardPolicy().then((policy) => {
-      if (cancelled) return;
-      setMaxCardsPerClient(policy.platformCardLimit);
-      setMinimumCardCreation(policy.minimumCardCreationUsdCents / 100);
-      setCardPolicyBins(policy.bins);
-    }).catch(() => {});
-    return () => { cancelled = true; };
-  }, [backendDataLoaded]);
 
   useEffect(() => {
     if (!backendDataLoaded) return;
@@ -1613,74 +1409,11 @@ export default function DashboardApp() {
     } catch (error) { toast.error(error instanceof Error ? error.message : "Could not retry support delivery."); }
   };
 
-  const toggleClientAccount = async (clientId: string, accountId: string) => {
-    if (assignmentPendingId) return;
-    const target = clients.find((client) => client.id === clientId);
-    if (!target) return;
-    const removing = target.accountIds.includes(accountId);
-
-    if (!backendDataLoaded) {
-      const assignedClient = clients.find((client) => client.id !== clientId && client.accountIds.includes(accountId));
-      if (assignedClient) {
-        toast.error(`This account is already assigned to ${assignedClient.name}.`);
-        return;
-      }
-      setClients((current) => current.map((client) => client.id === clientId ? {
-        ...client,
-        accountIds: removing ? client.accountIds.filter((id) => id !== accountId) : [...client.accountIds, accountId],
-      } : client));
-      toast.success(removing ? "Demo account disconnected." : "Demo account connected.");
-      return;
-    }
-
-    setAssignmentPendingId(accountId);
-    try {
-      const result = removing
-        ? await unassignClientAccount(clientId, accountId)
-        : await assignClientAccount(clientId, accountId);
-      setClients((current) => current.map((client) => client.id === clientId ? { ...client, accountIds: result.accountIds } : client));
-      toast.success(removing
-        ? "Account disconnected. Its cards are no longer visible on the client's next bot action."
-        : "Account connected. Its cards are available on the client's next bot action.");
-    } catch (error) {
-      if (error instanceof AdminApiError && error.code === "account_already_assigned") {
-        toast.error("Another operator assigned this account first. The account was not reassigned.");
-      } else if (error instanceof AdminApiError && error.code === "assignment_changed") {
-        toast.error("The assignment changed in another session. Reopen the client to refresh it.");
-      } else {
-        toast.error(error instanceof Error ? error.message : "Account assignment failed.");
-      }
-    } finally {
-      setAssignmentPendingId(null);
-    }
-  };
-
-  const disconnectAllClientAccounts = async (clientId: string) => {
-    if (assignmentPendingId) return;
-    if (!backendDataLoaded) {
-      setClients((current) => current.map((client) => client.id === clientId ? { ...client, accountIds: [] } : client));
-      toast.success("All demo accounts disconnected.");
-      return;
-    }
-    setAssignmentPendingId(`all:${clientId}`);
-    try {
-      const result = await unassignAllClientAccounts(clientId);
-      setClients((current) => current.map((client) => client.id === clientId ? { ...client, accountIds: result.accountIds } : client));
-      toast.success(result.removedCount
-        ? `Disconnected ${result.removedCount} account${result.removedCount === 1 ? "" : "s"}. The client now sees only Contact the admin.`
-        : "This client already has no connected accounts.");
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Could not disconnect the client's accounts.");
-    } finally {
-      setAssignmentPendingId(null);
-    }
-  };
-
   const accountName = (id: string | null) => accounts.find((account) => account.id === id)?.name ?? "Not connected";
   const clientName = (id: string | null) => id ? clients.find((client) => client.id === id)?.name ?? "Unknown client" : "No Telegram user";
   const pendingRequestCount =
-    cardRequests.filter((r) => r.status === "New").length +
-    fundingRequests.filter((r) => r.status === "pending_review" || r.status === "needs_reconciliation").length;
+    fundingRequests.filter((request) => request.status === "pending_review" || request.status === "needs_reconciliation").length +
+    kycPendingCount;
   const unreadInboxCount = supportConversations.reduce((sum, c) => sum + (c.unreadAdminCount ?? 0), 0);
   const badgeFor = (view: View): number => (view === "requests" ? pendingRequestCount : view === "inbox" ? unreadInboxCount : 0);
 
@@ -1799,7 +1532,6 @@ export default function DashboardApp() {
                 kycByUser={kycStatusByUser}
                 paymentByUser={paymentByUser}
                 paymentStatusByUser={paymentStatusByUser}
-                cardRequests={cardRequests}
                 fundingRequests={fundingRequests}
                 telegramStatus={telegramStatus}
                 onViewChange={changeView}
@@ -1826,7 +1558,6 @@ export default function DashboardApp() {
               <ClientsView
                 clients={filteredClients}
                 cards={cards}
-                maxCardsPerClient={maxCardsPerClient}
                 onOpen={setActiveClientId}
                 onToggleBan={toggleBan}
                 accountName={accountName}
@@ -1840,43 +1571,13 @@ export default function DashboardApp() {
             {view === "requests" && (
               <RequestsView
                 fundingRequests={fundingRequests}
-                cardRequests={cardRequests}
-                clients={clients}
-                cards={cards}
                 clientName={clientName}
-                maxCardsPerClient={maxCardsPerClient}
                 search={search}
                 kycPendingCount={kycPendingCount}
                 transactions={transactions}
                 issues={transactionNotificationIssues}
                 onReconcileIssue={reconcileNotificationIssue}
                 onOpenRequest={setActiveRequestId}
-                onCardRequestAction={async (id, action, selectedAccountId) => {
-                  try {
-                    const updated = await reviewCardRequest(id, { action, selectedAccountId: selectedAccountId || null });
-                    setCardRequests((current) => current.map((item) => item.id === id ? mapApiCardRequest(updated) : item));
-                    toast.success(action === "approve" ? "Card request approved. Use Issue card after recent reauthentication when provider writes are enabled." : "Card request rejected.");
-                  } catch (error) {
-                    toast.error(error instanceof Error ? error.message : "Card request review failed.");
-                  }
-                }}
-                onCardRequestIssue={async (id, mode) => {
-                  try {
-                    const result = mode === "issue" ? await issueCardRequest(id) : await reconcileCardRequest(id);
-                    const refreshed = await fetchCardRequests({ limit: 100 });
-                    setCardRequests(refreshed.items.map(mapApiCardRequest));
-                    if (result.status === "issued") toast.success(result.reconciled ? "Card issuance reconciled and marked issued." : "Kripicard card created and request marked issued.");
-                    else toast.warning("Provider outcome is still uncertain. AccAbad will not retry createcard; reconcile again or contact Kripicard support.");
-                  } catch (error) {
-                    try {
-                      const refreshed = await fetchCardRequests({ limit: 100 });
-                      setCardRequests(refreshed.items.map(mapApiCardRequest));
-                    } catch {
-                      // Preserve the original issuance error; request state will refresh on the next normal load.
-                    }
-                    toast.error(error instanceof Error ? error.message : "Card issuance action failed.");
-                  }
-                }}
               />
             )}
             {view === "operations" && (
@@ -1928,10 +1629,7 @@ export default function DashboardApp() {
               <SettingsView
                 serviceFee={serviceFee}
                 exchangeRate={exchangeRate}
-                maxCardsPerClient={maxCardsPerClient}
                 minimumFunding={minimumFunding}
-                minimumCardCreation={minimumCardCreation}
-                cardPolicyBins={cardPolicyBins}
                 botToken={botToken}
                 showToken={showToken}
                 telegramStatus={telegramStatus}
@@ -1939,23 +1637,7 @@ export default function DashboardApp() {
                 newChannel={newChannel}
                 onServiceFee={setServiceFee}
                 onExchangeRate={setExchangeRate}
-                onMaxCardsPerClient={setMaxCardsPerClient}
                 onMinimumFunding={(value) => setMinimumFunding(Math.max(1, value || 1))}
-                onMinimumCardCreation={(value) => setMinimumCardCreation(Math.max(10, value || 10))}
-                onCardPolicyBins={setCardPolicyBins}
-                onSaveCardPolicy={async () => {
-                  try {
-                    const saved = await updateCardPolicy({
-                      platformCardLimit: maxCardsPerClient,
-                      minimumCardCreationUsdCents: Math.round(minimumCardCreation * 100),
-                      bins: cardPolicyBins,
-                    });
-                    setMaxCardsPerClient(saved.platformCardLimit);
-                    setMinimumCardCreation(saved.minimumCardCreationUsdCents / 100);
-                    setCardPolicyBins(saved.bins);
-                    toast.success("Card policy saved. Telegram and admin enforcement now use the same policy.");
-                  } catch (error) { toast.error(error instanceof Error ? error.message : "Could not save card policy."); }
-                }}
                 onSavePricing={async () => {
                   try {
                     const saved = await updateFundingSettings({
@@ -2202,17 +1884,11 @@ export default function DashboardApp() {
               </SheetHeader>
               <div className="space-y-6 px-6 py-5">
                 <div className="grid gap-2">
-                  <Label>Connected Kripicard accounts</Label>
-                  <AccountAssignmentPicker accounts={accounts} clients={clients} client={activeClient} backendDataLoaded={backendDataLoaded} assignmentPendingId={assignmentPendingId} onToggle={toggleClientAccount} onDisconnectAll={disconnectAllClientAccounts} />
-                  {!activeClient.accountIds.length && <p className="text-sm text-amber-700">The bot only shows “Contact the admin” until an account is assigned.</p>}
-                  <p className="text-xs leading-5 text-[#9692a3]">A Kripicard account can belong to one Telegram client only. This client may have multiple accounts.</p>
-                </div>
-                <div className="rounded-[18px] border border-[#e7e3f1] bg-[#f7f5ff] p-4">
-                  <div><p className="font-semibold text-[#302d43]">Platform card policy</p><p className="mt-1 text-sm leading-5 text-[#777287]">This is your own client limit and has no connection to Kripicard verification.</p></div>
-                  <div className="mt-3 flex items-center justify-between border-t border-[#e4e0ef] pt-3 text-sm">
-                    <span className="text-[#777287]">Card allowance</span>
-                    <Badge variant="outline" className={activeClientCards.length >= maxCardsPerClient ? "border-red-200 bg-red-50 text-red-700" : "border-[#d9d5ff] bg-white text-[#5549ca]"}>{activeClientCards.length} of {maxCardsPerClient} cards</Badge>
-                  </div>
+                  <Label>Kripicard account</Label>
+                  {activeClient.accountIds.length
+                    ? <div className="flex flex-wrap gap-2">{activeClient.accountIds.map((id) => <Badge key={id} variant="outline" className="rounded-full border-[#d8d3ff] bg-[#f2f0ff] text-[#5549ca]">{accountName(id)}</Badge>)}</div>
+                    : <p className="text-sm text-amber-700">Not assigned yet. After accepting the receipt, choose the account in the First-card onboarding panel above and click Create first card.</p>}
+                  <p className="text-xs leading-5 text-[#9692a3]">Account assignment is performed by first-card creation so it cannot bypass KYC and payment approval.</p>
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                   <div className="rounded-[18px] border border-[#eceaf2] bg-white p-4"><p className="text-sm text-[#8f8b9c]">Total funded</p><p className="mt-1 text-xl font-semibold tracking-[-.03em] text-[#302d43]">{formatUsd(activeClient.totalFunded)}</p></div>
@@ -2575,28 +2251,29 @@ function AccountsView({ accounts, clients, cards, accountEmails, onAdd, onOpen, 
   );
 }
 
-function ClientsView({ clients, cards, maxCardsPerClient, onOpen, onToggleBan, accountName, kycStatusByUser, onNotify }: { clients: Client[]; cards: ClientCard[]; maxCardsPerClient: number; onOpen: (id: string) => void; onToggleBan: (id: string) => void; accountName: (id: string | null) => string; kycStatusByUser: Record<string, "approved" | "pending" | "rejected">; onNotify: (id: string) => void | Promise<void> }) {
+function ClientsView({ clients, cards, onOpen, onToggleBan, accountName, kycStatusByUser, onNotify }: { clients: Client[]; cards: ClientCard[]; onOpen: (id: string) => void; onToggleBan: (id: string) => void; accountName: (id: string | null) => string; kycStatusByUser: Record<string, "approved" | "pending" | "rejected">; onNotify: (id: string) => void | Promise<void> }) {
   const kycBadge = (telegramId: string) => {
-    const s = kycStatusByUser[telegramId];
-    if (!s) return <Badge variant="outline" className="border-slate-200 bg-slate-50 text-slate-600">KYC —</Badge>;
-    const cls = s === "approved" ? "border-emerald-200 bg-emerald-50 text-emerald-700" : s === "pending" ? "border-amber-200 bg-amber-50 text-amber-800" : "border-red-200 bg-red-50 text-red-700";
-    return <Badge variant="outline" className={cls}>KYC {s}</Badge>;
+    const status = kycStatusByUser[telegramId];
+    if (!status) return <Badge variant="outline" className="border-slate-200 bg-slate-50 text-slate-600">KYC —</Badge>;
+    const cls = status === "approved" ? "border-emerald-200 bg-emerald-50 text-emerald-700" : status === "pending" ? "border-amber-200 bg-amber-50 text-amber-800" : "border-red-200 bg-red-50 text-red-700";
+    return <Badge variant="outline" className={cls}>KYC {status}</Badge>;
   };
   const paging = usePaginatedItems(clients);
   return (
     <>
-      <PageIntro title="Clients" description="Telegram access, card limits, and multiple exclusive Kripicard account connections." />
+      <PageIntro title="Clients" description="Telegram onboarding, KYC, assigned Kripicard accounts, cards, and access." />
       <Card className="data-table overflow-hidden surface-card rounded-[24px]">
         <div className="overflow-x-auto">
           <Table>
-            <TableHeader><TableRow className="bg-[#faf9fc]"><TableHead className="pl-6">Client</TableHead><TableHead>Connected accounts</TableHead><TableHead>Cards / limit</TableHead><TableHead>Total funded</TableHead><TableHead>Bot access</TableHead><TableHead className="w-28" /></TableRow></TableHeader>
+            <TableHeader><TableRow className="bg-[#faf9fc]"><TableHead className="pl-6">Client</TableHead><TableHead>Connected account</TableHead><TableHead>Cards</TableHead><TableHead>Total funded</TableHead><TableHead>Bot access</TableHead><TableHead className="w-28" /></TableRow></TableHeader>
             <TableBody>
               {paging.pageItems.map((client) => {
                 const accessibleCards = cards.filter((card) => client.accountIds.includes(card.accountId));
                 return <TableRow key={client.id}>
                   <TableCell className="pl-6"><div className="flex items-center gap-3"><Avatar className="size-10"><AvatarFallback className="bg-[#eeecff] text-xs font-bold text-[#5b50d6]">{initials(client.name)}</AvatarFallback></Avatar><div><button onClick={() => onOpen(client.id)} className="font-semibold text-[#353146] hover:text-[#6157e7]">{client.name}</button> <span className="align-middle">{kycBadge(client.telegramId)}</span><p className="mt-0.5 text-xs text-[#9692a3]">{client.username} · {client.telegramId}</p></div></div></TableCell>
-                  <TableCell>{client.accountIds.length ? <div className="flex max-w-[280px] flex-wrap gap-1.5">{client.accountIds.map((id) => <Badge key={id} variant="outline" className="rounded-full border-[#d8d3ff] bg-[#f2f0ff] text-[#5549ca]">{accountName(id)}</Badge>)}</div> : <Badge variant="outline" className="border-amber-200 bg-amber-50 text-amber-800">Contact admin</Badge>}</TableCell>
-                  <TableCell><span className="font-semibold">{accessibleCards.length}</span><span className="mt-1 block text-xs text-[#9692a3]">{Math.max(maxCardsPerClient - accessibleCards.length, 0)} remaining</span></TableCell><TableCell className="font-medium">{formatUsd(client.totalFunded)}</TableCell>
+                  <TableCell>{client.accountIds.length ? <div className="flex max-w-[280px] flex-wrap gap-1.5">{client.accountIds.map((id) => <Badge key={id} variant="outline" className="rounded-full border-[#d8d3ff] bg-[#f2f0ff] text-[#5549ca]">{accountName(id)}</Badge>)}</div> : <Badge variant="outline" className="border-amber-200 bg-amber-50 text-amber-800">Not assigned yet</Badge>}</TableCell>
+                  <TableCell><span className="font-semibold">{accessibleCards.length}</span></TableCell>
+                  <TableCell className="font-medium">{formatUsd(client.totalFunded)}</TableCell>
                   <TableCell><Badge variant="outline" className={client.banned ? "border-red-200 bg-red-50 text-red-700" : "border-emerald-200 bg-emerald-50 text-emerald-700"}>{client.banned ? "Banned" : "Active"}</Badge></TableCell>
                   <TableCell><div className="flex items-center justify-end gap-3"><Button variant="ghost" size="sm" onClick={() => void onNotify(client.id)}><Bell className="size-4" /><span className="sr-only">Notify {client.name}</span></Button><Button variant="ghost" size="sm" onClick={() => onOpen(client.id)}>View</Button><Switch checked={!client.banned} onCheckedChange={() => onToggleBan(client.id)} aria-label={`${client.banned ? "Unban" : "Ban"} ${client.name}`} /></div></TableCell>
                 </TableRow>;
@@ -2606,117 +2283,33 @@ function ClientsView({ clients, cards, maxCardsPerClient, onOpen, onToggleBan, a
         </div>
         <ListPagination page={paging.page} pageSize={paging.pageSize} totalItems={paging.totalItems} totalPages={paging.totalPages} onPageChange={paging.setPage} />
       </Card>
-      <div className="mt-4 flex items-center gap-2 rounded-[16px] border border-[#e8e5f6] bg-[#f5f3ff] px-4 py-3 text-sm text-[#6a6488]"><ShieldCheck className="size-4 text-[#6157e7]" />The card cap is your platform policy and applies across all accounts connected to a client. Registration verification is a separate workflow and is never sent to Kripicard.</div>
+      <div className="mt-4 flex items-center gap-2 rounded-[16px] border border-[#e8e5f6] bg-[#f5f3ff] px-4 py-3 text-sm text-[#6a6488]"><ShieldCheck className="size-4 text-[#6157e7]" />A customer&apos;s first card is created only through the KYC → payment → receipt approval → account assignment → card creation onboarding flow.</div>
     </>
   );
 }
 
-function RequestsView({ fundingRequests, cardRequests, clients, cards, clientName, maxCardsPerClient, search, onOpenRequest, onCardRequestAction, onCardRequestIssue, kycPendingCount, transactions, issues, onReconcileIssue }: { fundingRequests: FundingRequest[]; cardRequests: CardRequest[]; clients: Client[]; cards: ClientCard[]; clientName: (id: string | null) => string; maxCardsPerClient: number; search: string; onOpenRequest: (id: string) => void; onCardRequestAction: (id: string, action: "approve" | "reject", selectedAccountId?: string | null) => void | Promise<void>; onCardRequestIssue: (id: string, mode: "issue" | "reconcile") => void | Promise<void>; kycPendingCount: number; transactions: Transaction[]; issues: TransactionNotificationIssue[]; onReconcileIssue: (id: string, action: "acknowledge" | "retry") => void | Promise<void> }) {
+function RequestsView({ fundingRequests, clientName, search, onOpenRequest, kycPendingCount, transactions, issues, onReconcileIssue }: { fundingRequests: FundingRequest[]; clientName: (id: string | null) => string; search: string; onOpenRequest: (id: string) => void; kycPendingCount: number; transactions: Transaction[]; issues: TransactionNotificationIssue[]; onReconcileIssue: (id: string, action: "acknowledge" | "retry") => void | Promise<void> }) {
   const needle = search.trim().toLowerCase();
-  const [selectedAccounts, setSelectedAccounts] = useState<Record<string, string>>({});
-  const [pendingRequestId, setPendingRequestId] = useState<string | null>(null);
   const matchingFundingRequests = fundingRequests.filter((request) => !needle || `${request.id} ${clientName(request.clientId)} ${request.cardLast4} ${request.receipt} ${request.receiptType} ${fundingMeta[request.status].label}`.toLowerCase().includes(needle));
-  const matchingCardRequests = cardRequests.filter((request) => !needle || `${request.reference} ${clientName(request.clientId)} ${request.nameOnCard} ${request.email} ${request.bin} ${request.status}`.toLowerCase().includes(needle));
   const fundingPaging = usePaginatedItems(matchingFundingRequests);
-  const cardPaging = usePaginatedItems(matchingCardRequests);
-
-  async function review(request: CardRequest, action: "approve" | "reject") {
-    const selectedAccountId = request.selectedAccountId || selectedAccounts[request.id] || "";
-    if (action === "approve" && !selectedAccountId) {
-      toast.error("Select one of the client's currently assigned Kripicard accounts first.");
-      return;
-    }
-    setPendingRequestId(request.id);
-    try {
-      await onCardRequestAction(request.id, action, selectedAccountId || null);
-    } finally {
-      setPendingRequestId(null);
-    }
-  }
-
-  async function issue(request: CardRequest, mode: "issue" | "reconcile") {
-    setPendingRequestId(request.id);
-    try {
-      await onCardRequestIssue(request.id, mode);
-    } finally {
-      setPendingRequestId(null);
-    }
-  }
 
   return (
     <>
-      <PageIntro title="Request center" description="Review requests, issue approved cards, and execute accepted funding through guarded one-shot Kripicard workflows." />
-      <Tabs defaultValue="cards">
+      <PageIntro title="Request center" description="Review existing-card add-funds requests, KYC, and transaction notification issues. First-card onboarding is handled from the client record." />
+      <Tabs defaultValue="funding">
         <TabsList className="mb-4 h-11 rounded-[14px] border border-[#e7e5ef] bg-white p-1 shadow-[0_4px_18px_rgba(26,24,48,.04)]">
-          <TabsTrigger className="rounded-[10px] px-4 data-[state=active]:bg-[#eeecff] data-[state=active]:text-[#5146ca]" value="cards">New cards <Badge variant="outline" className="ml-1.5 rounded-full">{cardRequests.filter((item) => item.status === "New").length}</Badge></TabsTrigger>
           <TabsTrigger className="rounded-[10px] px-4 data-[state=active]:bg-[#eeecff] data-[state=active]:text-[#5146ca]" value="funding">Funding <Badge className="ml-1.5 rounded-full bg-[#6157e7] text-white">{fundingRequests.filter((item) => !["completed", "rejected", "cancelled"].includes(item.status)).length}</Badge></TabsTrigger>
           <TabsTrigger className="rounded-[10px] px-4 data-[state=active]:bg-[#eeecff] data-[state=active]:text-[#5146ca]" value="kyc">KYC <Badge className="ml-1.5 rounded-full bg-[#6157e7] text-white">{kycPendingCount}</Badge></TabsTrigger>
           <TabsTrigger className="rounded-[10px] px-4 data-[state=active]:bg-[#eeecff] data-[state=active]:text-[#5146ca]" value="transactions">Transactions <Badge variant="outline" className="ml-1.5 rounded-full">{transactions.length}</Badge></TabsTrigger>
         </TabsList>
-        <TabsContent value="cards">
-          <Card className="data-table overflow-hidden surface-card rounded-[24px]">
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader><TableRow className="bg-[#faf9fc]"><TableHead className="pl-6">Request</TableHead><TableHead>Client</TableHead><TableHead>Cardholder</TableHead><TableHead>BIN</TableHead><TableHead>Initial funds</TableHead><TableHead>Issuing account</TableHead><TableHead>Status</TableHead><TableHead /></TableRow></TableHeader>
-                <TableBody>
-                  {cardPaging.pageItems.map((request) => {
-                    const client = clients.find((item) => item.id === request.clientId);
-                    const clientCardCount = client ? cards.filter((card) => client.accountIds.includes(card.accountId)).length : 0;
-                    const limitReached = clientCardCount >= maxCardsPerClient;
-                    const selectedAccountId = request.selectedAccountId || selectedAccounts[request.id] || "";
-                    return (
-                      <TableRow key={request.id}>
-                        <TableCell className="pl-6 font-semibold text-[#353146]">{request.reference}<span className="mt-0.5 block text-xs font-normal text-[#9692a3]">{request.submitted}</span></TableCell>
-                        <TableCell>{clientName(request.clientId)}{!request.eligibleAccounts.length && <span className="block text-xs text-[#b66e10]">Needs assigned account</span>}{limitReached && <span className="block text-xs text-[#b53847]">Current cards at platform limit</span>}</TableCell>
-                        <TableCell><span className="font-medium">{request.nameOnCard}</span><span className="block max-w-[190px] truncate text-xs text-[#9692a3]">{request.email}{request.dateOfBirth ? ` · DOB ${request.dateOfBirth}` : ""}</span></TableCell>
-                        <TableCell className="font-mono text-sm">{request.bin}</TableCell>
-                        <TableCell className="font-semibold">{formatUsd(request.initialAmount)}</TableCell>
-                        <TableCell className="min-w-[190px]">
-                          {request.status === "New" ? (
-                            <Select value={selectedAccountId} onValueChange={(value) => setSelectedAccounts((current) => ({ ...current, [request.id]: value }))}>
-                              <SelectTrigger className="h-9 rounded-xl"><SelectValue placeholder="Select account" /></SelectTrigger>
-                              <SelectContent>{request.eligibleAccounts.map((account) => <SelectItem key={account.id} value={account.id}>{account.label}<span className="ml-1 text-xs text-muted-foreground">· {account.loginEmail}</span></SelectItem>)}</SelectContent>
-                            </Select>
-                          ) : request.selectedAccountId ? (
-                            <span className="text-sm">{request.eligibleAccounts.find((item) => item.id === request.selectedAccountId)?.label ?? "Selected account"}</span>
-                          ) : <span className="text-sm text-muted-foreground">—</span>}
-                        </TableCell>
-                        <TableCell><Badge variant="outline" className={`${request.status === "New" ? "border-[#f4d9aa] bg-[#fff5e4] text-[#a4600c]" : request.status === "Issued" ? "border-[#bfe9d9] bg-[#eaf8f2] text-[#167957]" : request.status === "Rejected" || request.status === "Cancelled" ? "border-[#f1c7cc] bg-[#fff0f2] text-[#b53847]" : "border-[#d9d5ff] bg-[#f0eeff] text-[#5449c8]"} rounded-full`}>{request.status}</Badge>{request.adminNote && <span className="mt-1 block max-w-[180px] truncate text-xs text-muted-foreground">{request.adminNote}</span>}</TableCell>
-                        <TableCell>
-                          <div className="flex justify-end gap-1">
-                            {request.status === "New" && <>
-                              <Button size="sm" variant="outline" disabled={pendingRequestId === request.id} className="rounded-xl" onClick={() => void review(request, "reject")}>Reject</Button>
-                              <Button size="sm" disabled={pendingRequestId === request.id || limitReached || !request.eligibleAccounts.length || !selectedAccountId} className="rounded-xl bg-[#6157e7] text-white hover:bg-[#554bcf]" onClick={() => void review(request, "approve")}>Approve</Button>
-                            </>}
-                            {request.status === "Approved" && <Button size="sm" disabled={pendingRequestId === request.id} className="rounded-xl bg-[#6157e7] text-white hover:bg-[#554bcf]" onClick={() => void issue(request, "issue")}>Issue card</Button>}
-                            {request.status === "Issue failed" && <Button size="sm" variant="outline" disabled={pendingRequestId === request.id} className="rounded-xl" onClick={() => void issue(request, "issue")}>Retry clean failure</Button>}
-                            {request.status === "Needs reconciliation" && <Button size="sm" variant="outline" disabled={pendingRequestId === request.id} className="rounded-xl border-amber-300 bg-amber-50 text-amber-900" onClick={() => void issue(request, "reconcile")}>Reconcile</Button>}
-                            {request.status === "Issuing" && <Badge variant="outline" className="rounded-full border-indigo-200 bg-indigo-50 text-indigo-800">Provider operation in progress</Badge>}
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    );
-                  })}
-                  {!cardPaging.pageItems.length && <TableRow><TableCell colSpan={8} className="py-10 text-center text-sm text-muted-foreground">No card requests match the current search.</TableCell></TableRow>}
-                </TableBody>
-              </Table>
-            </div>
-            <ListPagination page={cardPaging.page} pageSize={cardPaging.pageSize} totalItems={cardPaging.totalItems} totalPages={cardPaging.totalPages} onPageChange={cardPaging.setPage} />
-          </Card>
-          <Alert className="mt-4 rounded-2xl border-indigo-200 bg-indigo-50/60"><ShieldCheck className="text-indigo-700" /><AlertTitle className="text-indigo-950">Transactional platform limit</AlertTitle><AlertDescription className="text-indigo-900/70">Submission is enforced by PostgreSQL using current cards plus open requests across all assigned accounts. Approval rechecks the limit and requires an account that is still assigned to the client. Approval alone does not call Kripicard. The explicit Issue card action requires recent admin reauthentication and deployment kill switches, calls createcard once, and never auto-retries an uncertain provider outcome.</AlertDescription></Alert>
-        </TabsContent>
         <TabsContent value="funding">
           <Card className="data-table overflow-hidden surface-card rounded-[24px]">
             <div className="overflow-x-auto"><Table><TableHeader><TableRow className="bg-[#faf9fc]"><TableHead className="pl-6">Request</TableHead><TableHead>Client</TableHead><TableHead>Card</TableHead><TableHead>Receipt</TableHead><TableHead>Client pays</TableHead><TableHead>Status</TableHead><TableHead /></TableRow></TableHeader><TableBody>{fundingPaging.pageItems.map((request) => <TableRow key={request.id} className="cursor-pointer" onClick={() => onOpenRequest(request.id)}><TableCell className="pl-6 font-semibold text-[#353146]">{request.id}<span className="mt-0.5 block text-xs font-normal text-[#9692a3]">{request.submitted}</span></TableCell><TableCell>{clientName(request.clientId)}</TableCell><TableCell><span className="font-semibold">{formatUsd(request.amount)}</span><span className="block text-xs text-[#9d99aa]">to •{request.cardLast4}</span></TableCell><TableCell><span className="inline-flex items-center gap-2 text-sm"><ReceiptIcon type={request.receiptType} />{request.receiptType.toUpperCase()}</span></TableCell><TableCell className="font-medium">{formatRial(request.rialTotal)}</TableCell><TableCell><StatusBadge status={request.status} /></TableCell><TableCell><span className="grid size-8 place-items-center rounded-lg bg-[#f4f2fa]"><ChevronRight className="size-4 text-[#777287]" /></span></TableCell></TableRow>)}</TableBody></Table></div>
             <ListPagination page={fundingPaging.page} pageSize={fundingPaging.pageSize} totalItems={fundingPaging.totalItems} totalPages={fundingPaging.totalPages} onPageChange={fundingPaging.setPage} />
           </Card>
         </TabsContent>
-        <TabsContent value="kyc">
-          <KycView />
-        </TabsContent>
-        <TabsContent value="transactions">
-          <TransactionsView transactions={transactions} clientName={clientName} search={search} issues={issues} onReconcileIssue={onReconcileIssue} />
-        </TabsContent>
+        <TabsContent value="kyc"><KycView /></TabsContent>
+        <TabsContent value="transactions"><TransactionsView transactions={transactions} clientName={clientName} search={search} issues={issues} onReconcileIssue={onReconcileIssue} /></TabsContent>
       </Tabs>
     </>
   );
@@ -2859,14 +2452,14 @@ function OperationsView({ snapshot, onAlertAction, onControlAction }: { snapshot
   </div>;
 }
 
-function SettingsView({ serviceFee, exchangeRate, maxCardsPerClient, minimumFunding, minimumCardCreation, cardPolicyBins, botToken, showToken, telegramStatus, channels, newChannel, onServiceFee, onExchangeRate, onMaxCardsPerClient, onMinimumFunding, onMinimumCardCreation, onCardPolicyBins, onSaveCardPolicy, onSavePricing, onBotToken, onSaveBotToken, onClearBotToken, onShowToken, onConfigureWebhook, onNewChannel, onAddChannel, onRemoveChannel }: { serviceFee: number; exchangeRate: number; maxCardsPerClient: number; minimumFunding: number; minimumCardCreation: number; cardPolicyBins: Array<{ bin: string; requiresDob: boolean }>; botToken: string; showToken: boolean; telegramStatus: TelegramBotStatus | null; channels: string[]; newChannel: string; onServiceFee: (value: number) => void; onExchangeRate: (value: number) => void; onMaxCardsPerClient: (value: number) => void; onMinimumFunding: (value: number) => void; onMinimumCardCreation: (value: number) => void; onCardPolicyBins: (value: Array<{ bin: string; requiresDob: boolean }>) => void; onSaveCardPolicy: () => void | Promise<void>; onSavePricing: () => void | Promise<void>; onBotToken: (value: string) => void; onSaveBotToken: () => void | Promise<void>; onClearBotToken: () => void | Promise<void>; onShowToken: (value: boolean) => void; onConfigureWebhook: () => void | Promise<void>; onNewChannel: (value: string) => void; onAddChannel: () => void | Promise<void>; onRemoveChannel: (channel: string) => void | Promise<void> }) {
+function SettingsView({ serviceFee, exchangeRate, minimumFunding, botToken, showToken, telegramStatus, channels, newChannel, onServiceFee, onExchangeRate, onMinimumFunding, onSavePricing, onBotToken, onSaveBotToken, onClearBotToken, onShowToken, onConfigureWebhook, onNewChannel, onAddChannel, onRemoveChannel }: { serviceFee: number; exchangeRate: number; minimumFunding: number; botToken: string; showToken: boolean; telegramStatus: TelegramBotStatus | null; channels: string[]; newChannel: string; onServiceFee: (value: number) => void; onExchangeRate: (value: number) => void; onMinimumFunding: (value: number) => void; onSavePricing: () => void | Promise<void>; onBotToken: (value: string) => void; onSaveBotToken: () => void | Promise<void>; onClearBotToken: () => void | Promise<void>; onShowToken: (value: boolean) => void; onConfigureWebhook: () => void | Promise<void>; onNewChannel: (value: string) => void; onAddChannel: () => void | Promise<void>; onRemoveChannel: (channel: string) => void | Promise<void> }) {
   const [securityAdmin, setSecurityAdmin] = useState<CurrentAdmin | null>(null);
   const [securityPassword, setSecurityPassword] = useState("");
   const [securityCode, setSecurityCode] = useState("");
   const [settingsTab, setSettingsTab] = useState("general");
   const [mfaSetup, setMfaSetup] = useState<{ secret: string; otpauthUri: string } | null>(null);
   const [securityBusy, setSecurityBusy] = useState(false);
-  const [payCard, setPayCard] = useState<{ cardNumber: string; cardHolder: string; minLoadUsd?: number }>({ cardNumber: "", cardHolder: "", minLoadUsd: 25 });
+  const [payCard, setPayCard] = useState<{ cardNumber: string; cardHolder: string; minLoadUsd: number; onboardingBin: string }>({ cardNumber: "", cardHolder: "", minLoadUsd: 25, onboardingBin: "539502" });
   const [payBusy, setPayBusy] = useState(false);
   useEffect(() => { fetchPaymentCard().then(setPayCard).catch(() => {}); }, []);
   const savePayCard = async () => {
@@ -2975,34 +2568,18 @@ function SettingsView({ serviceFee, exchangeRate, maxCardsPerClient, minimumFund
   const total = exampleAmount + providerFee + ownFee;
   return (
     <>
-      <PageIntro title="Operations settings" description="Configure pricing, card policy, Telegram, security, and provider readiness. Each section saves directly to the server." />
-      <div className="mb-4 flex flex-wrap gap-2">{([["general","General"],["telegram","Telegram"],["email","Email / 3DS"],["security","Security"],["policy","Card policy"]] as const).map(([v,l]) => <Button key={v} size="sm" variant={settingsTab===v?"default":"outline"} className="rounded-full" onClick={() => setSettingsTab(v)}>{l}</Button>)}</div>
+      <PageIntro title="Operations settings" description="Configure first-card onboarding, existing-card funding, Telegram, security, email, and provider readiness." />
+      <div className="mb-4 flex flex-wrap gap-2">{([["general","General"],["telegram","Telegram"],["email","Email / 3DS"],["security","Security"]] as const).map(([v,l]) => <Button key={v} size="sm" variant={settingsTab===v?"default":"outline"} className="rounded-full" onClick={() => setSettingsTab(v)}>{l}</Button>)}</div>
       <div className="grid gap-5 xl:grid-cols-2">
         <Card className={`surface-card rounded-[24px] xl:col-span-2 ${settingsTab==="security"?"":"hidden"}`}><CardHeader><div className="flex items-center gap-3"><span className="grid size-10 place-items-center rounded-[13px] bg-[#eeecff] text-[#6157e7]"><ShieldCheck className="size-5" /></span><div><CardTitle className="text-[17px] tracking-[-.02em] text-[#2c2940]">Admin security</CardTitle><p className="mt-1 text-sm text-[#8f8b9c]">Server-side session, recent reauthentication, and TOTP multi-factor authentication.</p></div></div></CardHeader><CardContent className="space-y-4"><div className="flex flex-wrap items-center gap-2"><Badge variant="outline" className="rounded-full">{securityAdmin?.email ?? "Loading admin…"}</Badge><Badge variant="outline" className={securityAdmin?.mfaEnabled ? "rounded-full border-emerald-200 bg-emerald-50 text-emerald-700" : "rounded-full border-amber-200 bg-amber-50 text-amber-700"}>{securityAdmin?.mfaEnabled ? "MFA enabled" : "MFA not enabled"}</Badge><Badge variant="outline" className="rounded-full">{securityAdmin?.role ?? "—"}</Badge></div><div className="grid gap-3 md:grid-cols-[1fr_220px_auto]"><Input type="password" value={securityPassword} onChange={(event) => setSecurityPassword(event.target.value)} placeholder="Admin password for reauthentication" /><Input inputMode="numeric" value={securityCode} onChange={(event) => setSecurityCode(event.target.value.replace(/\D/g, "").slice(0, 6))} placeholder="6-digit MFA code (if enabled)" /><Button variant="outline" disabled={securityBusy} onClick={() => void handleReauthenticate()} className="rounded-xl">Reauthenticate</Button></div>{!securityAdmin?.mfaEnabled && !mfaSetup && <div className="space-y-2"><Button disabled={securityBusy} onClick={() => void handleMfaSetup()} className="rounded-xl bg-[#6157e7] text-white hover:bg-[#554bcf]">Set up authenticator MFA</Button><p className="text-xs leading-5 text-[#8f8b9c]">Before setting up MFA, enter your admin password above and click <b>Reauthenticate</b> — the server requires a recent re-authentication for this action.</p></div>}{mfaSetup && <div className="space-y-3 rounded-[16px] border border-[#dedaff] bg-[#f8f7ff] p-4"><p className="text-sm font-semibold">Add this secret to your authenticator app</p><p className="break-all rounded-xl bg-white p-3 font-mono text-sm">{mfaSetup.secret}</p><p className="break-all text-xs text-[#777287]">{mfaSetup.otpauthUri}</p><div className="flex gap-2"><Input inputMode="numeric" value={securityCode} onChange={(event) => setSecurityCode(event.target.value.replace(/\D/g, "").slice(0, 6))} placeholder="Current 6-digit code" /><Button disabled={securityBusy} onClick={() => void handleMfaEnable()} className="rounded-xl bg-[#6157e7] text-white hover:bg-[#554bcf]">Enable MFA</Button></div></div>}{securityAdmin?.mfaEnabled && <div className="flex items-center gap-2"><Button variant="outline" disabled={securityBusy} onClick={() => void handleMfaDisable()} className="rounded-xl border-red-200 text-red-700 hover:bg-red-50">Disable MFA</Button><p className="text-xs text-[#8f8b9c]">Requires recent reauthentication plus the current authenticator code.</p></div>}<p className="text-xs leading-5 text-[#8f8b9c]">Sensitive credential reveal requires a recent reauthentication window. Session and secret events are recorded in the immutable audit log.</p></CardContent></Card>
-        <Card className={`surface-card rounded-[24px] ${settingsTab==="general"?"":"hidden"}`}><CardHeader><div className="flex items-center gap-3"><span className="grid size-10 place-items-center rounded-[13px] bg-[#eeecff] text-[#6157e7]"><CircleDollarSign className="size-5" /></span><div><CardTitle className="text-[17px] tracking-[-.02em] text-[#2c2940]">Pricing and exchange</CardTitle><p className="mt-1 text-sm text-[#8f8b9c]">Calculate the Rial amount before a request is created.</p></div></div></CardHeader><CardContent className="space-y-5"><div className="grid gap-4 sm:grid-cols-2"><div className="grid gap-2"><Label htmlFor="service-fee">Your funding fee (%)</Label><Input id="service-fee" type="number" min="0" step="0.1" value={serviceFee} onChange={(event) => onServiceFee(Number(event.target.value))} /></div><div className="grid gap-2"><Label>Provider card fee</Label><Input value="4% + $1.00" readOnly className="bg-[#f8f7fb]" /></div><div className="grid gap-2 sm:col-span-2"><Label htmlFor="minimum-funding">Minimum card funding / card creation (USD)</Label><Input id="minimum-funding" type="number" min="1" step="1" value={minimumFunding} onChange={(event) => onMinimumFunding(Number(event.target.value))} /><p className="text-xs text-[#8f8b9c]">Enforced for card creation and card-funding operations. Funding requests snapshot pricing. Accepted requests can execute through the guarded Kripicard funding workflow when deployment gates and provider-readiness checks are enabled.</p></div></div><div className="grid gap-2"><div className="flex items-center justify-between gap-2"><Label htmlFor="exchange-rate">Rial per 1 USD</Label><Badge variant="outline" className="rounded-full border-amber-200 bg-amber-50 text-amber-800">Manual snapshot</Badge></div><Input id="exchange-rate" type="number" min="1" value={exchangeRate} onChange={(event) => onExchangeRate(Number(event.target.value))} /><div className="rounded-[14px] border border-[#ece9f2] bg-[#faf9fc] p-3 text-xs leading-5 text-[#777287]"><p className="font-semibold text-[#353146]">Source: admin-approved manual snapshot</p><p>Saving creates a new immutable exchange-rate row used by new funding quotes until it expires.</p><p className="mt-1 text-[#9692a3]">Existing funding requests never recalculate when this value changes.</p></div><Button variant="outline" className="mt-3 rounded-xl" onClick={() => void onSavePricing()}><Check className="size-4" />Save pricing & rate snapshot</Button></div><div className="hero-grid rounded-[20px] p-5 text-white"><p className="text-xs font-medium uppercase tracking-[.14em] text-[#c8c3ff]">Example · $100 card funding request</p><div className="mt-3 grid grid-cols-2 gap-4"><div><p className="text-sm text-[#aaa5c8]">USD basis</p><p className="mt-1 text-xl font-semibold">{formatUsd(total)}</p></div><div><p className="text-sm text-[#aaa5c8]">Client pays</p><p className="mt-1 text-xl font-semibold">{formatRial(total * exchangeRate)}</p></div></div><div className="mt-3 border-t border-white/10 pt-3 text-xs text-[#aaa5c8]">$100 + {formatUsd(providerFee)} provider + {formatUsd(ownFee)} service fee</div></div></CardContent></Card>
+        <Card className={`surface-card rounded-[24px] ${settingsTab==="general"?"":"hidden"}`}><CardHeader><div className="flex items-center gap-3"><span className="grid size-10 place-items-center rounded-[13px] bg-[#eeecff] text-[#6157e7]"><CircleDollarSign className="size-5" /></span><div><CardTitle className="text-[17px] tracking-[-.02em] text-[#2c2940]">Pricing and exchange</CardTitle><p className="mt-1 text-sm text-[#8f8b9c]">Calculate the Rial amount before a request is created.</p></div></div></CardHeader><CardContent className="space-y-5"><div className="grid gap-4 sm:grid-cols-2"><div className="grid gap-2"><Label htmlFor="service-fee">Your funding fee (%)</Label><Input id="service-fee" type="number" min="0" step="0.1" value={serviceFee} onChange={(event) => onServiceFee(Number(event.target.value))} /></div><div className="grid gap-2"><Label>Provider card fee</Label><Input value="4% + $1.00" readOnly className="bg-[#f8f7fb]" /></div><div className="grid gap-2 sm:col-span-2"><Label htmlFor="minimum-funding">Minimum existing-card funding (USD)</Label><Input id="minimum-funding" type="number" min="1" step="1" value={minimumFunding} onChange={(event) => onMinimumFunding(Number(event.target.value))} /><p className="text-xs text-[#8f8b9c]">Applies only after onboarding when a customer adds money to an existing card. The first-card minimum is configured separately below.</p></div></div><div className="grid gap-2"><div className="flex items-center justify-between gap-2"><Label htmlFor="exchange-rate">Rial per 1 USD</Label><Badge variant="outline" className="rounded-full border-amber-200 bg-amber-50 text-amber-800">Manual snapshot</Badge></div><Input id="exchange-rate" type="number" min="1" value={exchangeRate} onChange={(event) => onExchangeRate(Number(event.target.value))} /><div className="rounded-[14px] border border-[#ece9f2] bg-[#faf9fc] p-3 text-xs leading-5 text-[#777287]"><p className="font-semibold text-[#353146]">Source: admin-approved manual snapshot</p><p>Saving creates a new immutable exchange-rate row used by new funding quotes until it expires.</p><p className="mt-1 text-[#9692a3]">Existing funding requests never recalculate when this value changes.</p></div><Button variant="outline" className="mt-3 rounded-xl" onClick={() => void onSavePricing()}><Check className="size-4" />Save pricing & rate snapshot</Button></div><div className="hero-grid rounded-[20px] p-5 text-white"><p className="text-xs font-medium uppercase tracking-[.14em] text-[#c8c3ff]">Example · $100 card funding request</p><div className="mt-3 grid grid-cols-2 gap-4"><div><p className="text-sm text-[#aaa5c8]">USD basis</p><p className="mt-1 text-xl font-semibold">{formatUsd(total)}</p></div><div><p className="text-sm text-[#aaa5c8]">Client pays</p><p className="mt-1 text-xl font-semibold">{formatRial(total * exchangeRate)}</p></div></div><div className="mt-3 border-t border-white/10 pt-3 text-xs text-[#aaa5c8]">$100 + {formatUsd(providerFee)} provider + {formatUsd(ownFee)} service fee</div></div></CardContent></Card>
 
-        <Card className={`surface-card rounded-[24px] ${settingsTab==="general"?"":"hidden"}`}><CardHeader><div className="flex items-center gap-3"><span className="grid size-10 place-items-center rounded-[13px] bg-[#eeecff] text-[#6157e7]"><CreditCard className="size-5" /></span><div><CardTitle className="text-[17px] tracking-[-.02em] text-[#2c2940]">Payment card (customer payments)</CardTitle><p className="mt-1 text-sm text-[#8f8b9c]">The card customers are shown when they need to pay. Changeable anytime.</p></div></div></CardHeader><CardContent className="space-y-4"><div className="grid gap-3 sm:grid-cols-2"><div className="grid gap-2"><Label htmlFor="pay-card-number">Card number</Label><Input id="pay-card-number" value={payCard.cardNumber} onChange={(e) => setPayCard((c) => ({ ...c, cardNumber: e.target.value }))} placeholder="6037-9911-2233-4455" className="bg-white" /></div><div className="grid gap-2"><Label htmlFor="pay-card-holder">Card holder name</Label><Input id="pay-card-holder" value={payCard.cardHolder} onChange={(e) => setPayCard((c) => ({ ...c, cardHolder: e.target.value }))} placeholder="Full name as on the card" className="bg-white" /></div>
-<div className="grid gap-2"><Label htmlFor="pay-min-load">Minimum load (USD)</Label><Input id="pay-min-load" type="number" min={1} value={payCard.minLoadUsd ?? 25} onChange={(e) => setPayCard((c) => ({ ...c, minLoadUsd: Number(e.target.value) || 25 }))} className="bg-white" /></div></div><Button className="rounded-xl bg-[#6157e7] text-white hover:bg-[#554bcf]" disabled={payBusy} onClick={() => void savePayCard()}><Check className="size-4" />Save payment card</Button></CardContent></Card>
+        <Card className={`surface-card rounded-[24px] ${settingsTab==="general"?"":"hidden"}`}><CardHeader><div className="flex items-center gap-3"><span className="grid size-10 place-items-center rounded-[13px] bg-[#eeecff] text-[#6157e7]"><CreditCard className="size-5" /></span><div><CardTitle className="text-[17px] tracking-[-.02em] text-[#2c2940]">First card setup</CardTitle><p className="mt-1 text-sm text-[#8f8b9c]">After KYC approval, customers choose their first-card balance, pay exactly that amount to this card, and upload a receipt.</p></div></div></CardHeader><CardContent className="space-y-4"><div className="grid gap-3 sm:grid-cols-2"><div className="grid gap-2"><Label htmlFor="pay-card-number">Card number</Label><Input id="pay-card-number" value={payCard.cardNumber} onChange={(e) => setPayCard((c) => ({ ...c, cardNumber: e.target.value }))} placeholder="6037-9911-2233-4455" className="bg-white" /></div><div className="grid gap-2"><Label htmlFor="pay-card-holder">Card holder name</Label><Input id="pay-card-holder" value={payCard.cardHolder} onChange={(e) => setPayCard((c) => ({ ...c, cardHolder: e.target.value }))} placeholder="Full name as on the card" className="bg-white" /></div>
+<div className="grid gap-2"><Label htmlFor="pay-min-load">Minimum first-card amount (USD)</Label><Input id="pay-min-load" type="number" min={1} value={payCard.minLoadUsd} onChange={(e) => setPayCard((c) => ({ ...c, minLoadUsd: Number(e.target.value) || 25 }))} className="bg-white" /><p className="text-xs text-[#8f8b9c]">Default is $25. The customer may choose any higher amount; the accepted amount becomes the initial card balance.</p></div><div className="grid gap-2"><Label htmlFor="onboarding-bin">First-card BIN</Label><Input id="onboarding-bin" inputMode="numeric" maxLength={6} value={payCard.onboardingBin} onChange={(e) => setPayCard((c) => ({ ...c, onboardingBin: e.target.value.replace(/\D/g, "").slice(0, 6) }))} placeholder="539502" className="bg-white" /><p className="text-xs text-[#8f8b9c]">Provider product used when the admin creates the customer&apos;s first card after accepting the receipt.</p></div></div><Button className="rounded-xl bg-[#6157e7] text-white hover:bg-[#554bcf]" disabled={payBusy} onClick={() => void savePayCard()}><Check className="size-4" />Save first-card setup</Button></CardContent></Card>
         <Card className={`surface-card rounded-[24px] ${settingsTab==="telegram"?"":"hidden"}`}><CardHeader><div className="flex items-center gap-3"><span className="grid size-10 place-items-center rounded-[13px] bg-[#f1eefe] text-[#7864c9]"><Bot className="size-5" /></span><div><CardTitle className="text-[17px] tracking-[-.02em] text-[#2c2940]">Telegram bot</CardTitle><p className="mt-1 text-sm text-[#8f8b9c]">Webhook readiness, server-side token status, and required channels.</p></div></div></CardHeader><CardContent className="space-y-5"><div className="grid gap-2"><Label htmlFor="bot-token">Bot token</Label><div className="flex flex-wrap gap-2"><div className="relative min-w-[220px] flex-1"><Input id="bot-token" type={showToken ? "text" : "password"} value={botToken} onChange={(event) => onBotToken(event.target.value)} placeholder={telegramStatus?.tokenHint ? `Update token (current ends ${telegramStatus.tokenHint})` : "Paste bot token from @BotFather"} className="pr-10" autoComplete="off" /><button type="button" aria-label={showToken ? "Hide token" : "Show token"} onClick={() => onShowToken(!showToken)} className="absolute right-3 top-1/2 -translate-y-1/2 text-[#9692a3]">{showToken ? <EyeOff className="size-4" /> : <Eye className="size-4" />}</button></div><Button className="rounded-xl bg-[#6157e7] text-white hover:bg-[#554bcf]" disabled={!botToken.trim()} onClick={() => void onSaveBotToken()}><Check className="size-4" />Save token</Button><Button variant="outline" className="rounded-xl" disabled={!telegramStatus?.configured} onClick={() => void onConfigureWebhook()}><Radio className="size-4" />Configure webhook</Button>{telegramStatus?.tokenSource === "database" && <Button variant="outline" className="rounded-xl border-red-200 text-red-700 hover:bg-red-50" onClick={() => void onClearBotToken()}><Trash2 className="size-4" />Clear</Button>}</div><p className="text-xs text-[#8f8b9c]">{telegramStatus?.tokenHint ? <>Current token: <code>••••{telegramStatus.tokenHint}</code> · stored {telegramStatus.tokenSource === "database" ? "encrypted in the database (set here)" : "in the server environment"}. Only the last 4 characters are ever shown.</> : <>Paste a token from <b>@BotFather</b> and click <b>Save token</b>. It is stored encrypted (AES-256-GCM); only the last 4 characters are shown afterward.</>}</p></div><div className="rounded-[14px] border border-[#ece9f2] bg-[#faf9fc] p-3 text-sm"><div className="flex flex-wrap gap-2"><Badge variant="outline" className={telegramStatus?.configured ? "rounded-full border-emerald-200 bg-emerald-50 text-emerald-700" : "rounded-full border-amber-200 bg-amber-50 text-amber-700"}>{telegramStatus?.configured ? "Bot configured" : "Bot not configured"}</Badge>{telegramStatus?.bot?.username && <Badge variant="outline" className="rounded-full">@{telegramStatus.bot.username}</Badge>}{telegramStatus?.webhook?.url && <Badge variant="outline" className="rounded-full border-emerald-200 text-emerald-700">Webhook connected</Badge>}</div><p className="mt-2 break-all text-xs text-[#777287]">Expected webhook: {telegramStatus?.expectedWebhookUrl ?? "Configure Telegram environment variables to inspect status."}</p>{telegramStatus?.webhook?.lastErrorMessage && <p className="mt-1 text-xs text-red-600">Telegram: {telegramStatus.webhook.lastErrorMessage}</p>}{telegramStatus?.error && <p className="mt-1 text-xs text-red-600">Telegram: {telegramStatus.error}</p>}</div><div><div className="mb-2 flex items-center justify-between"><Label>Force-join channels</Label><Badge variant="outline" className="rounded-full">{channels.length} required</Badge></div><div className="space-y-2">{channels.map((channel) => <div key={channel} className="flex items-center gap-3 rounded-[14px] border border-[#ebe9f1] bg-[#fbfafc] p-3"><Hash className="size-4 text-[#9692a3]" /><span className="flex-1 text-sm font-medium">{channel}</span><button onClick={() => void onRemoveChannel(channel)} className="text-[#9692a3] hover:text-red-600"><Trash2 className="size-4" /><span className="sr-only">Remove {channel}</span></button></div>)}</div><div className="mt-2 flex gap-2"><Input value={newChannel} onChange={(event) => onNewChannel(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); void onAddChannel(); } }} placeholder="@channel_username" /><Button variant="outline" className="rounded-xl" onClick={() => void onAddChannel()}><Plus className="size-4" />Add</Button></div><p className="mt-2 text-xs text-[#8f8b9c]">Membership checks fail open on Telegram/API configuration errors so one broken channel cannot lock out every client; explicit left/kicked status is enforced.</p></div><Alert className="rounded-[16px] border-[#cfeadf] bg-[#f0faf6]"><CheckCircle2 className="text-[#167957]" /><AlertTitle className="text-[#245f4c]">Telegram backend implemented</AlertTitle><AlertDescription className="text-[#4f7669]">The bot uses verified and deduplicated webhooks, assignment and ban gates, opaque callbacks, guarded card actions, support relay, and durable OTP delivery.</AlertDescription></Alert></CardContent></Card>
 
         <EmailRulesCard hidden={settingsTab !== "email"} />
-        <Card className={`surface-card rounded-[24px] ${settingsTab==="policy"?"":"hidden"}`}>
-          <CardHeader><div className="flex items-center gap-3"><span className="grid size-10 place-items-center rounded-[13px] bg-[#e6f8f1] text-[#16815e]"><ShieldCheck className="size-5" /></span><div><CardTitle className="text-[17px] tracking-[-.02em] text-[#2c2940]">Client card policy</CardTitle><p className="mt-1 text-sm text-[#8f8b9c]">Control card exposure across all accounts connected to a client.</p></div></div></CardHeader>
-          <CardContent className="space-y-4">
-            <div className="grid gap-4 sm:grid-cols-2">
-              <div className="grid gap-2"><Label htmlFor="client-card-limit">Maximum cards per client</Label><Input id="client-card-limit" type="number" min="1" max="50" value={maxCardsPerClient} onChange={(event) => onMaxCardsPerClient(Math.max(1, Number(event.target.value) || 1))} /><p className="text-xs leading-5 text-[#8f8b9c]">Counts active cards plus open card requests across every assigned account.</p></div>
-              <div className="grid gap-2"><Label htmlFor="card-creation-minimum">Minimum new-card balance (USD)</Label><Input id="card-creation-minimum" type="number" min="10" step="1" value={minimumCardCreation} onChange={(event) => onMinimumCardCreation(Number(event.target.value))} /><p className="text-xs leading-5 text-[#8f8b9c]">Separate from the existing-card funding minimum in General settings.</p></div>
-            </div>
-            <div className="space-y-3">
-              <div className="flex items-center justify-between gap-3"><div><Label>Requestable card BINs</Label><p className="text-xs text-[#8f8b9c]">These are the exact products Telegram users can request.</p></div><Button type="button" variant="outline" size="sm" className="rounded-xl" onClick={() => onCardPolicyBins([...cardPolicyBins, { bin: "", requiresDob: false }])}><Plus className="size-4" />Add BIN</Button></div>
-              {cardPolicyBins.map((item, index) => <div key={`${item.bin}-${index}`} className="grid gap-2 rounded-xl border p-3 sm:grid-cols-[1fr_auto_auto] sm:items-center"><Input inputMode="numeric" maxLength={6} value={item.bin} onChange={(event) => { const next=[...cardPolicyBins]; next[index]={...item,bin:event.target.value.replace(/\D/g,"").slice(0,6)}; onCardPolicyBins(next); }} placeholder="6-digit BIN" /><label className="flex items-center gap-2 text-sm text-[#625c6f]"><input type="checkbox" checked={item.requiresDob} onChange={(event) => { const next=[...cardPolicyBins]; next[index]={...item,requiresDob:event.target.checked}; onCardPolicyBins(next); }} />DOB required</label><Button type="button" variant="outline" size="icon" className="rounded-xl" onClick={() => onCardPolicyBins(cardPolicyBins.filter((_, i) => i !== index))}><Trash2 className="size-4" /><span className="sr-only">Remove BIN</span></Button></div>)}
-            </div>
-            <Button className="rounded-xl bg-[#6157e7] text-white hover:bg-[#554bcf]" onClick={() => void onSaveCardPolicy()}><Check className="size-4" />Save card policy</Button>
-            <div className="rounded-[16px] border border-[#cfeadf] bg-[#f0faf6] p-4 text-sm leading-6 text-[#336b59]">This policy is stored server-side and enforced by Telegram card requests as well as the admin interface.</div>
-          </CardContent>
-        </Card>
-
-        <Card className="surface-card rounded-[24px]"><CardHeader><div className="flex items-center gap-3"><span className="grid size-10 place-items-center rounded-xl bg-amber-100 text-amber-800"><KeyRound className="size-5" /></span><div><CardTitle className="text-base">3DS code delivery</CardTitle><p className="mt-1 text-sm text-slate-500">Protect the mailbox while giving clients only their code.</p></div></div></CardHeader><CardContent className="space-y-4"><Alert className="border-amber-200 bg-amber-50"><AlertTriangle className="text-amber-700" /><AlertTitle className="text-amber-950">3DS comes from the connected mailbox, not the Kripicard API</AlertTitle><AlertDescription className="text-amber-900/70">Trusted Outlook/Gmail verification messages are classified, short-lived OTPs are encrypted, and unknown templates are quarantined. Add issuer sender/template rules only after validating real messages.</AlertDescription></Alert><div className="space-y-3"><RoutingStep icon={Mail} title="Use a dedicated external mailbox" detail="Create or choose a mailbox from Outlook/Hotmail or Gmail and associate it with the Kripicard account." /><RoutingStep icon={ShieldCheck} title="Extract only the one-time code" detail="Read the mailbox through Microsoft Graph or the Gmail API, then parse only trusted verification messages." /><RoutingStep icon={Send} title="Relay to the assigned Telegram user" detail="Expire the code after delivery and keep a minimal audit event, not the message content." /></div><div className="rounded-xl border border-dashed p-3 text-sm text-slate-500"><strong>AccAbad email policy:</strong> use only Outlook/Hotmail or Gmail mailboxes. Connect them with OAuth using Microsoft Graph or the Gmail API. Do not depend on a custom AccAbad mail domain and do not store mailbox passwords for inbox access.</div><div className="overflow-hidden rounded-xl border text-sm"><div className="grid grid-cols-[1.1fr_1fr_1.4fr] bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-500"><span>Provider</span><span>Inbox access</span><span>AccAbad approach</span></div>{[["Outlook / Hotmail","API","Microsoft Graph OAuth"],["Gmail","API","Gmail API OAuth"]].map(([provider, access, approach]) => <div key={provider} className="grid grid-cols-[1.1fr_1fr_1.4fr] border-t px-3 py-2.5"><span className="font-medium text-slate-700">{provider}</span><span className="text-slate-500">{access}</span><span className="text-slate-500">{approach}</span></div>)}</div></CardContent></Card>
+                <Card className="surface-card rounded-[24px]"><CardHeader><div className="flex items-center gap-3"><span className="grid size-10 place-items-center rounded-xl bg-amber-100 text-amber-800"><KeyRound className="size-5" /></span><div><CardTitle className="text-base">3DS code delivery</CardTitle><p className="mt-1 text-sm text-slate-500">Protect the mailbox while giving clients only their code.</p></div></div></CardHeader><CardContent className="space-y-4"><Alert className="border-amber-200 bg-amber-50"><AlertTriangle className="text-amber-700" /><AlertTitle className="text-amber-950">3DS comes from the connected mailbox, not the Kripicard API</AlertTitle><AlertDescription className="text-amber-900/70">Trusted Outlook/Gmail verification messages are classified, short-lived OTPs are encrypted, and unknown templates are quarantined. Add issuer sender/template rules only after validating real messages.</AlertDescription></Alert><div className="space-y-3"><RoutingStep icon={Mail} title="Use a dedicated external mailbox" detail="Create or choose a mailbox from Outlook/Hotmail or Gmail and associate it with the Kripicard account." /><RoutingStep icon={ShieldCheck} title="Extract only the one-time code" detail="Read the mailbox through Microsoft Graph or the Gmail API, then parse only trusted verification messages." /><RoutingStep icon={Send} title="Relay to the assigned Telegram user" detail="Expire the code after delivery and keep a minimal audit event, not the message content." /></div><div className="rounded-xl border border-dashed p-3 text-sm text-slate-500"><strong>AccAbad email policy:</strong> use only Outlook/Hotmail or Gmail mailboxes. Connect them with OAuth using Microsoft Graph or the Gmail API. Do not depend on a custom AccAbad mail domain and do not store mailbox passwords for inbox access.</div><div className="overflow-hidden rounded-xl border text-sm"><div className="grid grid-cols-[1.1fr_1fr_1.4fr] bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-500"><span>Provider</span><span>Inbox access</span><span>AccAbad approach</span></div>{[["Outlook / Hotmail","API","Microsoft Graph OAuth"],["Gmail","API","Gmail API OAuth"]].map(([provider, access, approach]) => <div key={provider} className="grid grid-cols-[1.1fr_1fr_1.4fr] border-t px-3 py-2.5"><span className="font-medium text-slate-700">{provider}</span><span className="text-slate-500">{access}</span><span className="text-slate-500">{approach}</span></div>)}</div></CardContent></Card>
 
         <Card className="surface-card rounded-[24px]"><CardHeader><div className="flex items-center justify-between gap-3"><div className="flex items-center gap-3"><span className={`grid size-10 place-items-center rounded-xl ${providerReadiness?.readyForMoneyWrites ? "bg-emerald-100 text-emerald-800" : "bg-amber-100 text-amber-800"}`}><ShieldCheck className="size-5" /></span><div><CardTitle className="text-base">Kripicard money readiness</CardTitle><p className="mt-1 text-sm text-slate-500">Provider contract gate for deposits, card creation, and card funding. Card creation and card funding are evaluated independently from deposit behavior.</p></div></div><Button variant="outline" size="sm" disabled={providerReadinessLoading} onClick={() => void reloadProviderReadiness()} className="rounded-xl"><RefreshCw className={`size-4 ${providerReadinessLoading ? "animate-spin" : ""}`} />Refresh</Button></div></CardHeader><CardContent className="space-y-4">
           <Alert className={providerReadiness?.readyForMoneyWrites ? "border-emerald-200 bg-emerald-50" : "border-amber-200 bg-amber-50"}><AlertTriangle className={providerReadiness?.readyForMoneyWrites ? "text-emerald-700" : "text-amber-700"} /><AlertTitle>{providerReadiness?.readyByOperation?.card_create?.ready && providerReadiness?.readyByOperation?.card_fund?.ready ? "Card create + funding contracts cleared" : providerReadiness?.readyForMoneyWrites ? "Provider contract checks cleared" : "Some live money operations remain blocked"}</AlertTitle><AlertDescription>{providerReadiness ? `Card creation: ${providerReadiness.readyByOperation?.card_create?.ready ? "ready" : `blocked by ${(providerReadiness.readyByOperation?.card_create?.blockers ?? []).join(", ")}`}. Card funding: ${providerReadiness.readyByOperation?.card_fund?.ready ? "ready" : `blocked by ${(providerReadiness.readyByOperation?.card_fund?.blockers ?? []).join(", ")}`}. Deposit creation remains independently gated. ${providerReadiness.summary.blockers} broader provider question${providerReadiness.summary.blockers === 1 ? "" : "s"} remain. The supplied contract is wallet-based.` : "Loading provider readiness checks…"}</AlertDescription></Alert>
@@ -3058,32 +2635,36 @@ function RoutingStep({ icon: Icon, title, detail }: { icon: typeof Mail; title: 
   return <div className="flex gap-3"><span className="grid size-9 shrink-0 place-items-center rounded-xl bg-slate-100 text-slate-600"><Icon className="size-4" /></span><div><p className="text-sm font-medium">{title}</p><p className="mt-0.5 text-sm leading-5 text-slate-500">{detail}</p></div></div>;
 }
 
-function OverviewV2({ clients, kycByUser, paymentByUser, paymentStatusByUser, cardRequests, fundingRequests, telegramStatus, onViewChange, onOpenClient }: { clients: Client[]; kycByUser: Record<string, "approved" | "pending" | "rejected">; paymentByUser: Record<string, boolean>; paymentStatusByUser: Record<string, string | null>; cardRequests: CardRequest[]; fundingRequests: FundingRequest[]; telegramStatus: TelegramBotStatus | null; onViewChange: (v: View) => void; onOpenClient: (id: string) => void }) {
-  const kycPending = clients.filter((c) => kycByUser[c.telegramId] === "pending").length;
-  const awaiting = clients.filter((c) => ["pending", "accepted"].includes(paymentStatusByUser[c.id] ?? "")).length;
-  const cardsNew = cardRequests.filter((r) => r.status === "New").length;
-  const fundingOpen = fundingRequests.filter((r) => !["completed", "rejected", "cancelled"].includes(r.status)).length;
-  const attention = kycPending + awaiting + cardsNew + fundingOpen;
-  const active = clients.filter((c) => c.accountIds.length > 0).length;
+function OverviewV2({ clients, kycByUser, paymentByUser, paymentStatusByUser, fundingRequests, telegramStatus, onViewChange, onOpenClient }: { clients: Client[]; kycByUser: Record<string, "approved" | "pending" | "rejected">; paymentByUser: Record<string, boolean>; paymentStatusByUser: Record<string, string | null>; fundingRequests: FundingRequest[]; telegramStatus: TelegramBotStatus | null; onViewChange: (v: View) => void; onOpenClient: (id: string) => void }) {
+  const kycPending = clients.filter((client) => kycByUser[client.telegramId] === "pending").length;
+  const onboardingPending = clients.filter((client) => ["pending", "accepted", "card_creating", "card_reconciliation", "card_ready"].includes(paymentStatusByUser[client.id] ?? "")).length;
+  const fundingOpen = fundingRequests.filter((request) => !["completed", "rejected", "cancelled"].includes(request.status)).length;
+  const attention = kycPending + onboardingPending + fundingOpen;
+  const active = clients.filter((client) => paymentStatusByUser[client.id] === "complete").length;
   const botLive = Boolean(telegramStatus?.configured && telegramStatus.webhook?.url);
   const today = new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" });
-  const kycBadge = (s?: string) => s === "approved" ? <Badge variant="outline" className="border-emerald-200 bg-emerald-50 text-emerald-700">Verified</Badge> : s === "pending" ? <Badge variant="outline" className="border-amber-200 bg-amber-50 text-amber-800">KYC review</Badge> : s === "rejected" ? <Badge variant="outline" className="border-red-200 bg-red-50 text-red-700">KYC rejected</Badge> : <Badge variant="outline" className="border-slate-200 bg-slate-50 text-slate-600">Not verified</Badge>;
+  const kycBadge = (status?: string) => status === "approved"
+    ? <Badge variant="outline" className="border-emerald-200 bg-emerald-50 text-emerald-700">Verified</Badge>
+    : status === "pending"
+      ? <Badge variant="outline" className="border-amber-200 bg-amber-50 text-amber-800">KYC review</Badge>
+      : status === "rejected"
+        ? <Badge variant="outline" className="border-red-200 bg-red-50 text-red-700">KYC rejected</Badge>
+        : <Badge variant="outline" className="border-slate-200 bg-slate-50 text-slate-600">Not verified</Badge>;
   return (
     <>
       <div className="mb-6 flex flex-col justify-between gap-3 sm:flex-row sm:items-end">
         <div>
           <p className="text-[11px] font-bold uppercase tracking-[.16em] text-[#8179e8]">{today}</p>
           <h2 className="mt-2 text-[30px] font-bold tracking-[-.045em] text-[#1b1930] sm:text-[34px]">{attention > 0 ? `${attention} item${attention === 1 ? "" : "s"} need your attention` : "All caught up"}</h2>
-          <p className="mt-1 text-[15px] text-[#7e7a8e]">{attention > 0 ? "Work the queue below — each card jumps straight to the work." : "No pending KYC, payments, card requests, or funding right now."}</p>
+          <p className="mt-1 text-[15px] text-[#7e7a8e]">{attention > 0 ? "Review KYC, first-card onboarding, and add-funds requests." : "No pending KYC, onboarding payments, or funding requests right now."}</p>
         </div>
         <Badge variant="outline" className={botLive ? "rounded-full border-emerald-200 bg-emerald-50 text-emerald-700" : "rounded-full border-amber-200 bg-amber-50 text-amber-800"}>{botLive ? `Bot live · @${telegramStatus?.bot?.username ?? "bot"}` : "Bot not connected"}</Badge>
       </div>
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid gap-4 sm:grid-cols-3">
         {[
           { label: "KYC to review", count: kycPending, hint: "identity submissions", go: () => onViewChange("requests") },
-          { label: "Payments to process", count: awaiting, hint: "receipt/activation incomplete", go: () => onViewChange("clients") },
-          { label: "Cards to issue", count: cardsNew, hint: "approved, not issued", go: () => onViewChange("requests") },
-          { label: "Funding open", count: fundingOpen, hint: "open funding requests", go: () => onViewChange("requests") },
+          { label: "First cards in progress", count: onboardingPending, hint: "payment / issuance incomplete", go: () => onViewChange("clients") },
+          { label: "Funding open", count: fundingOpen, hint: "existing-card add-funds requests", go: () => onViewChange("requests") },
         ].map((card) => (
           <button key={card.label} onClick={card.go} className={`rounded-[20px] border p-5 text-left transition ${card.count > 0 ? "border-[#d8d3ff] bg-[#f6f4ff] hover:bg-[#efecff]" : "border-[#ece9f2] bg-white hover:bg-[#faf9fc]"}`}>
             <p className="text-3xl font-bold tracking-tight text-[#1b1930]">{card.count}</p>
@@ -3093,22 +2674,21 @@ function OverviewV2({ clients, kycByUser, paymentByUser, paymentStatusByUser, ca
         ))}
       </div>
       <Card className="mt-6 surface-card rounded-[24px]">
-        <CardHeader><CardTitle className="text-[16px]">Customer pipeline <Badge variant="outline" className="ml-2 rounded-full">{active}/{clients.length} active</Badge></CardTitle></CardHeader>
+        <CardHeader><CardTitle className="text-[16px]">Customer pipeline <Badge variant="outline" className="ml-2 rounded-full">{active}/{clients.length} complete</Badge></CardTitle></CardHeader>
         <CardContent>
-          {clients.length === 0 ? <p className="py-8 text-center text-sm text-[#9692a3]">No customers yet. They appear here after starting the bot.</p> : (
-            <div className="space-y-2">
-              {clients.map((c) => (
-                <button key={c.id} onClick={() => onOpenClient(c.id)} className="flex w-full items-center justify-between gap-3 rounded-[14px] border border-[#ece9f2] bg-white p-3 text-left transition hover:bg-[#faf9fc]">
-                  <div className="min-w-0"><p className="truncate text-sm font-semibold text-[#353146]">{c.name}</p><p className="text-xs text-[#9692a3]">{c.username} · joined {c.joined}</p></div>
-                  <div className="flex shrink-0 items-center gap-2">
-                    {kycBadge(kycByUser[c.telegramId])}
-                    {paymentByUser[c.id] && c.accountIds.length === 0 && <Badge variant="outline" className="border-indigo-200 bg-indigo-50 text-indigo-700">Paid</Badge>}
-                    {c.accountIds.length > 0 ? <Badge variant="outline" className="border-emerald-200 bg-emerald-50 text-emerald-700">Active</Badge> : <Badge variant="outline" className="border-amber-200 bg-amber-50 text-amber-800">Needs account</Badge>}
-                  </div>
-                </button>
-              ))}
-            </div>
-          )}
+          {clients.length === 0 ? <p className="py-8 text-center text-sm text-[#9692a3]">No customers yet. They appear here after starting the bot.</p> : <div className="space-y-2">
+            {clients.map((client) => {
+              const paymentStatus = paymentStatusByUser[client.id] ?? null;
+              return <button key={client.id} onClick={() => onOpenClient(client.id)} className="flex w-full items-center justify-between gap-3 rounded-[14px] border border-[#ece9f2] bg-white p-3 text-left transition hover:bg-[#faf9fc]">
+                <div className="min-w-0"><p className="truncate text-sm font-semibold text-[#353146]">{client.name}</p><p className="text-xs text-[#9692a3]">{client.username} · joined {client.joined}</p></div>
+                <div className="flex shrink-0 items-center gap-2">
+                  {kycBadge(kycByUser[client.telegramId])}
+                  {paymentByUser[client.id] && paymentStatus !== "complete" && <Badge variant="outline" className="border-indigo-200 bg-indigo-50 text-indigo-700">{paymentStatus?.replaceAll("_", " ") ?? "payment"}</Badge>}
+                  {paymentStatus === "complete" ? <Badge variant="outline" className="border-emerald-200 bg-emerald-50 text-emerald-700">Card ready</Badge> : <Badge variant="outline" className="border-amber-200 bg-amber-50 text-amber-800">Onboarding</Badge>}
+                </div>
+              </button>;
+            })}
+          </div>}
         </CardContent>
       </Card>
     </>
@@ -3152,48 +2732,106 @@ function ClientPaymentSection({ clientId }: { clientId: string | null }) {
   const [accountId, setAccountId] = useState("");
   const [busy, setBusy] = useState(false);
   const [tick, setTick] = useState(0);
+
   useEffect(() => {
     if (!clientId) return;
     let cancelled = false;
-    fetchClientKyc(clientId).then((r) => { if (!cancelled) setPayment(r.payment ?? null); }).catch(() => { if (!cancelled) setPayment(null); });
-    fetchClientAssignableAccounts(clientId).then((r) => { if (!cancelled) setAccounts(r.items); }).catch(() => {});
+    Promise.all([fetchClientKyc(clientId), fetchClientAssignableAccounts(clientId)])
+      .then(([detail, assignable]) => {
+        if (cancelled) return;
+        setPayment(detail.payment ?? null);
+        setAccounts(assignable.items);
+        const selected = assignable.items.find((item) => item.selected);
+        if (selected) setAccountId(selected.id);
+      })
+      .catch(() => { if (!cancelled) setPayment(null); });
     return () => { cancelled = true; };
   }, [clientId, tick]);
-  if (!clientId || !payment || (!payment.declaredAt && !payment.hasReceipt)) return null;
-  const act = async (action: "accept" | "deny" | "complete") => {
+
+  if (!clientId || !payment || (!payment.declaredAt && !payment.hasReceipt && !payment.status)) return null;
+
+  const act = async (action: "accept" | "deny" | "create_card" | "reconcile_card" | "complete") => {
     setBusy(true);
     try {
-      await activateClient(clientId, { action, accountId: accountId || undefined });
-      if (action === "complete" && accountId) { await syncAccountCards(accountId).catch(() => {}); }
-      toast.success(action === "complete" ? "Activation completed, cards synced, customer notified." : `Payment ${action === "accept" ? "accepted" : "denied"}.`);
-      setTick((t) => t + 1);
-    } catch (error) { toast.error(error instanceof Error ? error.message : "Action failed."); }
-    finally { setBusy(false); }
+      const result = await activateClient(clientId, { action, accountId: accountId || undefined });
+      if (action === "accept") toast.success("Receipt accepted. Choose a Kripicard account and create the first card.");
+      else if (action === "deny") toast.success("Payment denied. The customer can submit a new amount and receipt.");
+      else if (action === "create_card") {
+        if (result.needsReconciliation) toast.warning("Provider outcome is uncertain. Do not retry card creation; use Reconcile first card.");
+        else toast.success(`First card created${result.cardLast4 ? ` · •${result.cardLast4}` : ""}. Review it, then complete onboarding.`);
+      } else if (action === "reconcile_card") {
+        if (result.needsReconciliation) toast.warning("The provider outcome is still uncertain.");
+        else toast.success(`First-card issuance reconciled${result.cardLast4 ? ` · •${result.cardLast4}` : ""}.`);
+      } else toast.success("Onboarding completed. The customer was notified and can now use the card menu.");
+      setTick((value) => value + 1);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Onboarding action failed.");
+    } finally {
+      setBusy(false);
+    }
   };
-  const statusBadge = payment.status === "complete" ? "border-emerald-200 bg-emerald-50 text-emerald-700" : payment.status === "denied" ? "border-red-200 bg-red-50 text-red-700" : payment.status === "accepted" ? "border-indigo-200 bg-indigo-50 text-indigo-700" : "border-amber-200 bg-amber-50 text-amber-800";
+
+  const status = payment.status ?? "waiting";
+  const labels: Record<string, string> = {
+    pending: "Receipt pending review",
+    accepted: "Payment accepted",
+    card_creating: "Creating first card",
+    card_reconciliation: "Card needs reconciliation",
+    card_ready: "First card ready",
+    complete: "Complete",
+    denied: "Payment denied",
+  };
+  const badgeClass = status === "complete" || status === "card_ready"
+    ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+    : status === "denied"
+      ? "border-red-200 bg-red-50 text-red-700"
+      : status === "card_reconciliation"
+        ? "border-amber-300 bg-amber-50 text-amber-900"
+        : status === "accepted"
+          ? "border-indigo-200 bg-indigo-50 text-indigo-700"
+          : "border-amber-200 bg-amber-50 text-amber-800";
+
   return (
-    <div className="border-b border-[#eceaf2] bg-[#efeaff] px-6 py-3">
+    <div className="border-b border-[#eceaf2] bg-[#efeaff] px-6 py-4">
       <div className="flex flex-wrap items-center gap-2">
-        <p className="text-xs font-bold uppercase tracking-[.14em] text-[#8179e8]">Payment (Acard)</p>
-        {payment.status && <Badge variant="outline" className={`rounded-full ${statusBadge}`}>{payment.status}</Badge>}
-        {payment.amountUsdCents && <Badge variant="outline" className="rounded-full border-emerald-200 bg-emerald-50 text-emerald-700">${(Number(payment.amountUsdCents) / 100).toFixed(2)} paid</Badge>}
-        {payment.hasReceipt ? <a href={clientReceiptUrl(clientId)} target="_blank" rel="noreferrer" className="text-xs font-semibold text-[#6157e7] underline-offset-2 hover:underline">View receipt</a> : <span className="text-xs text-[#9692a3]">no receipt</span>}
+        <p className="text-xs font-bold uppercase tracking-[.14em] text-[#8179e8]">First-card onboarding</p>
+        <Badge variant="outline" className={`rounded-full ${badgeClass}`}>{labels[status] ?? status.replaceAll("_", " ")}</Badge>
+        {payment.amountUsdCents && <Badge variant="outline" className="rounded-full border-emerald-200 bg-emerald-50 text-emerald-700">{formatUsd(Number(payment.amountUsdCents) / 100)} first-card balance</Badge>}
+        {payment.onboardingCardLast4 && <Badge variant="outline" className="rounded-full border-indigo-200 bg-white text-indigo-700">Card •{payment.onboardingCardLast4}</Badge>}
+        {payment.hasReceipt
+          ? <a href={clientReceiptUrl(clientId)} target="_blank" rel="noreferrer" className="text-xs font-semibold text-[#6157e7] underline-offset-2 hover:underline">View receipt</a>
+          : <span className="text-xs font-semibold text-red-600">Receipt required</span>}
       </div>
-      {payment.status !== "complete" && payment.status !== "denied" && (
-        <div className="mt-2 flex flex-wrap items-center gap-2">
-          {payment.status === "pending" && (
-            <>
-              <Button size="sm" className="rounded-xl bg-[#6157e7] text-white hover:bg-[#554bcf]" disabled={busy} onClick={() => { if (!payment.hasReceipt && !window.confirm("No receipt on file for this payment. Accept anyway?")) return; void act("accept"); }}>Accept receipt</Button>
-              <Button size="sm" variant="outline" className="rounded-xl border-red-200 text-red-700 hover:bg-red-50" disabled={busy} onClick={() => void act("deny")}>Deny</Button>
-            </>
-          )}
-          <select value={accountId} onChange={(e) => setAccountId(e.target.value)} className="h-9 rounded-xl border border-[#e3e0eb] bg-white px-2 text-sm">
-            <option value="">Choose account to assign…</option>
-            {accounts.map((a) => <option key={a.id} value={a.id}>{a.label}</option>)}
+
+      {status === "pending" && <div className="mt-3 flex flex-wrap items-center gap-2">
+        <Button size="sm" className="rounded-xl bg-[#6157e7] text-white hover:bg-[#554bcf]" disabled={busy || !payment.hasReceipt} onClick={() => void act("accept")}><Check className="size-4" />Accept receipt</Button>
+        <Button size="sm" variant="outline" className="rounded-xl border-red-200 text-red-700 hover:bg-red-50" disabled={busy} onClick={() => void act("deny")}><XCircle className="size-4" />Deny</Button>
+      </div>}
+
+      {(status === "accepted" || status === "card_creating") && <div className="mt-3 space-y-2">
+        <p className="text-xs leading-5 text-[#6f6982]">Select the Kripicard account that will own this customer&apos;s first card. The accepted payment amount becomes the card&apos;s initial balance.</p>
+        <div className="flex flex-wrap items-center gap-2">
+          <select value={accountId} onChange={(event) => setAccountId(event.target.value)} className="h-9 min-w-[220px] rounded-xl border border-[#e3e0eb] bg-white px-2 text-sm">
+            <option value="">Choose Kripicard account…</option>
+            {accounts.map((account) => <option key={account.id} value={account.id}>{account.label}{account.selected ? " · assigned" : ""}</option>)}
           </select>
-          <Button size="sm" className="rounded-xl bg-[#167957] text-white hover:bg-[#116144]" disabled={busy || !accountId} onClick={() => void act("complete")}>Complete + Notify</Button>
+          <Button size="sm" className="rounded-xl bg-[#167957] text-white hover:bg-[#116144]" disabled={busy || !accountId} onClick={() => void act("create_card")}><CreditCard className="size-4" />Create first card</Button>
         </div>
-      )}
+      </div>}
+
+      {status === "card_reconciliation" && <div className="mt-3 space-y-2">
+        <Alert className="border-amber-200 bg-amber-50"><AlertTriangle className="text-amber-700" /><AlertTitle>Provider outcome uncertain</AlertTitle><AlertDescription>Do not send another create-card request. Reconcile the existing provider operation.</AlertDescription></Alert>
+        <Button size="sm" variant="outline" className="rounded-xl border-amber-300 bg-white text-amber-900" disabled={busy} onClick={() => void act("reconcile_card")}><RefreshCw className="size-4" />Reconcile first card</Button>
+      </div>}
+
+      {status === "card_ready" && <div className="mt-3 flex flex-wrap items-center gap-2">
+        <p className="text-sm text-[#5f596f]">The real provider card exists{payment.onboardingCardLast4 ? ` as •${payment.onboardingCardLast4}` : ""}. Complete onboarding to unlock the customer&apos;s Telegram card menu.</p>
+        <Button size="sm" className="rounded-xl bg-[#167957] text-white hover:bg-[#116144]" disabled={busy} onClick={() => void act("complete")}><CheckCircle2 className="size-4" />Complete & notify</Button>
+      </div>}
+
+      {status === "complete" && <p className="mt-2 text-xs text-emerald-700">Onboarding is complete. The customer can view the card, balance, transactions, support, and add-funds flow.</p>}
+      {status === "denied" && <p className="mt-2 text-xs text-red-700">The customer was notified and can choose a new amount and upload a replacement receipt.</p>}
     </div>
   );
 }
+
