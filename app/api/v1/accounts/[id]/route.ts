@@ -1,6 +1,6 @@
 import { ApiError, apiRoute } from "@/server/http/api";
 import { requireAdmin, requireCsrf } from "@/server/auth/service";
-import { updateAccountInput, updateKripiAccount } from "@/server/accounts/service";
+import { archiveKripiAccount, updateAccountInput, updateKripiAccount } from "@/server/accounts/service";
 import { requireUuid } from "@/server/http/ids";
 import { serializeAccount, serializeEmailAccount, serializeTelegramUser } from "@/server/http/serializers";
 import { getUnitOfWork } from "@/server/repositories/postgres";
@@ -37,5 +37,17 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
     const input = updateAccountInput.parse(await request.json());
     await updateKripiAccount(id, input, session, request, requestId);
     return { ok: true };
+  });
+}
+
+
+export async function DELETE(request: Request, context: { params: Promise<{ id: string }> }) {
+  return apiRoute(request, async ({ requestId }) => {
+    const session = await requireAdmin(request, "accounts.manage");
+    requireCsrf(request, session);
+    const { id: rawId } = await context.params;
+    const id = requireUuid(rawId, "account id");
+    await archiveKripiAccount(id, session, request, requestId);
+    return { archived: true };
   });
 }
