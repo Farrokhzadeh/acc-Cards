@@ -351,7 +351,7 @@ export async function fetchPaymentCard() {
   return apiJson<{ cardNumber: string; cardHolder: string; minLoadUsd?: number }>("/api/v1/settings/payment-card", { method: "GET" });
 }
 
-export async function updatePaymentCard(input: { cardNumber: string; cardHolder: string }) {
+export async function updatePaymentCard(input: { cardNumber: string; cardHolder: string; minLoadUsd?: number }) {
   return apiJson<{ ok: true }>("/api/v1/settings/payment-card", { method: "PUT", body: JSON.stringify(input) });
 }
 
