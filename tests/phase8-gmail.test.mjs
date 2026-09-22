@@ -93,3 +93,9 @@ test("Gmail can fetch full message text transiently for trusted OTP parsing with
   assert.match(googleClient, /format.*full/s);
   assert.doesNotMatch(googleService, /body_html_ref\s*=/);
 });
+
+
+test("unconfigured Gmail fails manual connect clearly but scheduled sync is a no-op", () => {
+  assert.match(googleService, /startGmailConnection[\s\S]*throw new ApiError\(503, "google_not_configured"/);
+  assert.match(googleService, /syncConnectedGmailInboxesSystem[\s\S]*reason: "google_not_configured"/);
+});
