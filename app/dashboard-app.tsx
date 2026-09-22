@@ -454,6 +454,11 @@ export default function DashboardApp() {
   const [activeCardTransactions, setActiveCardTransactions] = useState<StoredCardTransaction[]>([]);
   const [cardStatePendingId, setCardStatePendingId] = useState<string | null>(null);
   const [fundingExecutionPendingId, setFundingExecutionPendingId] = useState<string | null>(null);
+  const [fundingReauth, setFundingReauth] = useState<{ title: string; description: string } | null>(null);
+  const fundingReauthRetryRef = useRef<(() => Promise<void>) | null>(null);
+  const [fundingReauthPassword, setFundingReauthPassword] = useState("");
+  const [fundingReauthCode, setFundingReauthCode] = useState("");
+  const [fundingReauthBusy, setFundingReauthBusy] = useState(false);
   const [emailActionPendingId, setEmailActionPendingId] = useState<string | null>(null);
   const [activeRequestId, setActiveRequestId] = useState<string | null>(null);
   const [activeChatId, setActiveChatId] = useState("");
@@ -1123,8 +1128,8 @@ export default function DashboardApp() {
   };
 
   const openCreateCard = (_accountId = "") => {
-    setView("requests");
-    toast.info("Cards are created only from approved card requests in Request Center.");
+    setView("clients");
+    toast.info("A customer's first card is created from the First-card onboarding panel after KYC and receipt approval.");
   };
 
   const openFundCard = (_cardId = "", _accountId = "") => {
@@ -1228,7 +1233,11 @@ export default function DashboardApp() {
       toast.success(result.noOp ? `Card is already ${result.status}.` : `Card ${action === "freeze" ? "frozen" : "unfrozen"} by Kripicard${result.reconciled ? " after reconciliation" : ""}.`);
     } catch (error) {
       if (error instanceof AdminApiError && error.code === "feature_disabled") {
-        toast.error("Freeze/unfreeze is installed but disabled. Enable the provider card-state write gates in deployment configuration after testing.");
+        toast.error("Freeze/unfreeze is installed but disabled. Enable the live-provider and card-state write gates in deployment configuration.");
+      } else if (error instanceof AdminApiError && error.code === "runtime_kill_switch") {
+        toast.error("Kripicard writes are disabled by an emergency runtime control. Open Operations and enable Provider writes before changing card state.");
+      } else if (error instanceof AdminApiError && error.code === "read_only_mode") {
+        toast.error("AccAbad is in emergency read-only mode. Disable Read-only mode from Operations before changing card state.");
       } else {
         toast.error(error instanceof Error ? error.message : "Card state update failed.");
       }
@@ -1259,6 +1268,41 @@ export default function DashboardApp() {
   const reloadFundingRequests = async () => {
     const result = await fetchFundingRequests({ search, limit: 100 });
     setFundingRequests(result.items.map(mapApiFundingRequest));
+  };
+
+  const queueFundingReauthentication = (title: string, description: string, retry: () => Promise<void>) => {
+    fundingReauthRetryRef.current = retry;
+    setFundingReauth({ title, description });
+    setFundingReauthPassword("");
+    setFundingReauthCode("");
+  };
+
+  const submitFundingReauthentication = async () => {
+    if (!fundingReauthPassword.trim() || !fundingReauthRetryRef.current) return;
+    const retry = fundingReauthRetryRef.current;
+    setFundingReauthBusy(true);
+    try {
+      await reauthenticateAdmin(fundingReauthPassword, fundingReauthCode.trim() || undefined);
+      setFundingReauth(null);
+      fundingReauthRetryRef.current = null;
+      setFundingReauthPassword("");
+      setFundingReauthCode("");
+      toast.success("Reauthenticated. Continuing the funding action.");
+      await retry();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Reauthentication failed.");
+    } finally {
+      setFundingReauthBusy(false);
+    }
+  };
+
+  const providerGateMessage = (error: AdminApiError) => {
+    if (error.code !== "provider_money_not_ready") return null;
+    const details = error.details as { blockers?: unknown } | undefined;
+    const blockers = Array.isArray(details?.blockers) ? details.blockers.filter((value): value is string => typeof value === "string") : [];
+    return blockers.length
+      ? `Provider readiness is blocking this action: ${blockers.join(", ")}. Clear those checks in Settings → Kripicard money readiness.`
+      : error.message;
   };
 
   const advanceRequest = async (request: FundingRequest) => {
@@ -1303,7 +1347,11 @@ export default function DashboardApp() {
   };
 
 
-  const executeAcceptedFunding = async (request: FundingRequest, mode: "fund" | "reconcile") => {
+  const executeAcceptedFunding = async (
+    request: FundingRequest,
+    mode: "fund" | "reconcile",
+    options: { allowReauthPrompt?: boolean } = { allowReauthPrompt: true },
+  ) => {
     if (!backendDataLoaded || fundingExecutionPendingId) return;
     setFundingExecutionPendingId(request.id);
     try {
@@ -1313,12 +1361,31 @@ export default function DashboardApp() {
         toast.success(result.reconciled ? "Funding was reconciled and marked completed." : "Kripicard funded the card and the request is complete.");
       } else {
         const delta = result.evidence?.balanceDeltaUsdCents;
-        toast.warning(`Funding remains unresolved. AccAbad will not retry fundcard automatically${delta != null ? `; observed balance delta: $${(Number(delta) / 100).toFixed(2)}` : ""}. Confirm the outcome with Kripicard before resolving.`);
+        toast.warning(`Funding remains unresolved. AccAbad will not retry fundcard automatically${delta != null ? `; observed balance delta: ${(Number(delta) / 100).toFixed(2)}` : ""}. Confirm the outcome with Kripicard before resolving.`);
       }
     } catch (error) {
       try { await reloadFundingRequests(); } catch { /* keep original error */ }
-      if (error instanceof AdminApiError && error.code === "feature_disabled") {
-        toast.error("Card funding is installed but disabled. Enable both provider-write and card-funding gates after staging validation.");
+      if (
+        mode === "fund" &&
+        options.allowReauthPrompt !== false &&
+        error instanceof AdminApiError &&
+        error.code === "reauthentication_required"
+      ) {
+        queueFundingReauthentication(
+          "Confirm live card funding",
+          `Funding card •${request.cardLast4} changes provider money state. Re-enter your admin credentials, then AccAbad will retry this exact funding action automatically.`,
+          () => executeAcceptedFunding(request, mode, { allowReauthPrompt: false }),
+        );
+      } else if (error instanceof AdminApiError && error.code === "mfa_required") {
+        toast.error("Enable MFA in Settings → Security before performing live provider money writes.");
+      } else if (error instanceof AdminApiError && error.code === "feature_disabled") {
+        toast.error("Card funding is installed but disabled. Enable the live-provider and card-funding deployment gates, including LIVE_PROVIDER_WRITE_CONFIRMATION, then recreate the app and worker containers.");
+      } else if (error instanceof AdminApiError && error.code === "runtime_kill_switch") {
+        toast.error("Card funding is disabled by an emergency runtime control. Open Operations and enable both Provider writes and Card funding.");
+      } else if (error instanceof AdminApiError && error.code === "read_only_mode") {
+        toast.error("AccAbad is in emergency read-only mode. Disable Read-only mode from Operations before funding a card.");
+      } else if (error instanceof AdminApiError && providerGateMessage(error)) {
+        toast.error(providerGateMessage(error)!);
       } else {
         toast.error(error instanceof Error ? error.message : "Card funding action failed.");
       }
@@ -1327,18 +1394,40 @@ export default function DashboardApp() {
     }
   };
 
-  const resolveFundingOutcome = async (request: FundingRequest, outcome: "completed" | "not_funded") => {
+  const resolveFundingOutcome = async (
+    request: FundingRequest,
+    outcome: "completed" | "not_funded",
+    options?: { providerReference?: string; note?: string; allowReauthPrompt?: boolean },
+  ) => {
     if (!backendDataLoaded || fundingExecutionPendingId) return;
-    const providerReference = window.prompt("Enter the Kripicard support/ticket/reference that confirms this outcome:");
+    const providerReference = options?.providerReference ?? window.prompt("Enter the Kripicard support/ticket/reference that confirms this outcome:");
     if (!providerReference?.trim()) return;
-    const note = window.prompt(outcome === "completed" ? "Optional resolution note:" : "Optional note explaining why it is safe to retry:") ?? "";
+    const note = options?.note ?? (window.prompt(outcome === "completed" ? "Optional resolution note:" : "Optional note explaining why it is safe to retry:") ?? "");
     setFundingExecutionPendingId(request.id);
     try {
       const result = await resolveFundingRequest(request.id, { outcome, providerReference: providerReference.trim(), note: note.trim() || null });
       await reloadFundingRequests();
       toast.success(result.status === "completed" ? "Funding marked completed from provider-confirmed reconciliation." : "Provider confirmed the card was not funded. The request is now safe for an explicit retry.");
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Could not resolve funding reconciliation.");
+      if (
+        options?.allowReauthPrompt !== false &&
+        error instanceof AdminApiError &&
+        error.code === "reauthentication_required"
+      ) {
+        queueFundingReauthentication(
+          "Confirm funding reconciliation",
+          "Manual provider-confirmed resolution changes the authoritative funding outcome. Re-enter your admin credentials, then AccAbad will retry this exact resolution without asking for the reference again.",
+          () => resolveFundingOutcome(request, outcome, {
+            providerReference: providerReference.trim(),
+            note: note.trim(),
+            allowReauthPrompt: false,
+          }),
+        );
+      } else if (error instanceof AdminApiError && error.code === "mfa_required") {
+        toast.error("Enable MFA in Settings → Security before resolving provider money operations.");
+      } else {
+        toast.error(error instanceof Error ? error.message : "Could not resolve funding reconciliation.");
+      }
     } finally {
       setFundingExecutionPendingId(null);
     }
@@ -1918,7 +2007,7 @@ export default function DashboardApp() {
                       ))}
                       <ListPagination page={clientCardPaging.page} pageSize={clientCardPaging.pageSize} totalItems={clientCardPaging.totalItems} totalPages={clientCardPaging.totalPages} onPageChange={clientCardPaging.setPage} />
                     </div>
-                  ) : <div className="rounded-2xl border border-dashed p-6 text-center text-sm text-slate-500">{activeClient.accountIds.length ? "No cards exist in the connected accounts." : "No account connected. The bot shows only Contact the admin."}</div>}
+                  ) : <div className="rounded-2xl border border-dashed p-6 text-center text-sm text-slate-500">{activeClient.accountIds.length ? "No cards exist in the connected account yet." : "No Kripicard account is assigned yet. Complete first-card onboarding to assign one."}</div>}
                 </div>
                 <div>
                   <h3 className="mb-3 font-semibold">Recent transactions</h3>
@@ -2012,6 +2101,43 @@ export default function DashboardApp() {
           <DialogHeader><DialogTitle>Reject funding request?</DialogTitle><DialogDescription>The request will stop and the client will be notified in Telegram.</DialogDescription></DialogHeader>
           <div className="grid gap-2"><Label htmlFor="reject-note">Message to client</Label><Textarea id="reject-note" value={rejectNote} onChange={(event) => setRejectNote(event.target.value)} placeholder="Explain what needs to be corrected, if anything." /></div>
           <DialogFooter><Button variant="outline" onClick={() => setRejectDialogOpen(false)}>Cancel</Button><Button variant="destructive" onClick={rejectRequest}>Reject and notify</Button></DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={Boolean(fundingReauth)} onOpenChange={(open) => {
+        if (!open && !fundingReauthBusy) {
+          setFundingReauth(null);
+          fundingReauthRetryRef.current = null;
+          setFundingReauthPassword("");
+          setFundingReauthCode("");
+        }
+      }}>
+        <DialogContent className="rounded-[24px] border-[#e5e2ee] sm:max-w-[430px]">
+          <DialogHeader>
+            <DialogTitle>{fundingReauth?.title ?? "Confirm privileged action"}</DialogTitle>
+            <DialogDescription>{fundingReauth?.description}</DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 py-2">
+            <div className="grid gap-2">
+              <Label htmlFor="funding-reauth-password">Admin password</Label>
+              <Input id="funding-reauth-password" type="password" autoComplete="current-password" value={fundingReauthPassword} onChange={(event) => setFundingReauthPassword(event.target.value)} disabled={fundingReauthBusy} autoFocus />
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="funding-reauth-code">MFA code <span className="font-normal text-[#9692a3]">(if enabled)</span></Label>
+              <Input id="funding-reauth-code" inputMode="numeric" autoComplete="one-time-code" maxLength={6} value={fundingReauthCode} onChange={(event) => setFundingReauthCode(event.target.value.replace(/\D/g, "").slice(0, 6))} disabled={fundingReauthBusy} placeholder="123456" onKeyDown={(event) => { if (event.key === "Enter" && fundingReauthPassword.trim()) void submitFundingReauthentication(); }} />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" className="rounded-xl" disabled={fundingReauthBusy} onClick={() => {
+              setFundingReauth(null);
+              fundingReauthRetryRef.current = null;
+              setFundingReauthPassword("");
+              setFundingReauthCode("");
+            }}>Cancel</Button>
+            <Button className="rounded-xl bg-[#6157e7] text-white hover:bg-[#554bcf]" disabled={fundingReauthBusy || !fundingReauthPassword.trim()} onClick={() => void submitFundingReauthentication()}>
+              {fundingReauthBusy ? "Verifying…" : "Reauthenticate & continue"}
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 
@@ -2792,6 +2918,26 @@ function ClientPaymentSection({ clientId }: { clientId: string | null }) {
         toast.error("Enable MFA in Settings → Security before performing live provider card writes.");
         return;
       }
+      if (error instanceof AdminApiError && error.code === "feature_disabled") {
+        toast.error("Live card creation is disabled by deployment configuration. Enable the live-provider and card-creation environment gates, including LIVE_PROVIDER_WRITE_CONFIRMATION, then recreate the app and worker containers.");
+        return;
+      }
+      if (error instanceof AdminApiError && error.code === "runtime_kill_switch") {
+        toast.error("Live card creation is disabled by an emergency runtime control. Open Operations and enable both Provider writes and Card creation.");
+        return;
+      }
+      if (error instanceof AdminApiError && error.code === "provider_money_not_ready") {
+        const details = error.details as { blockers?: unknown } | undefined;
+        const blockers = Array.isArray(details?.blockers) ? details.blockers.filter((value): value is string => typeof value === "string") : [];
+        toast.error(blockers.length
+          ? `Card creation is blocked by provider readiness: ${blockers.join(", ")}. Review Settings → Kripicard money readiness.`
+          : error.message);
+        return;
+      }
+      if (error instanceof AdminApiError && error.code === "read_only_mode") {
+        toast.error("AccAbad is in emergency read-only mode. Disable Read-only mode from Operations before creating a card.");
+        return;
+      }
       toast.error(error instanceof Error ? error.message : "Onboarding action failed.");
     } finally {
       setBusy(false);
@@ -2866,7 +3012,7 @@ function ClientPaymentSection({ clientId }: { clientId: string | null }) {
       </div>}
 
       {status === "card_reconciliation" && <div className="mt-3 space-y-2">
-        <Alert className="border-amber-200 bg-amber-50"><AlertTriangle className="text-amber-700" /><AlertTitle>Provider outcome uncertain</AlertTitle><AlertDescription>Do not send another create-card request. Reconcile the existing provider operation.</AlertDescription></Alert>
+        <Alert className="border-amber-200 bg-amber-50"><AlertTriangle className="text-amber-700" /><AlertTitle>Provider outcome uncertain</AlertTitle><AlertDescription>Do not send another provider create-card call. Reconcile the existing operation.</AlertDescription></Alert>
         <Button size="sm" variant="outline" className="rounded-xl border-amber-300 bg-white text-amber-900" disabled={busy} onClick={() => void act("reconcile_card")}><RefreshCw className="size-4" />Reconcile first card</Button>
       </div>}
 

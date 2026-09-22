@@ -7,6 +7,7 @@ const service = await readFile(new URL("../server/providers/kripicard/service.ts
 const migration = await readFile(new URL("../db/migrations/0004_kripicard_read_integration.sql", import.meta.url), "utf8");
 const stateMigration = await readFile(new URL("../db/migrations/0005_card_state_actions.sql", import.meta.url), "utf8");
 const env = await readFile(new URL("../.env.example", import.meta.url), "utf8");
+const dashboard = await readFile(new URL("../app/dashboard-app.tsx", import.meta.url), "utf8");
 const list = JSON.parse(await readFile(new URL("./fixtures/kripicard/cards-list.json", import.meta.url), "utf8"));
 const details = JSON.parse(await readFile(new URL("./fixtures/kripicard/card-details.json", import.meta.url), "utf8"));
 const transactions = JSON.parse(await readFile(new URL("./fixtures/kripicard/transactions.json", import.meta.url), "utf8"));
@@ -66,4 +67,11 @@ test("freeze/unfreeze writes are single-attempt and reconciled instead of automa
 test("Phase 6 provider writes remain guarded by deployment flags", () => {
   assert.match(service, /ENABLE_KRIPICARD_CARD_STATE_WRITES/);
   assert.match(env, /ENABLE_KRIPICARD_CARD_STATE_WRITES=false/);
+});
+
+
+test("card-state UI explains deployment and runtime kill-switch failures", () => {
+  assert.match(dashboard, /Freeze\/unfreeze is installed but disabled/);
+  assert.match(dashboard, /runtime_kill_switch/);
+  assert.match(dashboard, /Read-only mode/);
 });

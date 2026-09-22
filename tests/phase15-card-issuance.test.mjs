@@ -119,6 +119,15 @@ test("first-card onboarding exposes guarded Create/Reconcile actions and interac
   assert.match(activateRoute, /reconcileCardIssuance/);
 });
 
+test("first-card onboarding turns provider gates into actionable admin guidance", () => {
+  assert.match(dashboard, /feature_disabled/);
+  assert.match(dashboard, /runtime_kill_switch/);
+  assert.match(dashboard, /provider_money_not_ready/);
+  assert.match(dashboard, /LIVE_PROVIDER_WRITE_CONFIRMATION/);
+  assert.match(dashboard, /Kripicard money readiness/);
+  assert.match(dashboard, /emergency read-only mode/i);
+});
+
 test("provider contract states the one-shot purchase rule", () => {
   assert.match(contract, /never auto-retry/i);
   assert.match(contract, /HTTP 202/i);
