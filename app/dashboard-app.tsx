@@ -46,7 +46,7 @@ import {
   XCircle,
 } from "lucide-react";
 import { toast } from "sonner";
-import { AdminApiError, createAccount, fetchDashboardSnapshot, reauthenticateAdmin, revealAccountSecrets, updateAccount, verifyAccountConnection, syncAccountCards, revealLiveCardDetails, syncCardTransactions, fetchCardTransactions, fetchTransactions, fetchTransactionNotificationIssues, reconcileTransactionNotification, setCardFrozenState, refreshCardStatus, connectOutlookMailbox, syncOutlookMailbox, disconnectOutlookMailbox, connectGmailMailbox, syncGmailMailbox, disconnectGmailMailbox, fetchAccountEmailMessages, fetchTelegramBotStatus, configureTelegramWebhook, setTelegramBotToken, clearTelegramBotToken, fetchPaymentCard, updatePaymentCard, notifyClient, fetchClientPipeline, fetchClientKyc, type ClientKyc, type ClientPayment, clientReceiptUrl, activateClient, fetchForceJoinChannels, upsertForceJoinChannel, deleteForceJoinChannel, fetchSupportConversations, updateSupportConversation, retrySupportMessage, fetchClientSupportMessages, sendClientSupportMessage, fetchClientAssignableAccounts, assignClientAccount, unassignClientAccount, unassignAllClientAccounts, fetchCardRequests, reviewCardRequest, issueCardRequest, reconcileCardRequest, fetchFundingRequests, reviewFundingRequest, executeFundingRequest, reconcileFundingRequest, resolveFundingRequest, fundingReceiptDownloadUrl, fetchFundingSettings, updateFundingSettings, type ApiCardRequest, type ApiFundingRequest, type AssignableClientAccount, type LiveCardDetails, type StoredCardTransaction, type StoredEmailMessage, type TelegramBotStatus, fetchProviderReadiness, type ProviderReadinessSnapshot, type TransactionNotificationIssue, type SupportConversationSummary, fetchOperationalSnapshot, updateOperationalAlert, updateRuntimeControl, type OperationalSnapshot, fetchKycSubmissions, reviewKycSubmission, kycDocumentUrl, type ApiKycSubmission } from "@/lib/admin-api";
+import { AdminApiError, createAccount, fetchDashboardSnapshot, reauthenticateAdmin, revealAccountSecrets, updateAccount, verifyAccountConnection, syncAccountCards, revealLiveCardDetails, syncCardTransactions, fetchCardTransactions, fetchTransactions, fetchTransactionNotificationIssues, reconcileTransactionNotification, setCardFrozenState, refreshCardStatus, connectOutlookMailbox, syncOutlookMailbox, disconnectOutlookMailbox, connectGmailMailbox, syncGmailMailbox, disconnectGmailMailbox, fetchAccountEmailMessages, fetchTelegramBotStatus, configureTelegramWebhook, setTelegramBotToken, clearTelegramBotToken, fetchPaymentCard, updatePaymentCard, notifyClient, fetchClientPipeline, fetchClientKyc, type ClientKyc, type ClientPayment, clientReceiptUrl, activateClient, fetchForceJoinChannels, upsertForceJoinChannel, deleteForceJoinChannel, fetchSupportConversations, updateSupportConversation, retrySupportMessage, fetchClientSupportMessages, sendClientSupportMessage, fetchClientAssignableAccounts, assignClientAccount, unassignClientAccount, unassignAllClientAccounts, fetchCardRequests, reviewCardRequest, issueCardRequest, reconcileCardRequest, fetchFundingRequests, reviewFundingRequest, executeFundingRequest, reconcileFundingRequest, resolveFundingRequest, fundingReceiptDownloadUrl, fetchFundingSettings, updateFundingSettings, fetchCardPolicy, updateCardPolicy, type ApiCardRequest, type ApiFundingRequest, type AssignableClientAccount, type LiveCardDetails, type StoredCardTransaction, type StoredEmailMessage, type TelegramBotStatus, fetchProviderReadiness, type ProviderReadinessSnapshot, type TransactionNotificationIssue, type SupportConversationSummary, fetchOperationalSnapshot, updateOperationalAlert, updateRuntimeControl, type OperationalSnapshot, fetchKycSubmissions, reviewKycSubmission, kycDocumentUrl, type ApiKycSubmission } from "@/lib/admin-api";
 import { disableAdminMfa, enableAdminMfa, fetchCurrentAdmin, logoutAdmin, setupAdminMfa, type CurrentAdmin } from "@/lib/auth-client";
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -671,6 +671,8 @@ export default function DashboardApp() {
   const [exchangeRate, setExchangeRate] = useState(2_212_000);
   const [maxCardsPerClient, setMaxCardsPerClient] = useState(3);
   const [minimumFunding, setMinimumFunding] = useState(20);
+  const [minimumCardCreation, setMinimumCardCreation] = useState(20);
+  const [cardPolicyBins, setCardPolicyBins] = useState<Array<{ bin: string; requiresDob: boolean }>>([]);
   const [theme, setTheme] = useState<"light" | "dark">("light");
   const [botToken, setBotToken] = useState("");
   const [showToken, setShowToken] = useState(false);
@@ -831,6 +833,18 @@ export default function DashboardApp() {
       setServiceFee(settings.serviceFeeBasisPoints / 100);
       setMinimumFunding(settings.minimumUsdCents / 100);
       if (settings.rate) setExchangeRate(Number(settings.rate.rialPerUsd));
+    }).catch(() => {});
+    return () => { cancelled = true; };
+  }, [backendDataLoaded]);
+
+  useEffect(() => {
+    if (!backendDataLoaded) return;
+    let cancelled = false;
+    fetchCardPolicy().then((policy) => {
+      if (cancelled) return;
+      setMaxCardsPerClient(policy.platformCardLimit);
+      setMinimumCardCreation(policy.minimumCardCreationUsdCents / 100);
+      setCardPolicyBins(policy.bins);
     }).catch(() => {});
     return () => { cancelled = true; };
   }, [backendDataLoaded]);
@@ -2044,6 +2058,8 @@ export default function DashboardApp() {
                 exchangeRate={exchangeRate}
                 maxCardsPerClient={maxCardsPerClient}
                 minimumFunding={minimumFunding}
+                minimumCardCreation={minimumCardCreation}
+                cardPolicyBins={cardPolicyBins}
                 botToken={botToken}
                 showToken={showToken}
                 telegramStatus={telegramStatus}
@@ -2053,6 +2069,21 @@ export default function DashboardApp() {
                 onExchangeRate={setExchangeRate}
                 onMaxCardsPerClient={setMaxCardsPerClient}
                 onMinimumFunding={(value) => setMinimumFunding(Math.max(1, value || 1))}
+                onMinimumCardCreation={(value) => setMinimumCardCreation(Math.max(10, value || 10))}
+                onCardPolicyBins={setCardPolicyBins}
+                onSaveCardPolicy={async () => {
+                  try {
+                    const saved = await updateCardPolicy({
+                      platformCardLimit: maxCardsPerClient,
+                      minimumCardCreationUsdCents: Math.round(minimumCardCreation * 100),
+                      bins: cardPolicyBins,
+                    });
+                    setMaxCardsPerClient(saved.platformCardLimit);
+                    setMinimumCardCreation(saved.minimumCardCreationUsdCents / 100);
+                    setCardPolicyBins(saved.bins);
+                    toast.success("Card policy saved. Telegram and admin enforcement now use the same policy.");
+                  } catch (error) { toast.error(error instanceof Error ? error.message : "Could not save card policy."); }
+                }}
                 onSavePricing={async () => {
                   try {
                     const saved = await updateFundingSettings({
@@ -3023,7 +3054,7 @@ function OperationsView({ snapshot, onAlertAction, onControlAction }: { snapshot
   </div>;
 }
 
-function SettingsView({ serviceFee, exchangeRate, maxCardsPerClient, minimumFunding, botToken, showToken, telegramStatus, channels, newChannel, onServiceFee, onExchangeRate, onMaxCardsPerClient, onMinimumFunding, onSavePricing, onBotToken, onSaveBotToken, onClearBotToken, onShowToken, onConfigureWebhook, onNewChannel, onAddChannel, onRemoveChannel }: { serviceFee: number; exchangeRate: number; maxCardsPerClient: number; minimumFunding: number; botToken: string; showToken: boolean; telegramStatus: TelegramBotStatus | null; channels: string[]; newChannel: string; onServiceFee: (value: number) => void; onExchangeRate: (value: number) => void; onMaxCardsPerClient: (value: number) => void; onMinimumFunding: (value: number) => void; onSavePricing: () => void | Promise<void>; onBotToken: (value: string) => void; onSaveBotToken: () => void | Promise<void>; onClearBotToken: () => void | Promise<void>; onShowToken: (value: boolean) => void; onConfigureWebhook: () => void | Promise<void>; onNewChannel: (value: string) => void; onAddChannel: () => void | Promise<void>; onRemoveChannel: (channel: string) => void | Promise<void> }) {
+function SettingsView({ serviceFee, exchangeRate, maxCardsPerClient, minimumFunding, minimumCardCreation, cardPolicyBins, botToken, showToken, telegramStatus, channels, newChannel, onServiceFee, onExchangeRate, onMaxCardsPerClient, onMinimumFunding, onMinimumCardCreation, onCardPolicyBins, onSaveCardPolicy, onSavePricing, onBotToken, onSaveBotToken, onClearBotToken, onShowToken, onConfigureWebhook, onNewChannel, onAddChannel, onRemoveChannel }: { serviceFee: number; exchangeRate: number; maxCardsPerClient: number; minimumFunding: number; minimumCardCreation: number; cardPolicyBins: Array<{ bin: string; requiresDob: boolean }>; botToken: string; showToken: boolean; telegramStatus: TelegramBotStatus | null; channels: string[]; newChannel: string; onServiceFee: (value: number) => void; onExchangeRate: (value: number) => void; onMaxCardsPerClient: (value: number) => void; onMinimumFunding: (value: number) => void; onMinimumCardCreation: (value: number) => void; onCardPolicyBins: (value: Array<{ bin: string; requiresDob: boolean }>) => void; onSaveCardPolicy: () => void | Promise<void>; onSavePricing: () => void | Promise<void>; onBotToken: (value: string) => void; onSaveBotToken: () => void | Promise<void>; onClearBotToken: () => void | Promise<void>; onShowToken: (value: boolean) => void; onConfigureWebhook: () => void | Promise<void>; onNewChannel: (value: string) => void; onAddChannel: () => void | Promise<void>; onRemoveChannel: (channel: string) => void | Promise<void> }) {
   const [securityAdmin, setSecurityAdmin] = useState<CurrentAdmin | null>(null);
   const [securityPassword, setSecurityPassword] = useState("");
   const [securityCode, setSecurityCode] = useState("");
@@ -3129,8 +3160,16 @@ function SettingsView({ serviceFee, exchangeRate, maxCardsPerClient, minimumFund
         <Card className={`surface-card rounded-[24px] ${settingsTab==="policy"?"":"hidden"}`}>
           <CardHeader><div className="flex items-center gap-3"><span className="grid size-10 place-items-center rounded-[13px] bg-[#e6f8f1] text-[#16815e]"><ShieldCheck className="size-5" /></span><div><CardTitle className="text-[17px] tracking-[-.02em] text-[#2c2940]">Client card policy</CardTitle><p className="mt-1 text-sm text-[#8f8b9c]">Control card exposure across all accounts connected to a client.</p></div></div></CardHeader>
           <CardContent className="space-y-4">
-            <div className="grid gap-2"><Label htmlFor="client-card-limit">Maximum cards per client</Label><Input id="client-card-limit" type="number" min="1" max="50" value={maxCardsPerClient} onChange={(event) => onMaxCardsPerClient(Math.max(1, Number(event.target.value) || 1))} /><p className="text-xs leading-5 text-[#8f8b9c]">This is your own system-wide rule. It counts cards across every account assigned to the same Telegram user.</p></div>
-            <div className="rounded-[16px] border border-[#cfeadf] bg-[#f0faf6] p-4 text-sm leading-6 text-[#336b59]"><strong>Separate concern:</strong> identity verification for registering in your service should live in a dedicated onboarding workflow. No verification status or document is sent to Kripicard here.</div>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="grid gap-2"><Label htmlFor="client-card-limit">Maximum cards per client</Label><Input id="client-card-limit" type="number" min="1" max="50" value={maxCardsPerClient} onChange={(event) => onMaxCardsPerClient(Math.max(1, Number(event.target.value) || 1))} /><p className="text-xs leading-5 text-[#8f8b9c]">Counts active cards plus open card requests across every assigned account.</p></div>
+              <div className="grid gap-2"><Label htmlFor="card-creation-minimum">Minimum new-card balance (USD)</Label><Input id="card-creation-minimum" type="number" min="10" step="1" value={minimumCardCreation} onChange={(event) => onMinimumCardCreation(Number(event.target.value))} /><p className="text-xs leading-5 text-[#8f8b9c]">Separate from the existing-card funding minimum in General settings.</p></div>
+            </div>
+            <div className="space-y-3">
+              <div className="flex items-center justify-between gap-3"><div><Label>Requestable card BINs</Label><p className="text-xs text-[#8f8b9c]">These are the exact products Telegram users can request.</p></div><Button type="button" variant="outline" size="sm" className="rounded-xl" onClick={() => onCardPolicyBins([...cardPolicyBins, { bin: "", requiresDob: false }])}><Plus className="size-4" />Add BIN</Button></div>
+              {cardPolicyBins.map((item, index) => <div key={`${item.bin}-${index}`} className="grid gap-2 rounded-xl border p-3 sm:grid-cols-[1fr_auto_auto] sm:items-center"><Input inputMode="numeric" maxLength={6} value={item.bin} onChange={(event) => { const next=[...cardPolicyBins]; next[index]={...item,bin:event.target.value.replace(/\D/g,"").slice(0,6)}; onCardPolicyBins(next); }} placeholder="6-digit BIN" /><label className="flex items-center gap-2 text-sm text-[#625c6f]"><input type="checkbox" checked={item.requiresDob} onChange={(event) => { const next=[...cardPolicyBins]; next[index]={...item,requiresDob:event.target.checked}; onCardPolicyBins(next); }} />DOB required</label><Button type="button" variant="outline" size="icon" className="rounded-xl" onClick={() => onCardPolicyBins(cardPolicyBins.filter((_, i) => i !== index))}><Trash2 className="size-4" /><span className="sr-only">Remove BIN</span></Button></div>)}
+            </div>
+            <Button className="rounded-xl bg-[#6157e7] text-white hover:bg-[#554bcf]" onClick={() => void onSaveCardPolicy()}><Check className="size-4" />Save card policy</Button>
+            <div className="rounded-[16px] border border-[#cfeadf] bg-[#f0faf6] p-4 text-sm leading-6 text-[#336b59]">This policy is stored server-side and enforced by Telegram card requests as well as the admin interface.</div>
           </CardContent>
         </Card>
 
