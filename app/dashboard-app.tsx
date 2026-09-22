@@ -10,7 +10,6 @@ import {
   Bot,
   Check,
   CheckCircle2,
-  ChevronsUpDown,
   ChevronRight,
   CircleDollarSign,
   CreditCard,
@@ -65,14 +64,6 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
-  Command,
-  CommandEmpty,
-  CommandGroup,
-  CommandInput,
-  CommandItem,
-  CommandList,
-} from "@/components/ui/command";
-import {
   Dialog,
   DialogContent,
   DialogDescription,
@@ -82,7 +73,6 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
   Pagination,
   PaginationContent,
@@ -1127,12 +1117,12 @@ export default function DashboardApp() {
     }
   };
 
-  const openCreateCard = (_accountId = "") => {
+  const openCreateCard = () => {
     setView("clients");
     toast.info("A customer's first card is created from the First-card onboarding panel after KYC and receipt approval.");
   };
 
-  const openFundCard = (_cardId = "", _accountId = "") => {
+  const openFundCard = () => {
     setView("requests");
     toast.info("Card funding is executed only from accepted funding requests in Request Center.");
   };
@@ -2316,10 +2306,6 @@ function PageIntro({ title, description, action }: { title: string; description:
       {action}
     </div>
   );
-}
-
-function FocusRow({ number, title, detail, onClick, warning = false }: { number: string; title: string; detail: string; onClick: () => void; warning?: boolean }) {
-  return <button onClick={onClick} className="flex w-full items-center gap-3 rounded-[16px] border border-[#eeecf3] bg-[#fbfafc] p-3.5 text-left transition hover:border-[#dcd8f1] hover:bg-[#f7f5ff]"><span className={`grid size-8 shrink-0 place-items-center rounded-[10px] text-xs font-bold ${warning ? "bg-[#fff0da] text-[#ad6811]" : "bg-[#eeecff] text-[#5b50d6]"}`}>{number}</span><span className="min-w-0 flex-1"><span className="block text-sm font-semibold text-[#353146]">{title}</span><span className="mt-0.5 block text-xs text-[#9692a3]">{detail}</span></span><ChevronRight className="size-4 text-[#aaa6b8]" /></button>;
 }
 
 function MetricCard({ icon: Icon, label, value, foot, tone }: { icon: typeof Landmark; label: string; value: string; foot: string; tone: "navy" | "cyan" | "amber" | "violet" }) {
