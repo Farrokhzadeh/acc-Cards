@@ -76,7 +76,7 @@ async function getGmailConnection(accountId: string) {
 
 export async function startGmailConnection(accountId: string, session: AuthSession, request: Request, requestId: string) {
   if (!googleConfigured()) {
-    return { skipped: true, reason: "google_not_configured", succeeded: 0, failed: 0, failedAccountIds: [] };
+    throw new ApiError(503, "google_not_configured", "Google Gmail OAuth is not configured on this deployment.");
   }
   await getGmailConnection(accountId);
 
@@ -521,7 +521,7 @@ export async function syncGmailInbox(accountId: string, session: AuthSession, re
 
 export async function syncConnectedGmailInboxesSystem(requestId: string) {
   if (!googleConfigured()) {
-    throw new ApiError(503, "google_not_configured", "Google Gmail OAuth is not configured on this deployment.");
+    return { skipped: true, reason: "google_not_configured", attempted: 0, succeeded: 0, failed: 0, failedAccountIds: [] };
   }
 
   const run = await getPool().query<{ id: string }>(
