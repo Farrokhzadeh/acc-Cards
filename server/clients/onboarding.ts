@@ -2,7 +2,7 @@ import { getPool, withTransaction } from "@/server/database/pool";
 import { ApiError } from "@/server/http/api";
 import { getCardRequestBins } from "@/server/card-requests/service";
 import { getPaymentCard } from "@/server/settings/payment-card";
-import { assignAccountInTransaction } from "@/server/clients/assignments";
+import { assignAccountInTransaction, unassignAccountInTransaction } from "@/server/clients/assignments";
 
 type OnboardingRequestRow = {
   id: string;
@@ -45,6 +45,19 @@ export async function ensureOnboardingCardRequest(args: {
       throw new ApiError(409, "payment_amount_missing", "The customer's first-card payment amount is missing.");
     }
 
+    const account = await db.query<{ id: string; email: string; encrypted_api_key: string }>(
+      `SELECT a.id,COALESCE(ea.email_address,a.login_email) AS email,a.encrypted_api_key
+         FROM kripi_accounts a
+         LEFT JOIN email_accounts ea ON ea.account_id=a.id
+        WHERE a.id=$1::uuid AND a.archived_at IS NULL AND a.status NOT IN ('disabled','archived')
+        FOR UPDATE OF a`,
+      [args.accountId],
+    );
+    if (!account.rows[0]) throw new ApiError(409, "account_unavailable", "The selected Kripicard account is unavailable.");
+    if (!account.rows[0].encrypted_api_key.startsWith("v1.")) {
+      throw new ApiError(409, "secret_unavailable", "The selected Kripicard account needs a valid encrypted API key before first-card creation.");
+    }
+
     if (user.onboarding_card_request_id) {
       const existing = await db.query<OnboardingRequestRow>(
         `SELECT id,status,provider_card_id,selected_account_id FROM card_requests WHERE id=$1::uuid`,
@@ -53,15 +66,48 @@ export async function ensureOnboardingCardRequest(args: {
       const row = existing.rows[0];
       if (!row) throw new ApiError(409, "onboarding_request_missing", "The linked onboarding card request no longer exists.");
       if (row.selected_account_id && row.selected_account_id !== args.accountId) {
-        throw new ApiError(409, "onboarding_account_locked", "This first-card issuance is already tied to a different Kripicard account.");
+        if (!["approved", "issue_failed"].includes(row.status) || user.onboarding_card_id) {
+          throw new ApiError(409, "onboarding_account_locked", "This first-card issuance has reached a state where its Kripicard account cannot be changed safely.");
+        }
+        await unassignAccountInTransaction(db, {
+          clientId: args.userId,
+          accountId: row.selected_account_id,
+          adminId: args.adminId,
+          requestId: args.requestId,
+          ip: args.ip,
+        });
+        await assignAccountInTransaction(db, {
+          clientId: args.userId,
+          accountId: args.accountId,
+          adminId: args.adminId,
+          requestId: args.requestId,
+          ip: args.ip,
+        });
+        await db.query(
+          `UPDATE card_requests
+              SET preferred_account_id=$2::uuid,selected_account_id=$2::uuid,updated_at=now()
+            WHERE id=$1::uuid`,
+          [row.id, args.accountId],
+        );
+        await db.query(
+          `INSERT INTO card_request_events(request_id,from_status,to_status,actor_type,admin_id,note,safe_metadata)
+           VALUES($1::uuid,$2,$2,'admin',$3::uuid,'Issuing account changed after a safely retryable onboarding failure',$4::jsonb)`,
+          [row.id,row.status,args.adminId,JSON.stringify({ previousAccountId: row.selected_account_id, accountId: args.accountId })],
+        );
+        await db.query(
+          `INSERT INTO audit_logs(actor_type,actor_id,action,entity_type,entity_id,metadata_redacted,request_id)
+           VALUES('admin',$1::uuid,'onboarding.issuing_account.changed','telegram_user',$2,$3::jsonb,$4)`,
+          [args.adminId,args.userId,JSON.stringify({ cardRequestId: row.id, previousAccountId: row.selected_account_id, accountId: args.accountId, requestStatus: row.status }),args.requestId],
+        );
+      } else {
+        await assignAccountInTransaction(db, {
+          clientId: args.userId,
+          accountId: args.accountId,
+          adminId: args.adminId,
+          requestId: args.requestId,
+          ip: args.ip,
+        });
       }
-      await assignAccountInTransaction(db, {
-        clientId: args.userId,
-        accountId: args.accountId,
-        adminId: args.adminId,
-        requestId: args.requestId,
-        ip: args.ip,
-      });
       return { requestId: row.id, status: row.status, providerCardId: row.provider_card_id, cardId: user.onboarding_card_id };
     }
 
@@ -75,16 +121,6 @@ export async function ensureOnboardingCardRequest(args: {
     );
     const approvedKyc = kyc.rows[0];
     if (!approvedKyc) throw new ApiError(409, "kyc_required", "Approved KYC is required before first-card creation.");
-
-    const account = await db.query<{ id: string; email: string }>(
-      `SELECT a.id,COALESCE(ea.email_address,a.login_email) AS email
-         FROM kripi_accounts a
-         LEFT JOIN email_accounts ea ON ea.account_id=a.id
-        WHERE a.id=$1::uuid AND a.archived_at IS NULL AND a.status NOT IN ('disabled','archived')
-        FOR UPDATE OF a`,
-      [args.accountId],
-    );
-    if (!account.rows[0]) throw new ApiError(409, "account_unavailable", "The selected Kripicard account is unavailable.");
 
     const paymentConfig = await getPaymentCard();
 
