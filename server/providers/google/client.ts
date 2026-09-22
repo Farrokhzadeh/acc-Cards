@@ -175,3 +175,38 @@ export async function listGmailHistory(accessToken: string, startHistoryId: stri
   });
   return gmailHistoryListSchema.parse(body);
 }
+
+
+type GmailFullPart = {
+  mimeType?: string;
+  body?: { data?: string };
+  parts?: GmailFullPart[];
+};
+
+function decodeGmailBody(data?: string) {
+  if (!data) return "";
+  try { return Buffer.from(data, "base64url").toString("utf8"); }
+  catch { return ""; }
+}
+
+function textFromGmailPart(part?: GmailFullPart): string {
+  if (!part) return "";
+  const own = decodeGmailBody(part.body?.data);
+  if (part.mimeType === "text/plain" && own) return own;
+  const children = (part.parts ?? []).map(textFromGmailPart).filter(Boolean);
+  if (children.length) return children.join("\n");
+  if (part.mimeType === "text/html" && own) {
+    return own.replace(/<style[\s\S]*?<\/style>/gi, " ").replace(/<script[\s\S]*?<\/script>/gi, " ").replace(/<[^>]+>/g, " ").replace(/&nbsp;/gi, " ").replace(/&amp;/gi, "&");
+  }
+  return own;
+}
+
+export async function getGmailMessageText(accessToken: string, id: string) {
+  const url = new URL(`https://gmail.googleapis.com/gmail/v1/users/me/messages/${encodeURIComponent(id)}`);
+  url.searchParams.set("format", "full");
+  const body = await gmailJson(url.toString(), accessToken, {
+    notFoundCode: "gmail_message_not_found",
+    notFoundMessage: "The Gmail message is no longer available.",
+  }) as { payload?: GmailFullPart };
+  return textFromGmailPart(body.payload).replace(/\s+/g, " ").trim().slice(0, 100_000);
+}
