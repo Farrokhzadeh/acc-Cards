@@ -1022,6 +1022,8 @@ async function handleCallback(client: TelegramClient, callback: z.infer<typeof c
   if (resolved.action === "menu.home") { await routeHome(client, user, chatId); return; }
   if (resolved.action === "menu.paid") {
     if (user.bannedAt) { await client.sendMessage({ chatId, text: pick(KYC.accessDisabled, user.lang) }); return; }
+    const ps = await getPaymentStatus(user.id);
+    if (ps === "pending" || ps === "accepted") { await sendWaitingScreen(client, user, chatId); return; }
     await setPaymentDeclared(user.id);
     await auditTelegramEvent({ userId: user.id, action: "telegram.payment.declared", entityType: "telegram_user", entityId: user.id });
     await setKycState(user.id, "payment_amount", {}, 60);
@@ -1029,6 +1031,7 @@ async function handleCallback(client: TelegramClient, callback: z.infer<typeof c
     return;
   }
   if (resolved.action === "menu.skipreceipt") {
+    await getPool().query(`UPDATE telegram_users SET payment_status = 'pending', updated_at = now() WHERE id = $1::uuid`, [user.id]);
     await getPool().query(`DELETE FROM telegram_bot_states WHERE user_id=$1::uuid`, [user.id]);
     await sendWaitingScreen(client, user, chatId);
     return;
