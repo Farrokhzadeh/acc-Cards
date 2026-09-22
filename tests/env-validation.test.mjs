@@ -1,6 +1,11 @@
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import test from "node:test";
 import { safeParseServerEnv } from "../config/env-schema.mjs";
+
+const envExample = await readFile(new URL("../.env.example", import.meta.url), "utf8");
+const setupScript = await readFile(new URL("../setup.sh", import.meta.url), "utf8");
+const deployGuide = await readFile(new URL("../DOCKER-DEPLOY.md", import.meta.url), "utf8");
 
 const encryption = { APP_ENCRYPTION_KEY: "AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE=" };
 
@@ -168,4 +173,11 @@ test("rejects a partial Google OAuth configuration", () => {
     ...encryption,
   });
   assert.equal(result.success, false);
+});
+
+test("deployment templates expose the required live-write acknowledgment", () => {
+  assert.match(envExample, /^LIVE_PROVIDER_WRITE_CONFIRMATION=$/m);
+  assert.match(setupScript, /^LIVE_PROVIDER_WRITE_CONFIRMATION=$/m);
+  assert.match(deployGuide, /LIVE_PROVIDER_WRITE_CONFIRMATION=ACCABAD_LIVE_WRITES_ENABLED/);
+  assert.match(deployGuide, /502 immediately after enabling provider writes/);
 });
