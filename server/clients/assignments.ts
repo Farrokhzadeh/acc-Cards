@@ -101,6 +101,7 @@ export async function listAssignableAccounts(clientId: string, search = "", limi
        FROM kripi_accounts a
        LEFT JOIN telegram_account_assignments taa ON taa.account_id = a.id
       WHERE a.archived_at IS NULL
+        AND a.status NOT IN ('disabled','archived')
         AND (taa.telegram_user_id IS NULL OR taa.telegram_user_id = $1::uuid)
         AND ($2 = '' OR a.label ILIKE '%' || $2 || '%' OR a.login_email ILIKE '%' || $2 || '%' OR COALESCE(a.provider_account_ref, '') ILIKE '%' || $2 || '%')
       ORDER BY (taa.telegram_user_id = $1::uuid) DESC, a.label ASC, a.id ASC
@@ -110,6 +111,54 @@ export async function listAssignableAccounts(clientId: string, search = "", limi
   return result.rows.map((row) => mapAccount(row, clientId));
 }
 
+export async function assignAccountInTransaction(db: DatabaseQueryable, args: {
+  clientId: string;
+  accountId: string;
+  adminId: string;
+  requestId: string;
+  ip?: string | null;
+}) {
+  await assertClientExists(db, args.clientId, true);
+  const account = await db.query<{ id: string; archived_at: Date | null; status: string }>(
+    `SELECT id, archived_at, status FROM kripi_accounts WHERE id = $1::uuid FOR UPDATE`,
+    [args.accountId],
+  );
+  if (!account.rows[0] || account.rows[0].archived_at || ["disabled", "archived"].includes(account.rows[0].status)) {
+    throw new ApiError(404, "account_not_found", "Kripicard account not found or unavailable.");
+  }
+
+  const owner = await db.query<AssignmentRow>(
+    `SELECT account_id, telegram_user_id
+       FROM telegram_account_assignments
+      WHERE account_id = $1::uuid
+      FOR UPDATE`,
+    [args.accountId],
+  );
+  if (owner.rows[0]?.telegram_user_id === args.clientId) {
+    return { accountIds: await currentAccountIds(db, args.clientId), changed: false };
+  }
+  if (owner.rows[0]) {
+    throw new ApiError(409, "account_already_assigned", "That Kripicard account is already assigned to another Telegram client.");
+  }
+
+  try {
+    await db.query(
+      `INSERT INTO telegram_account_assignments(telegram_user_id, account_id, assigned_by)
+       VALUES ($1::uuid, $2::uuid, $3::uuid)`,
+      [args.clientId, args.accountId, args.adminId],
+    );
+  } catch (error) {
+    if ((error as { code?: string }).code === "23505") {
+      throw new ApiError(409, "account_already_assigned", "Another operator assigned that account first. Refresh the client and try again.");
+    }
+    throw error;
+  }
+
+  await insertAssignmentEvents(db, { clientId: args.clientId, accountIds: [args.accountId], eventType: "assigned", adminId: args.adminId, requestId: args.requestId });
+  await writeAssignmentAudit(db, { adminId: args.adminId, clientId: args.clientId, accountIds: [args.accountId], action: "assign", requestId: args.requestId, ip: args.ip });
+  return { accountIds: await currentAccountIds(db, args.clientId), changed: true };
+}
+
 export async function assignAccount(args: {
   clientId: string;
   accountId: string;
@@ -117,47 +166,7 @@ export async function assignAccount(args: {
   requestId: string;
   ip?: string | null;
 }) {
-  return withTransaction(async (db) => {
-    await assertClientExists(db, args.clientId, true);
-    const account = await db.query<{ id: string; archived_at: Date | null }>(
-      `SELECT id, archived_at FROM kripi_accounts WHERE id = $1::uuid FOR UPDATE`,
-      [args.accountId],
-    );
-    if (!account.rows[0] || account.rows[0].archived_at) {
-      throw new ApiError(404, "account_not_found", "Kripicard account not found or archived.");
-    }
-
-    const owner = await db.query<AssignmentRow>(
-      `SELECT account_id, telegram_user_id
-         FROM telegram_account_assignments
-        WHERE account_id = $1::uuid
-        FOR UPDATE`,
-      [args.accountId],
-    );
-    if (owner.rows[0]?.telegram_user_id === args.clientId) {
-      return { accountIds: await currentAccountIds(db, args.clientId), changed: false };
-    }
-    if (owner.rows[0]) {
-      throw new ApiError(409, "account_already_assigned", "That Kripicard account is already assigned to another Telegram client.");
-    }
-
-    try {
-      await db.query(
-        `INSERT INTO telegram_account_assignments(telegram_user_id, account_id, assigned_by)
-         VALUES ($1::uuid, $2::uuid, $3::uuid)`,
-        [args.clientId, args.accountId, args.adminId],
-      );
-    } catch (error) {
-      if ((error as { code?: string }).code === "23505") {
-        throw new ApiError(409, "account_already_assigned", "Another operator assigned that account first. Refresh the client and try again.");
-      }
-      throw error;
-    }
-
-    await insertAssignmentEvents(db, { clientId: args.clientId, accountIds: [args.accountId], eventType: "assigned", adminId: args.adminId, requestId: args.requestId });
-    await writeAssignmentAudit(db, { adminId: args.adminId, clientId: args.clientId, accountIds: [args.accountId], action: "assign", requestId: args.requestId, ip: args.ip });
-    return { accountIds: await currentAccountIds(db, args.clientId), changed: true };
-  });
+  return withTransaction((db) => assignAccountInTransaction(db, args));
 }
 
 export async function unassignAccount(args: {
