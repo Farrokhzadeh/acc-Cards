@@ -21,7 +21,9 @@ export async function POST(request: Request) {
       { command: "start", description: "Open AccAbad" },
       { command: "menu", description: "Open the main menu" },
       { command: "kyc", description: "Open identity verification" },
+      { command: "support", description: "Contact support" },
       { command: "lang", description: "Change language" },
+      { command: "help", description: "Show bot commands" },
       { command: "cancel", description: "Cancel the current flow" },
     ]);
     const webhook = await client.getWebhookInfo();
