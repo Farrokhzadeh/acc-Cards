@@ -212,7 +212,6 @@ type AccountEmail = {
 };
 
 type FundingStatus = "pending_receipt" | "pending_review" | "correction_needed" | "accepted" | "funding" | "funding_failed" | "needs_reconciliation" | "completed" | "rejected" | "cancelled";
-type CryptoPaymentStage = "form" | "payment" | "completed";
 
 type FundingRequest = {
   id: string;
@@ -295,19 +294,6 @@ const fundingMeta: Record<FundingStatus, { label: string; color: string; step: n
   cancelled: { label: "Cancelled", color: "red", step: 0 },
 };
 
-const binOptions = [
-  { value: "539502", label: "539502 · Hong Kong" },
-  { value: "525847", label: "525847 · Hong Kong" },
-  { value: "539578", label: "539578 · Hong Kong" },
-  { value: "525797", label: "525797 · Hong Kong" },
-  { value: "235019", label: "235019 · Hong Kong" },
-  { value: "223600", label: "223600 · Hong Kong" },
-  { value: "238003", label: "238003 · Hong Kong" },
-  { value: "537872", label: "537872 · US", requiresDob: true },
-  { value: "533171", label: "533171 · Singapore", requiresDob: true },
-  { value: "246001", label: "246001 · UK", requiresDob: true },
-];
-
 const navItems: { view: View; label: string; icon: typeof LayoutDashboard; badge?: string }[] = [
   { view: "overview", label: "Overview", icon: LayoutDashboard },
   { view: "accounts", label: "Accounts", icon: WalletCards },
@@ -355,7 +341,7 @@ function mapStoredEmailMessage(accountId: string, message: StoredEmailMessage): 
     sender: message.sender,
     subject: message.subject,
     preview: message.preview,
-    body: message.preview || "Message body storage is intentionally deferred; this is the provider preview synchronized by AccAbad.",
+    body: message.preview || "No preview text was provided by the mailbox provider.",
     received: formatApiDateTime(message.receivedAt),
     unread: message.unread,
     classificationStatus: message.classificationStatus,
@@ -660,20 +646,6 @@ export default function DashboardApp() {
   const [activeChatId, setActiveChatId] = useState("");
   const [search, setSearch] = useState("");
   const [accountDialogOpen, setAccountDialogOpen] = useState(false);
-  const [createCardDialogOpen, setCreateCardDialogOpen] = useState(false);
-  const [fundCardDialogOpen, setFundCardDialogOpen] = useState(false);
-  const [fundCardId, setFundCardId] = useState<string | null>(null);
-  const [fundCardScopeAccountId, setFundCardScopeAccountId] = useState<string | null>(null);
-  const [fundCardAmount, setFundCardAmount] = useState(20);
-  const [fundCardStage, setFundCardStage] = useState<CryptoPaymentStage>("form");
-  const [fundCardNetwork, setFundCardNetwork] = useState("TRC20");
-  const [fundCardPaymentId, setFundCardPaymentId] = useState("");
-  const [fundCardRequestId, setFundCardRequestId] = useState<string | null>(null);
-  const [createCardStage, setCreateCardStage] = useState<CryptoPaymentStage>("form");
-  const [createCardNetwork, setCreateCardNetwork] = useState("TRC20");
-  const [createCardPaymentId, setCreateCardPaymentId] = useState("");
-  const [issuingRequestId, setIssuingRequestId] = useState<string | null>(null);
-  const [selectedAccountId, setSelectedAccountId] = useState("");
   const [editingAccountId, setEditingAccountId] = useState<string | null>(null);
   const [deleteAccountId, setDeleteAccountId] = useState<string | null>(null);
   const [rejectDialogOpen, setRejectDialogOpen] = useState(false);
@@ -692,7 +664,6 @@ export default function DashboardApp() {
   const [channels, setChannels] = useState<string[]>([]);
   const [newChannel, setNewChannel] = useState("");
   const [accountForm, setAccountForm] = useState({ name: "", owner: "", mailbox: "", mailProvider: "Outlook / Hotmail" as Account["mailProvider"], password: "", apiKey: "" });
-  const [cardForm, setCardForm] = useState({ bin: "539502", amount: 20, nameOnCard: "", email: "", dateOfBirth: "" });
 
   useEffect(() => {
     const savedTheme = window.localStorage.getItem("accabad-theme");
@@ -1038,21 +1009,6 @@ export default function DashboardApp() {
   const activeAccountClient = activeAccount ? clients.find((client) => client.accountIds.includes(activeAccount.id)) ?? null : null;
   const activeRequest = fundingRequests.find((request) => request.id === activeRequestId) ?? null;
   const activeChatClient = clients.find((client) => client.id === activeChatId) ?? clients[0];
-  const issuingRequest = cardRequests.find((request) => request.id === issuingRequestId) ?? null;
-  const issuingRequestClient = clients.find((client) => client.id === issuingRequest?.clientId) ?? null;
-  const eligibleCardAccounts = issuingRequestClient ? accounts.filter((account) => issuingRequestClient.accountIds.includes(account.id)) : accounts;
-  const selectedCardAccount = accounts.find((account) => account.id === selectedAccountId) ?? null;
-  const selectedCardClient = clients.find((client) => client.accountIds.includes(selectedAccountId)) ?? null;
-  const fundCard = cards.find((card) => card.id === fundCardId) ?? null;
-  const fundCardChoices = fundCardScopeAccountId ? cards.filter((card) => card.accountId === fundCardScopeAccountId) : cards;
-  const fundCardAccount = accounts.find((account) => account.id === fundCard?.accountId) ?? null;
-  const fundCardClient = clients.find((client) => fundCard ? client.accountIds.includes(fundCard.accountId) : false) ?? null;
-  const selectedBinRequiresDob = Boolean(binOptions.find((item) => item.value === cardForm.bin)?.requiresDob);
-  const cardProviderFee = 1 + cardForm.amount * 0.04;
-  const fundCardProviderFee = Number((1 + fundCardAmount * 0.04).toFixed(2));
-  const fundCardCryptoTotal = Number((fundCardAmount + fundCardProviderFee).toFixed(2));
-  const createCardCryptoTotal = Number(((cardForm.amount || 0) + cardProviderFee).toFixed(2));
-  const cardTotal = accounts.reduce((sum, account) => sum + account.cardBalance, 0);
   const cardsForClient = (client: Client) => cards.filter((card) => client.accountIds.includes(card.accountId));
   const activeClientCards = activeClient ? cardsForClient(activeClient) : [];
 
@@ -1380,119 +1336,6 @@ export default function DashboardApp() {
     toast.info("Card funding is executed only from accepted funding requests in Request Center.");
   };
 
-  const beginFundCardPayment = () => {
-    if (!fundCard || !fundCardAccount) {
-      toast.error("Choose the card to fund.");
-      return;
-    }
-    if (fundCardAmount < minimumFunding) {
-      toast.error(`Your minimum card funding amount is ${formatUsd(minimumFunding)}.`);
-      return;
-    }
-    setFundCardPaymentId(`CF-${Date.now().toString(36).toUpperCase()}`);
-    setFundCardStage("payment");
-    if (fundCardRequestId) {
-      setFundingRequests((current) => current.map((item) => item.id === fundCardRequestId ? { ...item, status: "funding" } : item));
-    }
-    toast.success("Legacy prototype payment step opened. It does not call Kripicard; production funding is available only from an accepted request in Request Center.");
-  };
-
-  const confirmFundCard = () => {
-    if (!fundCard || !fundCardAccount || fundCardStage !== "payment" || !fundCardPaymentId) return;
-    setCards((current) => current.map((card) => card.id === fundCard.id ? { ...card, balance: card.balance + fundCardAmount } : card));
-    setAccounts((current) => current.map((account) => account.id === fundCardAccount.id ? { ...account, cardBalance: account.cardBalance + fundCardAmount, lastSync: "Just now" } : account));
-    setTransactions((current) => [{ id: `TX-${Date.now().toString().slice(-6)}`, clientId: fundCardClient?.id ?? null, accountId: fundCardAccount.id, cardLast4: fundCard.last4, merchant: "Legacy demo card funding", amount: fundCardAmount, type: "Funding", status: "Success", date: "Now" }, ...current]);
-    if (fundCardRequestId) {
-      setFundingRequests((current) => current.map((item) => item.id === fundCardRequestId ? { ...item, status: "completed" } : item));
-    }
-    if (fundCardClient) {
-      setClients((current) => current.map((client) => client.id === fundCardClient.id ? { ...client, totalFunded: client.totalFunded + fundCardAmount } : client));
-      setMessages((current) => ({
-        ...current,
-        [fundCardClient.id]: [...(current[fundCardClient.id] ?? []), { id: `m-${Date.now()}`, from: "admin", body: `${formatUsd(fundCardAmount)} was added to card •${fundCard.last4} in the legacy local prototype only.`, time: "Now" }],
-      }));
-    }
-    setFundCardStage("completed");
-    toast.success(`${formatUsd(fundCardAmount)} added to card •${fundCard.last4} in the legacy local prototype only.`);
-  };
-
-  const beginCreateCardPayment = () => {
-    const account = accounts.find((item) => item.id === selectedAccountId);
-    if (!account) { toast.error("Select the Kripicard account that will own this card."); return; }
-    if (cardForm.nameOnCard.trim().length < 2) { toast.error("Name on card must contain at least 2 characters."); return; }
-    if (cardForm.amount < minimumFunding) { toast.error(`Your minimum card funding amount is ${formatUsd(minimumFunding)}.`); return; }
-    const selectedBin = binOptions.find((item) => item.value === cardForm.bin);
-    if (selectedBin?.requiresDob && !cardForm.dateOfBirth) { toast.error(`Date of birth is required for BIN ${cardForm.bin}.`); return; }
-    const assignedClient = clients.find((client) => client.accountIds.includes(account.id));
-    if (issuingRequest && assignedClient?.id !== issuingRequest.clientId) { toast.error("Select an account currently assigned to the client who requested this card."); return; }
-    if (assignedClient && cardsForClient(assignedClient).length >= maxCardsPerClient) { toast.error(`${assignedClient.name} has reached your ${maxCardsPerClient}-card platform limit.`); return; }
-    setCreateCardPaymentId(`CC-${Date.now().toString(36).toUpperCase()}`);
-    setCreateCardStage("payment");
-    toast.success("Demo crypto payment instruction created. Confirm payment before issuing the card.");
-  };
-
-  const createCard = () => {
-    const account = accounts.find((item) => item.id === selectedAccountId);
-    if (!account) {
-      toast.error("Select the Kripicard account that will issue this card.");
-      return;
-    }
-    if (cardForm.nameOnCard.trim().length < 2) {
-      toast.error("Name on card must contain at least 2 characters.");
-      return;
-    }
-    if (cardForm.amount < minimumFunding) {
-      toast.error(`Your minimum card funding amount is ${formatUsd(minimumFunding)}.`);
-      return;
-    }
-    const selectedBin = binOptions.find((item) => item.value === cardForm.bin);
-    if (selectedBin?.requiresDob && !cardForm.dateOfBirth) {
-      toast.error(`Date of birth is required for BIN ${cardForm.bin}.`);
-      return;
-    }
-    const assignedClient = clients.find((client) => client.accountIds.includes(account.id));
-    if (issuingRequest && assignedClient?.id !== issuingRequest.clientId) {
-      toast.error("Select an account currently assigned to the client who requested this card.");
-      return;
-    }
-    if (assignedClient && cardsForClient(assignedClient).length >= maxCardsPerClient) {
-      toast.error(`${assignedClient.name} has reached your ${maxCardsPerClient}-card platform limit.`);
-      return;
-    }
-    if (createCardStage !== "payment" || !createCardPaymentId) {
-      toast.error("Legacy prototype payment step must be completed before creating this local demo card.");
-      return;
-    }
-    const stamp = Date.now();
-    const cardId = `MR_${stamp.toString(36).toUpperCase()}`;
-    const last4 = String(stamp).slice(-4);
-    setAccounts((current) => current.map((item) => item.id === account.id ? {
-      ...item,
-      cardBalance: item.cardBalance + cardForm.amount,
-      cards: item.cards + 1,
-      lastSync: "Just now",
-    } : item));
-    setCards((current) => [...current, {
-      id: cardId,
-      accountId: account.id,
-      bin: cardForm.bin,
-      cardholder: cardForm.nameOnCard.trim(),
-      email: cardForm.email.trim() || account.mailbox,
-      last4,
-      label: "Virtual card",
-      balance: cardForm.amount,
-      frozen: false,
-      expiry: "Pending sync",
-    }]);
-    if (issuingRequestId) {
-      setCardRequests((current) => current.map((request) => request.id === issuingRequestId ? { ...request, status: "Issued" } : request));
-    }
-    setCreateCardStage("completed");
-    setCreateCardDialogOpen(false);
-    setIssuingRequestId(null);
-    toast.success(assignedClient ? `Legacy prototype card created for ${assignedClient.name} through ${account.name}.` : `Legacy prototype card created in ${account.name}; assign the account to show it in Telegram.`);
-  };
-
   const removeAccount = async () => {
     if (!deleteAccountId) return;
     const id = deleteAccountId;
@@ -1586,7 +1429,7 @@ export default function DashboardApp() {
       toast.success(result.noOp ? `Card is already ${result.status}.` : `Card ${action === "freeze" ? "frozen" : "unfrozen"} by Kripicard${result.reconciled ? " after reconciliation" : ""}.`);
     } catch (error) {
       if (error instanceof AdminApiError && error.code === "feature_disabled") {
-        toast.error("Freeze/unfreeze is installed but disabled. Enable the Phase 6 provider-write flags in deployment configuration after testing.");
+        toast.error("Freeze/unfreeze is installed but disabled. Enable the provider card-state write gates in deployment configuration after testing.");
       } else {
         toast.error(error instanceof Error ? error.message : "Card state update failed.");
       }
@@ -1676,7 +1519,7 @@ export default function DashboardApp() {
     } catch (error) {
       try { await reloadFundingRequests(); } catch { /* keep original error */ }
       if (error instanceof AdminApiError && error.code === "feature_disabled") {
-        toast.error("Card funding is installed but disabled. Enable both provider-write and Phase 16 funding switches after staging validation.");
+        toast.error("Card funding is installed but disabled. Enable both provider-write and card-funding gates after staging validation.");
       } else {
         toast.error(error instanceof Error ? error.message : "Card funding action failed.");
       }
@@ -2232,74 +2075,6 @@ export default function DashboardApp() {
           <DialogFooter>
             <Button variant="outline" className="rounded-xl" onClick={() => setAccountDialogOpen(false)}>Cancel</Button>
             <Button onClick={saveAccount} className="rounded-xl bg-[#6157e7] text-white hover:bg-[#554bcf]">{editingAccountId ? "Save changes" : "Connect account"}</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog open={createCardDialogOpen} onOpenChange={(open) => { setCreateCardDialogOpen(open); if (!open) { setIssuingRequestId(null); setCreateCardStage("form"); setCreateCardPaymentId(""); } }}>
-        <DialogContent className="rounded-[24px] border-[#e5e2ee] p-7 shadow-[0_28px_80px_rgba(26,24,48,.18)] sm:max-w-[620px]">
-          <DialogHeader>
-            <DialogTitle>{issuingRequestId ? `Issue card request ${issuingRequestId}` : "Create a virtual card"}</DialogTitle>
-            <DialogDescription>Choose the owning Kripicard account and card details. The admin must complete a crypto payment before the demo issues the card.</DialogDescription>
-          </DialogHeader>
-          <div className="grid gap-5 py-2">
-            <div className="grid gap-2">
-              <Label>Issuing account</Label>
-              <Select value={selectedAccountId} onValueChange={setSelectedAccountId}>
-                <SelectTrigger className="h-11 w-full"><SelectValue placeholder="Select a Kripicard account" /></SelectTrigger>
-                <SelectContent>
-                  {eligibleCardAccounts.map((account) => {
-                    const assignedClient = clients.find((client) => client.accountIds.includes(account.id));
-                    return <SelectItem key={account.id} value={account.id}>{account.name} · {assignedClient?.name ?? "Unassigned"}</SelectItem>;
-                  })}
-                </SelectContent>
-              </Select>
-              {issuingRequestClient && !eligibleCardAccounts.length && <Alert className="border-amber-200 bg-amber-50"><AlertTriangle className="text-amber-700" /><AlertTitle>No account assigned</AlertTitle><AlertDescription>Connect a Kripicard account to {issuingRequestClient.name} before issuing this requested card.</AlertDescription></Alert>}
-              {selectedCardAccount && <div className="flex flex-wrap items-center justify-between gap-2 rounded-[14px] border border-[#e9e6f0] bg-[#faf9fc] px-3.5 py-3 text-sm"><span><strong>Account balance is informational only</strong></span><span className="text-[#777287]">{selectedCardClient ? `Card will appear for ${selectedCardClient.name}` : "No Telegram client assigned"}</span></div>}
-            </div>
-
-            <div className="grid gap-4 sm:grid-cols-2">
-              <div className="grid gap-2"><Label>Card BIN</Label><Select value={cardForm.bin} onValueChange={(value) => setCardForm((current) => ({ ...current, bin: value }))}><SelectTrigger className="h-11"><SelectValue /></SelectTrigger><SelectContent>{binOptions.map((bin) => <SelectItem key={bin.value} value={bin.value}>{bin.label}</SelectItem>)}</SelectContent></Select></div>
-              <div className="grid gap-2"><Label htmlFor="card-amount">Initial balance (USD)</Label><Input id="card-amount" type="number" min={minimumFunding} step="1" value={cardForm.amount} onChange={(event) => setCardForm((current) => ({ ...current, amount: Number(event.target.value) }))} /><p className="text-xs text-[#8f8b9c]">Your configured minimum is {formatUsd(minimumFunding)}.</p></div>
-              <div className="grid gap-2"><Label htmlFor="card-name">Name on card</Label><Input id="card-name" value={cardForm.nameOnCard} onChange={(event) => setCardForm((current) => ({ ...current, nameOnCard: event.target.value }))} placeholder="At least 2 characters" /></div>
-              <div className="grid gap-2"><Label htmlFor="card-email">Cardholder email <span className="font-normal text-[#9692a3]">· optional</span></Label><Input id="card-email" type="email" value={cardForm.email} onChange={(event) => setCardForm((current) => ({ ...current, email: event.target.value }))} placeholder={selectedCardAccount?.mailbox ?? "Defaults to connected inbox"} /></div>
-              {selectedBinRequiresDob && <div className="grid gap-2 sm:col-span-2"><Label htmlFor="card-dob">Date of birth</Label><Input id="card-dob" type="date" value={cardForm.dateOfBirth} onChange={(event) => setCardForm((current) => ({ ...current, dateOfBirth: event.target.value }))} /><p className="text-xs text-[#8f8b9c]">Required by the selected US, Singapore, or UK card product.</p></div>}
-            </div>
-
-            <div className="rounded-[18px] border border-[#ddd9f5] bg-[#f3f1ff] p-4">
-              <div className="flex items-center justify-between text-sm"><span className="text-[#625c86]">Initial card balance</span><strong>{formatUsd(cardForm.amount || 0)}</strong></div>
-              <div className="mt-2 flex items-center justify-between text-sm"><span className="text-[#625c86]">Demo provider fee · $1 + 4%</span><strong>{formatUsd(cardProviderFee)}</strong></div>
-              <div className="mt-3 flex items-center justify-between border-t border-[#d9d4f0] pt-3"><span className="font-semibold text-[#302b68]">Legacy demo total</span><strong className="text-lg text-[#302b68]">{formatUsd(createCardCryptoTotal)}</strong></div>
-              <p className="mt-2 text-xs leading-5 text-[#777287]">Demo uses USDT ≈ USD for the payment preview. Production must display the exact amount/address returned by the approved provider or payment service.</p>
-            </div>
-              {selectedCardClient && cardsForClient(selectedCardClient).length >= maxCardsPerClient && <Alert className="border-red-200 bg-red-50"><AlertTriangle className="text-red-700" /><AlertTitle>Client card limit reached</AlertTitle><AlertDescription>{selectedCardClient.name} already has {cardsForClient(selectedCardClient).length} cards. Raise your platform limit or use another client account.</AlertDescription></Alert>}
-          </div>
-          <DialogFooter>
-            <Button variant="outline" className="rounded-xl" onClick={() => { setCreateCardDialogOpen(false); setIssuingRequestId(null); }}>Cancel</Button>
-            {createCardStage === "form" ? <Button onClick={beginCreateCardPayment} disabled={!selectedAccountId || !cardForm.nameOnCard.trim()} className="rounded-xl bg-[#6157e7] text-white hover:bg-[#554bcf]"><WalletCards className="size-4" />Continue legacy demo</Button> : <Button onClick={createCard} className="rounded-xl bg-[#6157e7] text-white hover:bg-[#554bcf]"><RefreshCw className="size-4" />Complete legacy demo</Button>}
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog open={fundCardDialogOpen} onOpenChange={(open) => { setFundCardDialogOpen(open); if (!open) { setFundCardId(null); setFundCardScopeAccountId(null); setFundCardStage("form"); setFundCardPaymentId(""); setFundCardRequestId(null); } }}>
-        <DialogContent className="max-h-[90vh] overflow-y-auto rounded-[24px] border-[#e5e2ee] p-7 shadow-[0_28px_80px_rgba(26,24,48,.18)] sm:max-w-[580px]">
-          <DialogHeader>
-            <div className="mb-1 flex items-center gap-2"><Badge className="rounded-full bg-[#6157e7] text-white">Legacy prototype</Badge><Badge variant="outline" className="rounded-full">Not a production provider flow</Badge></div>
-            <DialogTitle>{fundCardRequestId ? `Legacy fund demo ${fundCardRequestId}` : "Legacy local funding demo"}</DialogTitle>
-            <DialogDescription>This local fallback is retained only for prototype rendering. It never calls Kripicard; production Phase 16 funding is executed only from an accepted request in Request Center.</DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4 py-2">
-            <div className="grid gap-2"><Label>Card</Label><Select value={fundCardId ?? ""} onValueChange={(value) => { setFundCardId(value); setFundCardStage("form"); setFundCardPaymentId(""); }}><SelectTrigger className="h-11"><SelectValue placeholder="Select a card" /></SelectTrigger><SelectContent>{fundCardChoices.map((card) => { const account = accounts.find((item) => item.id === card.accountId); return <SelectItem key={card.id} value={card.id}>•{card.last4} · {card.label} · {account?.name}</SelectItem>; })}</SelectContent></Select></div>
-            {fundCard && fundCardAccount ? <>
-              <div className="grid grid-cols-2 gap-3"><div className="rounded-[16px] border border-[#eceaf2] bg-[#faf9fc] p-4"><p className="text-xs text-[#9692a3]">Card receives</p><p className="mt-1 text-lg font-semibold">{formatUsd(fundCardAmount || 0)}</p><p className="mt-1 text-xs text-[#9692a3]">Current: {formatUsd(fundCard.balance)}</p></div><div className="rounded-[16px] border border-[#eceaf2] bg-[#faf9fc] p-4"><p className="text-xs text-[#9692a3]">Owning account</p><p className="mt-1 truncate text-sm font-semibold">{fundCardAccount.name}</p><p className="mt-1 text-xs text-[#9692a3]">Legacy prototype only</p></div></div>
-              <div className="grid gap-2"><Label htmlFor="fund-card-amount">Amount to add (USD)</Label><Input id="fund-card-amount" type="number" min={minimumFunding} step="1" value={fundCardAmount} onChange={(event) => { setFundCardAmount(Number(event.target.value)); setFundCardStage("form"); setFundCardPaymentId(""); }} /><p className="text-xs text-[#8f8b9c]">Configured minimum: {formatUsd(minimumFunding)}.</p></div>
-              <div className="rounded-[18px] border border-[#d9d4f0] bg-[#f3f1ff] p-4 text-sm"><div className="flex justify-between"><span className="text-[#625c86]">Card credit</span><strong>{formatUsd(fundCardAmount || 0)}</strong></div><div className="mt-2 flex justify-between"><span className="text-[#625c86]">Demo provider fee · $1 + 4%</span><strong>{formatUsd(fundCardProviderFee)}</strong></div><div className="mt-3 flex justify-between border-t border-[#d9d4f0] pt-3"><span className="font-semibold text-[#302b68]">Legacy demo total</span><strong className="text-lg text-[#302b68]">{formatUsd(fundCardCryptoTotal)}</strong></div></div>
-            </> : <div className="rounded-[18px] border border-dashed border-[#d9d5e4] bg-[#faf9fc] p-6 text-center"><CreditCard className="mx-auto size-7 text-[#aaa6b8]" /><p className="mt-2 text-sm font-semibold text-[#49455a]">Choose a card only when exercising the legacy local prototype.</p></div>}
-          </div>
-          <DialogFooter>
-            <Button variant="outline" className="rounded-xl" onClick={() => setFundCardDialogOpen(false)}>{fundCardStage === "completed" ? "Done" : "Cancel"}</Button>
-            {fundCardStage === "form" && <Button disabled={!fundCard || !fundCardAccount || fundCardAmount < minimumFunding} onClick={beginFundCardPayment} className="rounded-xl bg-[#6157e7] text-white hover:bg-[#554bcf]"><WalletCards className="size-4" />Continue legacy demo</Button>}
-            {fundCardStage === "payment" && <Button onClick={confirmFundCard} className="rounded-xl bg-[#6157e7] text-white hover:bg-[#554bcf]"><RefreshCw className="size-4" />Complete legacy demo</Button>}
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -2950,7 +2725,7 @@ function TransactionsView({ transactions, clientName, search, issues, onReconcil
   const paging = usePaginatedItems(matchingTransactions);
   return (
     <>
-      <PageIntro title="Card transactions" description="Scheduled Kripicard activity with fingerprint deduplication and current-owner Telegram notifications." action={<Button variant="outline" className="h-11 rounded-[14px] border-[#dedbe8] bg-white" onClick={() => toast.info("Phase 17 scheduled sync runs through the protected Kripicard transaction job. Manual per-card sync remains available from card details.")}><RefreshCw className="size-4" />Sync status</Button>} />
+      <PageIntro title="Card transactions" description="Scheduled Kripicard activity with fingerprint deduplication and current-owner Telegram notifications." action={<Button variant="outline" className="h-11 rounded-[14px] border-[#dedbe8] bg-white" onClick={() => toast.info("Scheduled sync runs through the protected Kripicard transaction job. Manual per-card sync remains available from card details.")}><RefreshCw className="size-4" />Sync status</Button>} />
       {issues.length > 0 && <Card className="mb-4 surface-card rounded-[22px] border-amber-200 bg-amber-50/40"><CardHeader><div className="flex items-center justify-between gap-3"><div><CardTitle className="text-base">Notification reconciliation</CardTitle><p className="mt-1 text-sm text-[#777287]">Failed deliveries can be safely retried only while the original user still owns the account. Ownership-change skips are never resent automatically.</p></div><Badge variant="outline" className="rounded-full border-amber-300 bg-white text-amber-800">{issues.length} issue{issues.length === 1 ? "" : "s"}</Badge></div></CardHeader><CardContent className="space-y-2">{issues.slice(0, 8).map((issue) => <div key={issue.id} className="flex flex-col gap-3 rounded-[14px] border border-amber-200 bg-white p-3 sm:flex-row sm:items-center"><div className="min-w-0 flex-1"><p className="truncate text-sm font-semibold">•{issue.last4 ?? "????"} · {issue.merchant || issue.transactionType || "Provider transaction"}</p><p className="mt-1 text-xs text-[#8f8b9c]">{issue.notificationStatus} · {issue.notificationError || "delivery mismatch"} · {new Date(issue.occurredAt).toLocaleString()}</p></div><div className="flex gap-2">{issue.notificationStatus === "failed" && <Button size="sm" variant="outline" className="rounded-xl" onClick={() => void onReconcileIssue(issue.id, "retry")}>Retry safely</Button>}<Button size="sm" variant="outline" className="rounded-xl" onClick={() => void onReconcileIssue(issue.id, "acknowledge")}>Acknowledge</Button></div></div>)}</CardContent></Card>}
       <div className="mb-4 grid gap-4 sm:grid-cols-3"><MetricCard icon={CheckCircle2} label="Successful volume" value={formatUsd(338.99)} foot="Across the visible period" tone="cyan" /><MetricCard icon={XCircle} label="Declined" value={formatUsd(9.99)} foot="Insufficient balance" tone="amber" /><MetricCard icon={ShieldCheck} label="Verification events" value="1" foot="OTP event — no code exposed" tone="violet" /></div>
       <Card className="data-table overflow-hidden surface-card rounded-[24px]"><div className="overflow-x-auto"><Table><TableHeader><TableRow className="bg-[#faf9fc]"><TableHead className="pl-6">Transaction</TableHead><TableHead>Client</TableHead><TableHead>Merchant</TableHead><TableHead>Type</TableHead><TableHead>Amount</TableHead><TableHead>Status</TableHead><TableHead>Telegram</TableHead></TableRow></TableHeader><TableBody>{paging.pageItems.map((tx) => <TableRow key={tx.id}><TableCell className="pl-6"><span className="font-semibold text-[#353146]">{tx.id}</span><span className="mt-0.5 block text-xs text-[#9692a3]">{tx.date}</span></TableCell><TableCell>{clientName(tx.clientId)}<span className="block text-xs text-[#9d99aa]">card •{tx.cardLast4}</span></TableCell><TableCell className="font-semibold text-[#353146]">{tx.merchant}</TableCell><TableCell>{tx.type}</TableCell><TableCell className="font-semibold text-[#353146]">{formatUsd(tx.amount)}</TableCell><TableCell><Badge variant="outline" className={`${tx.status === "Success" ? "border-[#bfe9d9] bg-[#eaf8f2] text-[#167957]" : "border-[#f1c7cc] bg-[#fff0f2] text-[#b53847]"} rounded-full`}>{tx.status}</Badge></TableCell><TableCell><Badge variant="outline" className="rounded-full">{tx.notificationStatus ?? "demo"}</Badge></TableCell></TableRow>)}</TableBody></Table></div><ListPagination page={paging.page} pageSize={paging.pageSize} totalItems={paging.totalItems} totalPages={paging.totalPages} onPageChange={paging.setPage} /></Card>
