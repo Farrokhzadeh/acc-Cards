@@ -203,6 +203,12 @@ async function prepareIssuance(requestId: string, session: AuthSession, request:
     if (!configuredBin) throw new ApiError(409, "unsupported_bin", "The requested BIN is no longer enabled by the verified provider catalogue.");
     if (configuredBin.requiresDob && !row.date_of_birth) throw new ApiError(409, "date_of_birth_required", "This BIN requires a date of birth before issuance.");
     const account = await loadAccountForIssue(db, row);
+    let apiKey: string;
+    try {
+      apiKey = decryptSecret(account.encrypted_api_key);
+    } catch {
+      throw new ApiError(409, "secret_unavailable", "The selected account needs a valid encrypted Kripicard API key.");
+    }
 
     const operationKey = `card-create:${row.id}:${randomUUID()}`;
     const created = await db.query<{ id: string }>(
@@ -218,7 +224,7 @@ async function prepareIssuance(requestId: string, session: AuthSession, request:
     );
     await event(db, { requestId: row.id, fromStatus: row.status, toStatus: "issuing", adminId: session.principal.id, metadata: { operationId, accountId: account.id } });
     await audit(db, { adminId: session.principal.id, action: "card_request.issue_started", entityId: row.id, requestId: traceId, ip: requestIp(request), metadata: { reference: row.reference, operationId, accountId: account.id, bin: row.bin, amountUsdCents: String(row.initial_amount_usd_cents) } });
-    return { row: { ...row, status: "issuing" }, account, operationId };
+    return { row: { ...row, status: "issuing" }, account, operationId, apiKey };
   });
 }
 
@@ -367,8 +373,8 @@ export async function issueApprovedCardRequest(requestId: string, session: AuthS
     }
     throw error;
   }
-  const { row, account, operationId } = prepared;
-  const client = new KripicardClient({ apiKey: decryptSecret(account.encrypted_api_key) });
+  const { row, account, operationId, apiKey } = prepared;
+  const client = new KripicardClient({ apiKey });
 
   // Safe pre-write snapshot: if this read fails, no purchase was attempted.
   let before;
