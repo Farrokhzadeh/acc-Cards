@@ -142,11 +142,16 @@ async function setPaymentDeclared(userId: string) {
   await getPool().query(`UPDATE telegram_users SET payment_declared_at = now(), updated_at = now() WHERE id = $1::uuid`, [userId]);
 }
 
-async function setPaymentReceipt(userId: string, objectKey: string, mime: string) {
-  await getPool().query(
-    `UPDATE telegram_users SET payment_receipt_object_key = $2, payment_receipt_mime = $3, payment_receipt_at = now(), updated_at = now() WHERE id = $1::uuid`,
-    [userId, objectKey, mime],
-  );
+async function setPaymentReceiptPending(userId: string, objectKey: string, mime: string) {
+  await withTransaction(async (db) => {
+    await db.query(
+      `UPDATE telegram_users
+          SET payment_receipt_object_key=$2,payment_receipt_mime=$3,payment_receipt_at=now(),payment_status='pending',updated_at=now()
+        WHERE id=$1::uuid`,
+      [userId, objectKey, mime],
+    );
+    await db.query(`DELETE FROM telegram_bot_states WHERE user_id=$1::uuid`, [userId]);
+  });
 }
 
 async function setPaymentAmount(userId: string, cents: number) {
@@ -208,9 +213,12 @@ async function handlePaymentReceiptMedia(client: TelegramClient, user: BotUser, 
       originalFilename: document?.file_name ?? `payment-receipt-${message.message_id}.jpg`,
       declaredMimeType: document?.mime_type ?? "image/jpeg",
     });
-    await setPaymentReceipt(user.id, stored.objectKey, stored.detectedMimeType);
-    await getPool().query(`UPDATE telegram_users SET payment_status = 'pending', updated_at = now() WHERE id = $1::uuid`, [user.id]);
-    await getPool().query(`DELETE FROM telegram_bot_states WHERE user_id=$1::uuid`, [user.id]);
+    try {
+      await setPaymentReceiptPending(user.id, stored.objectKey, stored.detectedMimeType);
+    } catch (error) {
+      await deletePrivateSupportAttachment(stored.objectKey).catch(() => {});
+      throw error;
+    }
     await sendWaitingScreen(client, user, chatId);
   } catch (error) {
     await client.sendMessage({ chatId, text: error instanceof ApiError ? escapeHtml(error.message) : pick(KYC.errDocGeneric, user.lang) });
