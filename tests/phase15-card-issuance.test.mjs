@@ -170,6 +170,8 @@ test("onboarding can switch accounts only after safely retryable issuance failur
   assert.match(onboarding, /assignAccountInTransaction/);
   assert.match(onboarding, /onboarding_account_locked/);
   assert.match(onboarding, /onboarding\.issuing_account\.changed/);
+  assert.match(onboarding, /email=\$3/);
+  assert.match(onboarding, /account\.rows\[0\]\.email/);
   assert.match(onboarding, /encrypted_api_key\.startsWith\("v1\."\)/);
   assert.doesNotMatch(onboarding, /\["approved", "issue_failed", "needs_reconciliation"/);
 });
