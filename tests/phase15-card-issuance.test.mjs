@@ -14,6 +14,7 @@ const dashboard = await readFile(new URL("../app/dashboard-app.tsx", import.meta
 const activateRoute = await readFile(new URL("../app/api/v1/clients/[id]/activate/route.ts", import.meta.url), "utf8");
 const onboarding = await readFile(new URL("../server/clients/onboarding.ts", import.meta.url), "utf8");
 const paymentSettingsRoute = await readFile(new URL("../app/api/v1/settings/payment-card/route.ts", import.meta.url), "utf8");
+const cardPolicyRoute = await readFile(new URL("../app/api/v1/settings/card-policy/route.ts", import.meta.url), "utf8");
 const readiness = await readFile(new URL("../server/providers/kripicard/readiness.ts", import.meta.url), "utf8");
 const contract = await readFile(new URL("../docs/KRIPICARD-PROVIDER-CONTRACT.md", import.meta.url), "utf8");
 const success = JSON.parse(await readFile(new URL("./fixtures/kripicard/create-card.json", import.meta.url), "utf8"));
@@ -146,4 +147,18 @@ test("first-card configuration validates BINs early and does not retroactively a
   assert.match(onboarding, /payment_amount_usd_cents/);
   assert.doesNotMatch(onboarding, /amount_below_minimum/);
   assert.doesNotMatch(onboarding, /minCents/);
+});
+
+
+test("onboarding checks live card-creation gates before persisting assignment/request state", () => {
+  const preflight = activateRoute.indexOf("assertCardCreationAvailable()");
+  const ensure = activateRoute.indexOf("ensureOnboardingCardRequest");
+  assert.ok(preflight >= 0 && ensure > preflight);
+  assert.match(issuance, /export async function assertCardCreationAvailable/);
+  assert.match(onboarding, /assignAccountInTransaction/);
+});
+
+test("legacy card-policy mutation is closed so provider BIN catalogue cannot drift through hidden UI", () => {
+  assert.match(cardPolicyRoute, /card_policy_mutation_disabled/);
+  assert.match(cardPolicyRoute, /requireCsrf/);
 });
