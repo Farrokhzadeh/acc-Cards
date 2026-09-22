@@ -3272,7 +3272,7 @@ function ClientPaymentSection({ clientId }: { clientId: string | null }) {
         <div className="mt-2 flex flex-wrap items-center gap-2">
           {payment.status === "pending" && (
             <>
-              <Button size="sm" className="rounded-xl bg-[#6157e7] text-white hover:bg-[#554bcf]" disabled={busy} onClick={() => void act("accept")}>Accept receipt</Button>
+              <Button size="sm" className="rounded-xl bg-[#6157e7] text-white hover:bg-[#554bcf]" disabled={busy} onClick={() => { if (!payment.hasReceipt && !window.confirm("No receipt on file for this payment. Accept anyway?")) return; void act("accept"); }}>Accept receipt</Button>
               <Button size="sm" variant="outline" className="rounded-xl border-red-200 text-red-700 hover:bg-red-50" disabled={busy} onClick={() => void act("deny")}>Deny</Button>
             </>
           )}
