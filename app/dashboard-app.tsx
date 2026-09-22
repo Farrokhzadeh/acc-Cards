@@ -557,7 +557,6 @@ export default function DashboardApp() {
         setAccounts(nextAccounts);
         setCards(nextCards);
         setClients(nextClients);
-        // Keep unimplemented domains from showing stale demo records beside real DB records.
         setAccountEmails([]);
         setFundingRequests([]);
         setTransactions([]);
@@ -571,7 +570,8 @@ export default function DashboardApp() {
           window.location.replace("/login");
           return;
         }
-        console.warn("AccAbad backend snapshot unavailable; keeping local demo data.", error);
+        console.error("AccAbad backend snapshot unavailable.", error);
+        toast.error("AccAbad backend is unavailable. No local fallback data or actions will be used.");
       });
     return () => controller.abort();
   }, []);
@@ -1146,13 +1146,17 @@ export default function DashboardApp() {
       setDeleteAccountId(null);
       return;
     }
+    if (!backendDataLoaded) {
+      toast.error("Backend unavailable. The account was not changed.");
+      return;
+    }
     try {
-      if (backendDataLoaded) await archiveAccount(id);
+      await archiveAccount(id);
       setAccounts((current) => current.filter((account) => account.id !== id));
       setCards((current) => current.filter((card) => card.accountId !== id));
       setAccountEmails((current) => current.filter((email) => email.accountId !== id));
       setDeleteAccountId(null);
-      toast.success(backendDataLoaded ? "Account archived and mailbox authorization disabled." : "Account removed from the local demo.");
+      toast.success("Account archived and mailbox authorization disabled.");
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Account archive failed.");
     }
@@ -1199,8 +1203,12 @@ export default function DashboardApp() {
     const target = clients.find((client) => client.id === clientId);
     if (!target) return;
     const nextBanned = !target.banned;
+    if (!backendDataLoaded) {
+      toast.error("Backend unavailable. Client access was not changed.");
+      return;
+    }
     try {
-      if (backendDataLoaded) await setClientBanned(clientId, nextBanned);
+      await setClientBanned(clientId, nextBanned);
       setClients((current) => current.map((client) => client.id === clientId ? { ...client, banned: nextBanned } : client));
       toast.success(nextBanned ? "Client banned from the bot." : "Client unbanned.");
     } catch (error) {
@@ -1212,8 +1220,7 @@ export default function DashboardApp() {
     const card = cards.find((item) => item.id === cardId);
     if (!card) return;
     if (!backendDataLoaded) {
-      setCards((current) => current.map((item) => item.id === cardId ? { ...item, frozen: !item.frozen } : item));
-      toast.success("Demo card status updated.");
+      toast.error("Backend unavailable. Card state was not changed.");
       return;
     }
     if (cardStatePendingId) return;
@@ -1308,7 +1315,7 @@ export default function DashboardApp() {
   const advanceRequest = async (request: FundingRequest) => {
     if (request.status !== "pending_review") return;
     if (!backendDataLoaded) {
-      setFundingRequests((current) => current.map((item) => item.id === request.id ? { ...item, status: "accepted" } : item));
+      toast.error("Backend unavailable. Funding request was not changed.");
       return;
     }
     try {
@@ -1334,8 +1341,8 @@ export default function DashboardApp() {
   const rejectRequest = async () => {
     if (!activeRequest) return;
     if (!backendDataLoaded) {
-      setFundingRequests((current) => current.map((item) => item.id === activeRequest.id ? { ...item, status: "rejected" } : item));
-      setRejectDialogOpen(false); setRejectNote(""); return;
+      toast.error("Backend unavailable. Funding request was not changed.");
+      return;
     }
     try {
       await reviewFundingRequest(activeRequest.id, { action: "reject", note: rejectNote.trim() || null });
@@ -1455,10 +1462,7 @@ export default function DashboardApp() {
     const body = chatDraft.trim();
     if ((!body && !supportAttachment) || !activeChatId) return;
     if (!backendDataLoaded) {
-      setMessages((current) => ({ ...current, [activeChatId]: [...(current[activeChatId] ?? []), { id: `m-${Date.now()}`, from: "admin", body, time: "Now", attachment: supportAttachment ? { filename: supportAttachment.name } : null }] }));
-      setChatDraft("");
-      setSupportAttachment(null);
-      toast.success("Demo message queued for Telegram.");
+      toast.error("Backend unavailable. The message was not queued.");
       return;
     }
     try {
@@ -2450,7 +2454,7 @@ function TransactionsView({ transactions, clientName, search, issues, onReconcil
       <PageIntro title="Card transactions" description="Scheduled Kripicard activity with fingerprint deduplication and current-owner Telegram notifications." action={<Button variant="outline" className="h-11 rounded-[14px] border-[#dedbe8] bg-white" onClick={() => toast.info("Scheduled sync runs through the protected Kripicard transaction job. Manual per-card sync remains available from card details.")}><RefreshCw className="size-4" />Sync status</Button>} />
       {issues.length > 0 && <Card className="mb-4 surface-card rounded-[22px] border-amber-200 bg-amber-50/40"><CardHeader><div className="flex items-center justify-between gap-3"><div><CardTitle className="text-base">Notification reconciliation</CardTitle><p className="mt-1 text-sm text-[#777287]">Failed deliveries can be safely retried only while the original user still owns the account. Ownership-change skips are never resent automatically.</p></div><Badge variant="outline" className="rounded-full border-amber-300 bg-white text-amber-800">{issues.length} issue{issues.length === 1 ? "" : "s"}</Badge></div></CardHeader><CardContent className="space-y-2">{issues.slice(0, 8).map((issue) => <div key={issue.id} className="flex flex-col gap-3 rounded-[14px] border border-amber-200 bg-white p-3 sm:flex-row sm:items-center"><div className="min-w-0 flex-1"><p className="truncate text-sm font-semibold">•{issue.last4 ?? "????"} · {issue.merchant || issue.transactionType || "Provider transaction"}</p><p className="mt-1 text-xs text-[#8f8b9c]">{issue.notificationStatus} · {issue.notificationError || "delivery mismatch"} · {new Date(issue.occurredAt).toLocaleString()}</p></div><div className="flex gap-2">{issue.notificationStatus === "failed" && <Button size="sm" variant="outline" className="rounded-xl" onClick={() => void onReconcileIssue(issue.id, "retry")}>Retry safely</Button>}<Button size="sm" variant="outline" className="rounded-xl" onClick={() => void onReconcileIssue(issue.id, "acknowledge")}>Acknowledge</Button></div></div>)}</CardContent></Card>}
       <div className="mb-4 grid gap-4 sm:grid-cols-3"><MetricCard icon={CheckCircle2} label="Successful volume" value={formatUsd(338.99)} foot="Across the visible period" tone="cyan" /><MetricCard icon={XCircle} label="Declined" value={formatUsd(9.99)} foot="Insufficient balance" tone="amber" /><MetricCard icon={ShieldCheck} label="Verification events" value="1" foot="OTP event — no code exposed" tone="violet" /></div>
-      <Card className="data-table overflow-hidden surface-card rounded-[24px]"><div className="overflow-x-auto"><Table><TableHeader><TableRow className="bg-[#faf9fc]"><TableHead className="pl-6">Transaction</TableHead><TableHead>Client</TableHead><TableHead>Merchant</TableHead><TableHead>Type</TableHead><TableHead>Amount</TableHead><TableHead>Status</TableHead><TableHead>Telegram</TableHead></TableRow></TableHeader><TableBody>{paging.pageItems.map((tx) => <TableRow key={tx.id}><TableCell className="pl-6"><span className="font-semibold text-[#353146]">{tx.id}</span><span className="mt-0.5 block text-xs text-[#9692a3]">{tx.date}</span></TableCell><TableCell>{clientName(tx.clientId)}<span className="block text-xs text-[#9d99aa]">card •{tx.cardLast4}</span></TableCell><TableCell className="font-semibold text-[#353146]">{tx.merchant}</TableCell><TableCell>{tx.type}</TableCell><TableCell className="font-semibold text-[#353146]">{formatUsd(tx.amount)}</TableCell><TableCell><Badge variant="outline" className={`${tx.status === "Success" ? "border-[#bfe9d9] bg-[#eaf8f2] text-[#167957]" : "border-[#f1c7cc] bg-[#fff0f2] text-[#b53847]"} rounded-full`}>{tx.status}</Badge></TableCell><TableCell><Badge variant="outline" className="rounded-full">{tx.notificationStatus ?? "demo"}</Badge></TableCell></TableRow>)}</TableBody></Table></div><ListPagination page={paging.page} pageSize={paging.pageSize} totalItems={paging.totalItems} totalPages={paging.totalPages} onPageChange={paging.setPage} /></Card>
+      <Card className="data-table overflow-hidden surface-card rounded-[24px]"><div className="overflow-x-auto"><Table><TableHeader><TableRow className="bg-[#faf9fc]"><TableHead className="pl-6">Transaction</TableHead><TableHead>Client</TableHead><TableHead>Merchant</TableHead><TableHead>Type</TableHead><TableHead>Amount</TableHead><TableHead>Status</TableHead><TableHead>Telegram</TableHead></TableRow></TableHeader><TableBody>{paging.pageItems.map((tx) => <TableRow key={tx.id}><TableCell className="pl-6"><span className="font-semibold text-[#353146]">{tx.id}</span><span className="mt-0.5 block text-xs text-[#9692a3]">{tx.date}</span></TableCell><TableCell>{clientName(tx.clientId)}<span className="block text-xs text-[#9d99aa]">card •{tx.cardLast4}</span></TableCell><TableCell className="font-semibold text-[#353146]">{tx.merchant}</TableCell><TableCell>{tx.type}</TableCell><TableCell className="font-semibold text-[#353146]">{formatUsd(tx.amount)}</TableCell><TableCell><Badge variant="outline" className={`${tx.status === "Success" ? "border-[#bfe9d9] bg-[#eaf8f2] text-[#167957]" : "border-[#f1c7cc] bg-[#fff0f2] text-[#b53847]"} rounded-full`}>{tx.status}</Badge></TableCell><TableCell><Badge variant="outline" className="rounded-full">{tx.notificationStatus ?? "unknown"}</Badge></TableCell></TableRow>)}</TableBody></Table></div><ListPagination page={paging.page} pageSize={paging.pageSize} totalItems={paging.totalItems} totalPages={paging.totalPages} onPageChange={paging.setPage} /></Card>
     </>
   );
 }
