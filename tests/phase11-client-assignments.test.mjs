@@ -41,14 +41,14 @@ test("assignment writes require authenticated permission and CSRF", () => {
   assert.match(itemRoute, /requireCsrf\(request, session\)/);
 });
 
-test("single assign/unassign and replace-all operations are transactionally supported", () => {
-  assert.match(service, /assignAccount/);
-  assert.match(service, /unassignAccount/);
-  assert.match(service, /unassignAllAccounts/);
-  assert.match(service, /replaceClientAccounts/);
-  assert.match(service, /withTransaction/);
-  assert.match(collectionRoute, /export async function PUT/);
-  assert.match(collectionRoute, /export async function DELETE/);
+test("standalone assignment mutation APIs are closed and onboarding owns assignment writes", () => {
+  assert.match(collectionRoute, /assignment_managed_by_onboarding/);
+  assert.match(itemRoute, /assignment_managed_by_onboarding/);
+  assert.doesNotMatch(collectionRoute, /assignAccount\(/);
+  assert.doesNotMatch(collectionRoute, /replaceClientAccounts\(/);
+  assert.doesNotMatch(itemRoute, /assignAccount\(/);
+  assert.doesNotMatch(itemRoute, /unassignAccount\(/);
+  assert.match(activateRoute, /assignAccount\(/);
 });
 
 test("assignment changes produce history and redacted audit records in the same transaction", () => {
