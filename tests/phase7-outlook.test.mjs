@@ -72,3 +72,10 @@ test("Phase 7 exposes a protected background Outlook sync hook", () => {
   assert.ok(microsoftService.includes("VALUES ('worker'"));
   assert.match(envSchema, /OUTLOOK_SYNC_JOB_SECRET/);
 });
+
+
+test("Outlook can fetch message body transiently for trusted OTP parsing without persistence", () => {
+  assert.match(microsoftClient, /getMicrosoftMessageText/);
+  assert.match(microsoftClient, /\$select.*body/);
+  assert.doesNotMatch(microsoftService, /body_html_ref\s*=/);
+});
