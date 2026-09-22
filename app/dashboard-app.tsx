@@ -2910,6 +2910,26 @@ function ClientPaymentSection({ clientId }: { clientId: string | null }) {
         toast.error("Enable MFA in Settings → Security before performing live provider card writes.");
         return;
       }
+      if (error instanceof AdminApiError && error.code === "feature_disabled") {
+        toast.error("Live card creation is disabled by deployment configuration. Enable the live-provider and card-creation environment gates, including LIVE_PROVIDER_WRITE_CONFIRMATION, then recreate the app and worker containers.");
+        return;
+      }
+      if (error instanceof AdminApiError && error.code === "runtime_kill_switch") {
+        toast.error("Live card creation is disabled by an emergency runtime control. Open Operations and enable both Provider writes and Card creation.");
+        return;
+      }
+      if (error instanceof AdminApiError && error.code === "provider_money_not_ready") {
+        const details = error.details as { blockers?: unknown } | undefined;
+        const blockers = Array.isArray(details?.blockers) ? details.blockers.filter((value): value is string => typeof value === "string") : [];
+        toast.error(blockers.length
+          ? `Card creation is blocked by provider readiness: ${blockers.join(", ")}. Review Settings → Kripicard money readiness.`
+          : error.message);
+        return;
+      }
+      if (error instanceof AdminApiError && error.code === "read_only_mode") {
+        toast.error("AccAbad is in emergency read-only mode. Disable Read-only mode from Operations before creating a card.");
+        return;
+      }
       toast.error(error instanceof Error ? error.message : "Onboarding action failed.");
     } finally {
       setBusy(false);
