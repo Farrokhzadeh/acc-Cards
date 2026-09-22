@@ -131,3 +131,10 @@ test("admin API preserves structured backend error details for readiness and ret
   assert.match(dashboard, /provider_money_not_ready/);
   assert.match(dashboard, /details\.blockers|details\?\.blockers/);
 });
+
+
+test("funding UI explains runtime and read-only provider gates", () => {
+  assert.match(dashboard, /runtime_kill_switch/);
+  assert.match(dashboard, /LIVE_PROVIDER_WRITE_CONFIRMATION/);
+  assert.match(dashboard, /emergency read-only mode/i);
+});
