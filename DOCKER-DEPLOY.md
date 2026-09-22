@@ -92,11 +92,20 @@ Provider writes are **OFF** by default (safe). When you're ready, set in `.env`:
 
 ```env
 ENABLE_LIVE_PROVIDER_WRITES=true
-ENABLE_KRIPICARD_CARD_CREATION=true      # and/or ENABLE_KRIPICARD_CARD_FUNDING=true
 LIVE_PROVIDER_WRITE_CONFIRMATION=ACCABAD_LIVE_WRITES_ENABLED
+ENABLE_KRIPICARD_CARD_STATE_WRITES=true  # optional: freeze/unfreeze
+ENABLE_KRIPICARD_CARD_CREATION=true      # optional: create first cards
+ENABLE_KRIPICARD_CARD_FUNDING=true       # optional: fund cards
 ```
 
-then `docker compose up -d`. Money-moving calls are **single-attempt (no auto-retry)** by design
+Enable only the operations you need, but keep the confirmation line whenever the master switch is
+true. Then recreate the services so they receive the new environment:
+
+```bash
+docker compose up -d --force-recreate accabad-admin accabad-worker
+```
+
+Money-moving calls are **single-attempt (no auto-retry)** by design
 to prevent double-spend.
 
 ## Common commands
@@ -120,6 +129,16 @@ docker compose up -d --build
 Any new migrations apply automatically via `db-migrate` on startup.
 
 ## Troubleshooting
+
+**Reverse proxy shows 502 immediately after enabling provider writes**
+- Check `docker compose logs accabad-admin accabad-worker`. If environment validation reports
+  `LIVE_PROVIDER_WRITE_CONFIRMATION`, add this exact line to `.env`:
+  ```env
+  LIVE_PROVIDER_WRITE_CONFIRMATION=ACCABAD_LIVE_WRITES_ENABLED
+  ```
+- Recreate both services with `docker compose up -d --force-recreate accabad-admin accabad-worker`.
+- A 502 in this situation means the application rejected an incomplete live-write configuration
+  and exited; it is not a Kripicard API response.
 
 **"The request origin could not be verified."** (on reauth, save bot token, or any save action)
 - `APP_BASE_URL` in `.env` does not match the URL in your browser's address bar. The CSRF check
