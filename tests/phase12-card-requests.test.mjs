@@ -18,13 +18,12 @@ test("Phase 12 adds immutable-style card request timeline records and review per
   assert.match(migration, /card_request_reference_seq/);
 });
 
-test("Telegram card request state machine collects documented provider fields", () => {
-  assert.match(bot, /card_request_amount/);
-  assert.match(bot, /card_request_name/);
-  assert.match(bot, /card_request_email/);
-  assert.match(bot, /card_request_dob/);
-  assert.match(bot, /card_request_confirm/);
-  assert.match(bot, /Submit request/);
+test("Telegram does not expose the legacy additional-card request state machine", () => {
+  assert.match(bot, /Additional card requests are not available/);
+  assert.doesNotMatch(bot, /async function beginCardRequest/);
+  assert.doesNotMatch(bot, /handleCardRequestText/);
+  assert.doesNotMatch(bot, /createTelegramCardRequest/);
+  assert.doesNotMatch(bot, /card_request_confirm/);
 });
 
 test("documented BINs and DOB-required BINs are configured without inventing a dynamic provider catalogue", () => {
@@ -64,10 +63,9 @@ test("card request admin routes require RBAC and CSRF for review writes", () => 
   assert.match(transitionRoute, /z\.enum\(\["approve", "reject"\]\)/);
 });
 
-test("Phase 12 does not call Kripicard createcard or perform provider money movement", () => {
+test("legacy card-request review service remains provider-write free", () => {
   assert.doesNotMatch(service, /createcard|fundcard|deposits\/create/i);
-  assert.doesNotMatch(bot, /createcard|fundcard|deposits\/create/i);
-  assert.match(bot, /does not create a Kripicard card or move funds/);
+  assert.doesNotMatch(bot, /createTelegramCardRequest/);
 });
 
 test("review changes are audited and notify the Telegram user through the durable outbox", () => {
