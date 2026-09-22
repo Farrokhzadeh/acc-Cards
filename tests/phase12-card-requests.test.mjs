@@ -77,10 +77,12 @@ test("review changes are audited and notify the Telegram user through the durabl
   assert.match(outbox, /card_request\.status_changed/);
 });
 
-test("admin UI loads and reviews production card requests rather than mutating only local state", () => {
+test("legacy card-request APIs remain internal and are not exposed as the customer first-card workflow", () => {
   assert.match(adminApi, /fetchCardRequests/);
   assert.match(adminApi, /reviewCardRequest/);
-  assert.match(dashboard, /fetchCardRequests\(\{ search, limit: 100 \}\)/);
-  assert.match(dashboard, /await reviewCardRequest/);
-  assert.match(dashboard, />Issue card/);
+  assert.doesNotMatch(dashboard, /fetchCardRequests\(/);
+  assert.doesNotMatch(dashboard, /await reviewCardRequest/);
+  assert.doesNotMatch(dashboard, />Issue card/);
+  assert.match(dashboard, /First-card onboarding/);
+  assert.match(bot, /Additional card requests are not available/);
 });
