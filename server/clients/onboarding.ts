@@ -78,10 +78,6 @@ export async function ensureOnboardingCardRequest(args: {
     if (!account.rows[0]) throw new ApiError(409, "account_unavailable", "The selected Kripicard account is unavailable.");
 
     const paymentConfig = await getPaymentCard();
-    const minCents = Math.round(paymentConfig.minLoadUsd * 100);
-    if (amountUsdCents < minCents) {
-      throw new ApiError(409, "amount_below_minimum", `The saved payment amount is below the current first-card minimum of $${paymentConfig.minLoadUsd}.`);
-    }
 
     const bins = await getCardRequestBins(db);
     const onboardingBin = paymentConfig.onboardingBin || bins[0]?.bin || "";
