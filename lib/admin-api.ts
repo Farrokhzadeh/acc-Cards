@@ -52,14 +52,20 @@ export type DashboardSnapshot = {
 };
 
 type ApiEnvelope<T> = { data: T; requestId: string };
-type ApiFailure = { error?: { code?: string; message?: string; requestId?: string } };
+type ApiFailure = { error?: { code?: string; message?: string; details?: unknown; requestId?: string } };
 
 export async function fetchDashboardSnapshot(signal?: AbortSignal): Promise<DashboardSnapshot> {
   return apiJson<DashboardSnapshot>("/api/v1/dashboard", { method: "GET", signal });
 }
 
 export class AdminApiError extends Error {
-  constructor(public readonly status: number, message: string, public readonly code?: string) {
+  constructor(
+    public readonly status: number,
+    message: string,
+    public readonly code?: string,
+    public readonly details?: unknown,
+    public readonly requestId?: string,
+  ) {
     super(message);
     this.name = "AdminApiError";
   }
@@ -83,7 +89,13 @@ async function apiFormData<T>(url: string, form: FormData, method = "POST"): Pro
   const body = await response.json().catch(() => ({})) as ApiEnvelope<T> | ApiFailure;
   if (!response.ok || !("data" in body)) {
     const failure = body as ApiFailure;
-    throw new AdminApiError(response.status, failure.error?.message ?? `HTTP ${response.status}`, failure.error?.code);
+    throw new AdminApiError(
+      response.status,
+      failure.error?.message ?? `HTTP ${response.status}`,
+      failure.error?.code,
+      failure.error?.details,
+      failure.error?.requestId,
+    );
   }
   return body.data;
 }
@@ -100,7 +112,13 @@ async function apiJson<T>(url: string, init?: RequestInit): Promise<T> {
   const body = await response.json().catch(() => ({})) as ApiEnvelope<T> | ApiFailure;
   if (!response.ok || !("data" in body)) {
     const failure = body as ApiFailure;
-    throw new AdminApiError(response.status, failure.error?.message ?? `HTTP ${response.status}`, failure.error?.code);
+    throw new AdminApiError(
+      response.status,
+      failure.error?.message ?? `HTTP ${response.status}`,
+      failure.error?.code,
+      failure.error?.details,
+      failure.error?.requestId,
+    );
   }
   return body.data;
 }
