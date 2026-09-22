@@ -5,7 +5,6 @@ import { ApiError } from "@/server/http/api";
 import { randomToken, sha256Hex } from "@/server/security/crypto";
 import { TelegramClient, type TelegramInlineKeyboard } from "@/server/providers/telegram/client";
 import { listStoredCardTransactions, setKripicardCardFrozenStateForTelegram } from "@/server/providers/kripicard/service";
-import { cancelTelegramCardRequest, createTelegramCardRequest, getCardRequestBins, getCardRequestPolicy, getTelegramCardRequest, getTelegramCardRequestCapacity } from "@/server/card-requests/service";
 import { cancelTelegramFundingRequest, createTelegramFundingRequest, getFundingPolicy, getTelegramFundingRequest, previewFundingQuote } from "@/server/funding/service";
 import { attachTelegramReceipt } from "@/server/funding/receipts";
 import { deletePrivateSupportAttachment, storePrivateSupportAttachment } from "@/server/support/storage";
@@ -650,133 +649,6 @@ function parseDobToGregorian(value: string): string | null {
   return validDob(value) ? value : null;
 }
 
-async function beginCardRequest(client: TelegramClient, user: BotUser, chatId: number) {
-  const capacity = await getTelegramCardRequestCapacity(user.id);
-  if (capacity.assigned_accounts < 1) {
-    await client.sendMessage({ chatId, text: pick(FLOW.getCardLead, user.lang) });
-    await sendPaymentInfo(client, user, chatId);
-    return;
-  }
-  if (capacity.usedSlots >= capacity.platformLimit) {
-    await client.sendMessage({ chatId, text: `You currently use all <b>${capacity.platformLimit}</b> card slots, including open card requests. Close or cancel an open request before creating another.` });
-    return;
-  }
-  const bins = await getCardRequestBins();
-  if (!bins.length) throw new ApiError(503, "card_request_bins_unavailable", "Card requests are temporarily unavailable because no verified BINs are configured.");
-  const rows: TelegramInlineKeyboard["inline_keyboard"] = [];
-  for (const item of bins) {
-    rows.push([{
-      text: `${item.bin}${item.requiresDob ? " · DOB required" : ""}`,
-      callback_data: await createCallbackToken({ userId: user.id, action: "cardreq.bin", payload: { bin: item.bin }, singleUse: true, ttlMinutes: 15 }),
-    }]);
-  }
-  rows.push([{ text: "Cancel", callback_data: await createCallbackToken({ userId: user.id, action: "cardreq.cancel_draft", singleUse: true, ttlMinutes: 15 }) }]);
-  await setBotState(user.id, "idle", {});
-  await client.sendMessage({
-    chatId,
-    text: `<b>Request a new card</b>\nChoose a BIN. Your platform limit is ${capacity.platformLimit} cards across all assigned accounts, including open requests.`,
-    replyMarkup: { inline_keyboard: rows },
-  });
-}
-
-async function sendCardRequestConfirmation(client: TelegramClient, user: BotUser, chatId: number, draft: CardRequestDraftPayload) {
-  if (!draft.bin || !draft.amountUsdCents || !draft.nameOnCard || !draft.email) throw new ApiError(409, "draft_incomplete", "This card request draft is incomplete. Start again.");
-  const submit = await createCallbackToken({ userId: user.id, action: "cardreq.submit", singleUse: true, ttlMinutes: 15 });
-  const cancel = await createCallbackToken({ userId: user.id, action: "cardreq.cancel_draft", singleUse: true, ttlMinutes: 15 });
-  await setBotState(user.id, "card_request_confirm", draft, 20);
-  await client.sendMessage({
-    chatId,
-    text: `<b>Confirm card request</b>\nBIN: <code>${escapeHtml(draft.bin)}</code>\nInitial amount: <b>${formatUsdCents(String(draft.amountUsdCents))}</b>\nName: ${escapeHtml(draft.nameOnCard)}\nEmail: ${escapeHtml(draft.email)}${draft.dateOfBirth ? `\nDOB: ${escapeHtml(draft.dateOfBirth)}` : ""}\n\nSubmitting creates a request for admin review. It does not create a Kripicard card or move funds.`,
-    replyMarkup: { inline_keyboard: [[{ text: "Submit request", callback_data: submit }], [{ text: "Cancel", callback_data: cancel }]] },
-  });
-}
-
-async function sendCardRequestDetail(client: TelegramClient, user: BotUser, chatId: number, requestId: string) {
-  const detail = await getTelegramCardRequest(user.id, requestId);
-  const request = detail.request;
-  const timeline = detail.events.map((event) => `• ${escapeHtml(event.status)} · ${escapeHtml(new Date(event.createdAt).toISOString().replace("T", " ").slice(0, 16))} UTC${event.note ? ` · ${escapeHtml(event.note)}` : ""}`).join("\n");
-  const rows: TelegramInlineKeyboard["inline_keyboard"] = [];
-  if (["pending_review", "correction_needed"].includes(request.status)) {
-    rows.push([{ text: "Cancel request", callback_data: await createCallbackToken({ userId: user.id, action: "cardreq.cancel_existing", entityId: request.id, singleUse: true, ttlMinutes: 10 }) }]);
-  }
-  rows.push([{ text: "← My requests", callback_data: await createCallbackToken({ userId: user.id, action: "menu.requests" }) }]);
-  await client.sendMessage({
-    chatId,
-    text: `<b>${escapeHtml(request.reference)}</b>\nStatus: <b>${escapeHtml(request.status)}</b>\nBIN: <code>${escapeHtml(request.bin)}</code>\nInitial amount: <b>${formatUsdCents(request.initialAmountUsdCents)}</b>\nName: ${escapeHtml(request.nameOnCard)}\nEmail: ${escapeHtml(request.email)}${request.dateOfBirth ? `\nDOB: ${escapeHtml(request.dateOfBirth)}` : ""}${request.adminNote ? `\nAdmin note: ${escapeHtml(request.adminNote)}` : ""}\n\n<b>Timeline</b>\n${timeline || "No timeline events."}`,
-    replyMarkup: { inline_keyboard: rows },
-  });
-}
-
-async function handleCardRequestText(client: TelegramClient, user: BotUser, chatId: number, text: string) {
-  const state = await getBotState(user.id);
-  if (!state || !state.mode.startsWith("card_request_")) return false;
-  const draft: CardRequestDraftPayload = { ...(state.payload ?? {}) };
-  const policy = await getCardRequestPolicy();
-
-  if (state.mode === "card_request_amount") {
-    const cents = dollarsToCents(text);
-    if (cents == null) {
-      await client.sendMessage({ chatId, text: "Enter the initial amount in USD, for example <code>20</code> or <code>25.50</code>. Send /cancel to stop." });
-      return true;
-    }
-    if (cents < policy.minimumUsdCents) {
-      await client.sendMessage({ chatId, text: `The minimum initial card amount is <b>${formatUsdCents(String(policy.minimumUsdCents))}</b>. Enter a higher amount.` });
-      return true;
-    }
-    draft.amountUsdCents = cents;
-    await setBotState(user.id, "card_request_name", draft);
-    await client.sendMessage({ chatId, text: "Enter the cardholder name exactly as it should appear on the card (minimum 2 characters)." });
-    return true;
-  }
-
-  if (state.mode === "card_request_name") {
-    if (text.length < 2 || text.length > 100) {
-      await client.sendMessage({ chatId, text: "Cardholder name must be between 2 and 100 characters." });
-      return true;
-    }
-    draft.nameOnCard = text;
-    await setBotState(user.id, "card_request_email", draft);
-    await client.sendMessage({ chatId, text: "Enter the cardholder email address." });
-    return true;
-  }
-
-  if (state.mode === "card_request_email") {
-    const parsed = z.string().email().max(320).safeParse(text);
-    if (!parsed.success) {
-      await client.sendMessage({ chatId, text: "Enter a valid email address, for example <code>name@example.com</code>." });
-      return true;
-    }
-    draft.email = parsed.data;
-    const bins = await getCardRequestBins();
-    const requiresDob = bins.find((item) => item.bin === draft.bin)?.requiresDob ?? false;
-    if (requiresDob) {
-      await setBotState(user.id, "card_request_dob", draft);
-      await client.sendMessage({ chatId, text: "This BIN requires date of birth. Enter it as <code>YYYY-MM-DD</code>." });
-    } else {
-      draft.dateOfBirth = null;
-      await sendCardRequestConfirmation(client, user, chatId, draft);
-    }
-    return true;
-  }
-
-  if (state.mode === "card_request_dob") {
-    if (!validDob(text)) {
-      await client.sendMessage({ chatId, text: "Enter a valid past date in <code>YYYY-MM-DD</code> format." });
-      return true;
-    }
-    draft.dateOfBirth = text;
-    await sendCardRequestConfirmation(client, user, chatId, draft);
-    return true;
-  }
-
-  if (state.mode === "card_request_confirm") {
-    await client.sendMessage({ chatId, text: "Use the Submit request or Cancel button above, or send /cancel." });
-    return true;
-  }
-  return false;
-}
-
-
 function formatRialValue(value: string) {
   try { return `${BigInt(value).toLocaleString("en-US")} rial`; } catch { return `${escapeHtml(value)} rial`; }
 }
@@ -1079,46 +951,6 @@ async function handleCallback(client: TelegramClient, callback: z.infer<typeof c
       break;
     }
       case "menu.requests": await sendRequests(client, user, chatId); break;
-      case "request.detail": if (resolved.entity_id) await sendCardRequestDetail(client, user, chatId, resolved.entity_id); break;
-      case "menu.request_card": await beginCardRequest(client, user, chatId); break;
-      case "cardreq.bin": {
-        const bin = typeof resolved.payload?.bin === "string" ? resolved.payload.bin : "";
-        const bins = await getCardRequestBins();
-        if (!bins.some((item) => item.bin === bin)) throw new ApiError(400, "unsupported_bin", "That BIN is not currently enabled.");
-        await setBotState(user.id, "card_request_amount", { bin });
-        const policy = await getCardRequestPolicy();
-        await client.sendMessage({ chatId, text: `Enter the initial amount in USD. Minimum: <b>${formatUsdCents(String(policy.minimumUsdCents))}</b>.` });
-        break;
-      }
-      case "cardreq.submit": {
-        const state = await getBotState(user.id);
-        if (!state || state.mode !== "card_request_confirm") throw new ApiError(409, "draft_expired", "This card request draft expired. Start again.");
-        const draft = state.payload;
-        if (!draft.bin || !draft.amountUsdCents || !draft.nameOnCard || !draft.email) throw new ApiError(409, "draft_incomplete", "This card request draft is incomplete. Start again.");
-        const created = await createTelegramCardRequest(user.id, {
-          bin: draft.bin,
-          amountUsdCents: draft.amountUsdCents,
-          nameOnCard: draft.nameOnCard,
-          email: draft.email,
-          dateOfBirth: draft.dateOfBirth ?? null,
-        });
-        await getPool().query(`DELETE FROM telegram_bot_states WHERE user_id=$1::uuid`, [user.id]);
-        await client.sendMessage({ chatId, text: `Request <b>${escapeHtml(created.request.reference)}</b> was submitted for admin review.\nNo Kripicard card has been created and no funds have moved.` });
-        await sendCardRequestDetail(client, user, chatId, created.request.id);
-        break;
-      }
-      case "cardreq.cancel_draft":
-        await getPool().query(`DELETE FROM telegram_bot_states WHERE user_id=$1::uuid`, [user.id]);
-        await client.sendMessage({ chatId, text: "Card request draft cancelled." });
-        await sendMainMenu(client, user, chatId);
-        break;
-      case "cardreq.cancel_existing":
-        if (resolved.entity_id) {
-          const cancelled = await cancelTelegramCardRequest(user.id, resolved.entity_id);
-          await client.sendMessage({ chatId, text: `Request <b>${escapeHtml(cancelled.reference)}</b> was cancelled.` });
-          await sendRequests(client, user, chatId);
-        }
-        break;
       case "menu.add_funds": await beginFundingRequest(client, user, chatId); break;
       case "fundreq.card": {
         if (!resolved.entity_id) break;
@@ -1447,7 +1279,6 @@ async function handleMessage(client: TelegramClient, message: z.infer<typeof mes
 
   if (!(await assertBotAccess(client, user, chatId))) return;
   if (await handleFundingReceiptMedia(client,user,chatId,message)) return;
-  if (text && await handleCardRequestText(client, user, chatId, text)) return;
   if (text && await handleFundingRequestText(client,user,chatId,text)) return;
   if (await supportMode(user.id)) {
     try {
