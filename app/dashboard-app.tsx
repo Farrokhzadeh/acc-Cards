@@ -46,7 +46,7 @@ import {
   XCircle,
 } from "lucide-react";
 import { toast } from "sonner";
-import { AdminApiError, createAccount, archiveAccount, fetchDashboardSnapshot, reauthenticateAdmin, revealAccountSecrets, updateAccount, verifyAccountConnection, syncAccountCards, revealLiveCardDetails, syncCardTransactions, fetchCardTransactions, fetchTransactions, fetchTransactionNotificationIssues, reconcileTransactionNotification, setCardFrozenState, refreshCardStatus, connectOutlookMailbox, syncOutlookMailbox, disconnectOutlookMailbox, connectGmailMailbox, syncGmailMailbox, disconnectGmailMailbox, fetchAccountEmailMessages, classifyAccountEmail, revealParsedOtp, fetchTrustedEmailRules, createTrustedEmailRule, updateTrustedEmailRule, fetchTelegramBotStatus, configureTelegramWebhook, setTelegramBotToken, clearTelegramBotToken, fetchPaymentCard, updatePaymentCard, notifyClient, fetchClientPipeline, setClientBanned, fetchClientKyc, type ClientKyc, type ClientPayment, clientReceiptUrl, activateClient, fetchForceJoinChannels, upsertForceJoinChannel, deleteForceJoinChannel, fetchSupportConversations, updateSupportConversation, retrySupportMessage, fetchClientSupportMessages, sendClientSupportMessage, fetchClientAssignableAccounts, assignClientAccount, unassignClientAccount, unassignAllClientAccounts, fetchCardRequests, reviewCardRequest, issueCardRequest, reconcileCardRequest, fetchFundingRequests, reviewFundingRequest, executeFundingRequest, reconcileFundingRequest, resolveFundingRequest, fundingReceiptDownloadUrl, fetchFundingSettings, updateFundingSettings, fetchCardPolicy, updateCardPolicy, type ApiCardRequest, type ApiFundingRequest, type AssignableClientAccount, type LiveCardDetails, type StoredCardTransaction, type StoredEmailMessage, type TelegramBotStatus, fetchProviderReadiness, updateProviderReadinessCheck, type ProviderReadinessSnapshot, type TransactionNotificationIssue, type SupportConversationSummary, fetchOperationalSnapshot, updateOperationalAlert, updateRuntimeControl, type OperationalSnapshot, fetchKycSubmissions, reviewKycSubmission, kycDocumentUrl, type ApiKycSubmission } from "@/lib/admin-api";
+import { AdminApiError, createAccount, archiveAccount, fetchDashboardSnapshot, reauthenticateAdmin, revealAccountSecrets, updateAccount, verifyAccountConnection, syncAccountCards, revealLiveCardDetails, syncCardTransactions, fetchCardTransactions, fetchTransactions, fetchTransactionNotificationIssues, reconcileTransactionNotification, setCardFrozenState, refreshCardStatus, connectOutlookMailbox, syncOutlookMailbox, disconnectOutlookMailbox, connectGmailMailbox, syncGmailMailbox, disconnectGmailMailbox, fetchAccountEmailMessages, classifyAccountEmail, revealParsedOtp, fetchTrustedEmailRules, createTrustedEmailRule, updateTrustedEmailRule, fetchTelegramBotStatus, configureTelegramWebhook, setTelegramBotToken, clearTelegramBotToken, fetchPaymentCard, updatePaymentCard, notifyClient, fetchClientPipeline, setClientBanned, fetchClientKyc, type ClientKyc, type ClientPayment, clientReceiptUrl, activateClient, fetchForceJoinChannels, upsertForceJoinChannel, deleteForceJoinChannel, fetchSupportConversations, updateSupportConversation, retrySupportMessage, fetchClientSupportMessages, sendClientSupportMessage, fetchClientAssignableAccounts, assignClientAccount, unassignClientAccount, unassignAllClientAccounts, fetchFundingRequests, reviewFundingRequest, executeFundingRequest, reconcileFundingRequest, resolveFundingRequest, fundingReceiptDownloadUrl, fetchFundingSettings, updateFundingSettings, type ApiFundingRequest, type AssignableClientAccount, type LiveCardDetails, type StoredCardTransaction, type StoredEmailMessage, type TelegramBotStatus, fetchProviderReadiness, updateProviderReadinessCheck, type ProviderReadinessSnapshot, type TransactionNotificationIssue, type SupportConversationSummary, fetchOperationalSnapshot, updateOperationalAlert, updateRuntimeControl, type OperationalSnapshot, fetchKycSubmissions, reviewKycSubmission, kycDocumentUrl, type ApiKycSubmission } from "@/lib/admin-api";
 import { disableAdminMfa, enableAdminMfa, fetchCurrentAdmin, logoutAdmin, setupAdminMfa, type CurrentAdmin } from "@/lib/auth-client";
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -619,7 +619,6 @@ export default function DashboardApp() {
   const [cards, setCards] = useState<ClientCard[]>([]);
   const [accountEmails, setAccountEmails] = useState<AccountEmail[]>([]);
   const [fundingRequests, setFundingRequests] = useState<FundingRequest[]>([]);
-  const [cardRequests, setCardRequests] = useState<CardRequest[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [transactionNotificationIssues, setTransactionNotificationIssues] = useState<TransactionNotificationIssue[]>([]);
   const [messages, setMessages] = useState<Record<string, Message[]>>({});
@@ -653,10 +652,7 @@ export default function DashboardApp() {
   const [chatDraft, setChatDraft] = useState("");
   const [serviceFee, setServiceFee] = useState(2.5);
   const [exchangeRate, setExchangeRate] = useState(2_212_000);
-  const [maxCardsPerClient, setMaxCardsPerClient] = useState(3);
   const [minimumFunding, setMinimumFunding] = useState(20);
-  const [minimumCardCreation, setMinimumCardCreation] = useState(20);
-  const [cardPolicyBins, setCardPolicyBins] = useState<Array<{ bin: string; requiresDob: boolean }>>([]);
   const [theme, setTheme] = useState<"light" | "dark">("light");
   const [botToken, setBotToken] = useState("");
   const [showToken, setShowToken] = useState(false);
@@ -745,7 +741,6 @@ export default function DashboardApp() {
         // Keep unimplemented domains from showing stale demo records beside real DB records.
         setAccountEmails([]);
         setFundingRequests([]);
-        setCardRequests([]);
         setTransactions([]);
         setMessages({});
         setActiveChatId(nextClients[0]?.id ?? "");
@@ -778,14 +773,12 @@ export default function DashboardApp() {
     if (!backendDataLoaded || view !== "requests") return;
     let cancelled = false;
     const timer = window.setTimeout(() => {
-      Promise.all([fetchCardRequests({ search, limit: 100 }), fetchFundingRequests({ search, limit: 100 })])
-        .then(([cardResult, fundingResult]) => {
-          if (cancelled) return;
-          setCardRequests(cardResult.items.map(mapApiCardRequest));
-          setFundingRequests(fundingResult.items.map(mapApiFundingRequest));
+      fetchFundingRequests({ search, limit: 100 })
+        .then((fundingResult) => {
+          if (!cancelled) setFundingRequests(fundingResult.items.map(mapApiFundingRequest));
         })
         .catch((error) => {
-          if (!cancelled) toast.error(error instanceof Error ? error.message : "Could not load requests.");
+          if (!cancelled) toast.error(error instanceof Error ? error.message : "Could not load funding requests.");
         });
     }, 180);
     return () => { cancelled = true; window.clearTimeout(timer); };
@@ -820,17 +813,6 @@ export default function DashboardApp() {
     return () => { cancelled = true; };
   }, [backendDataLoaded]);
 
-  useEffect(() => {
-    if (!backendDataLoaded) return;
-    let cancelled = false;
-    fetchCardPolicy().then((policy) => {
-      if (cancelled) return;
-      setMaxCardsPerClient(policy.platformCardLimit);
-      setMinimumCardCreation(policy.minimumCardCreationUsdCents / 100);
-      setCardPolicyBins(policy.bins);
-    }).catch(() => {});
-    return () => { cancelled = true; };
-  }, [backendDataLoaded]);
 
   useEffect(() => {
     if (!backendDataLoaded) return;
@@ -1799,7 +1781,6 @@ export default function DashboardApp() {
                 kycByUser={kycStatusByUser}
                 paymentByUser={paymentByUser}
                 paymentStatusByUser={paymentStatusByUser}
-                cardRequests={cardRequests}
                 fundingRequests={fundingRequests}
                 telegramStatus={telegramStatus}
                 onViewChange={changeView}
@@ -1826,7 +1807,6 @@ export default function DashboardApp() {
               <ClientsView
                 clients={filteredClients}
                 cards={cards}
-                maxCardsPerClient={maxCardsPerClient}
                 onOpen={setActiveClientId}
                 onToggleBan={toggleBan}
                 accountName={accountName}
@@ -1840,43 +1820,13 @@ export default function DashboardApp() {
             {view === "requests" && (
               <RequestsView
                 fundingRequests={fundingRequests}
-                cardRequests={cardRequests}
-                clients={clients}
-                cards={cards}
                 clientName={clientName}
-                maxCardsPerClient={maxCardsPerClient}
                 search={search}
                 kycPendingCount={kycPendingCount}
                 transactions={transactions}
                 issues={transactionNotificationIssues}
                 onReconcileIssue={reconcileNotificationIssue}
                 onOpenRequest={setActiveRequestId}
-                onCardRequestAction={async (id, action, selectedAccountId) => {
-                  try {
-                    const updated = await reviewCardRequest(id, { action, selectedAccountId: selectedAccountId || null });
-                    setCardRequests((current) => current.map((item) => item.id === id ? mapApiCardRequest(updated) : item));
-                    toast.success(action === "approve" ? "Card request approved. Use Issue card after recent reauthentication when provider writes are enabled." : "Card request rejected.");
-                  } catch (error) {
-                    toast.error(error instanceof Error ? error.message : "Card request review failed.");
-                  }
-                }}
-                onCardRequestIssue={async (id, mode) => {
-                  try {
-                    const result = mode === "issue" ? await issueCardRequest(id) : await reconcileCardRequest(id);
-                    const refreshed = await fetchCardRequests({ limit: 100 });
-                    setCardRequests(refreshed.items.map(mapApiCardRequest));
-                    if (result.status === "issued") toast.success(result.reconciled ? "Card issuance reconciled and marked issued." : "Kripicard card created and request marked issued.");
-                    else toast.warning("Provider outcome is still uncertain. AccAbad will not retry createcard; reconcile again or contact Kripicard support.");
-                  } catch (error) {
-                    try {
-                      const refreshed = await fetchCardRequests({ limit: 100 });
-                      setCardRequests(refreshed.items.map(mapApiCardRequest));
-                    } catch {
-                      // Preserve the original issuance error; request state will refresh on the next normal load.
-                    }
-                    toast.error(error instanceof Error ? error.message : "Card issuance action failed.");
-                  }
-                }}
               />
             )}
             {view === "operations" && (
@@ -1928,10 +1878,7 @@ export default function DashboardApp() {
               <SettingsView
                 serviceFee={serviceFee}
                 exchangeRate={exchangeRate}
-                maxCardsPerClient={maxCardsPerClient}
                 minimumFunding={minimumFunding}
-                minimumCardCreation={minimumCardCreation}
-                cardPolicyBins={cardPolicyBins}
                 botToken={botToken}
                 showToken={showToken}
                 telegramStatus={telegramStatus}
@@ -1939,23 +1886,7 @@ export default function DashboardApp() {
                 newChannel={newChannel}
                 onServiceFee={setServiceFee}
                 onExchangeRate={setExchangeRate}
-                onMaxCardsPerClient={setMaxCardsPerClient}
                 onMinimumFunding={(value) => setMinimumFunding(Math.max(1, value || 1))}
-                onMinimumCardCreation={(value) => setMinimumCardCreation(Math.max(10, value || 10))}
-                onCardPolicyBins={setCardPolicyBins}
-                onSaveCardPolicy={async () => {
-                  try {
-                    const saved = await updateCardPolicy({
-                      platformCardLimit: maxCardsPerClient,
-                      minimumCardCreationUsdCents: Math.round(minimumCardCreation * 100),
-                      bins: cardPolicyBins,
-                    });
-                    setMaxCardsPerClient(saved.platformCardLimit);
-                    setMinimumCardCreation(saved.minimumCardCreationUsdCents / 100);
-                    setCardPolicyBins(saved.bins);
-                    toast.success("Card policy saved. Telegram and admin enforcement now use the same policy.");
-                  } catch (error) { toast.error(error instanceof Error ? error.message : "Could not save card policy."); }
-                }}
                 onSavePricing={async () => {
                   try {
                     const saved = await updateFundingSettings({
@@ -2204,15 +2135,8 @@ export default function DashboardApp() {
                 <div className="grid gap-2">
                   <Label>Connected Kripicard accounts</Label>
                   <AccountAssignmentPicker accounts={accounts} clients={clients} client={activeClient} backendDataLoaded={backendDataLoaded} assignmentPendingId={assignmentPendingId} onToggle={toggleClientAccount} onDisconnectAll={disconnectAllClientAccounts} />
-                  {!activeClient.accountIds.length && <p className="text-sm text-amber-700">The bot only shows “Contact the admin” until an account is assigned.</p>}
-                  <p className="text-xs leading-5 text-[#9692a3]">A Kripicard account can belong to one Telegram client only. This client may have multiple accounts.</p>
-                </div>
-                <div className="rounded-[18px] border border-[#e7e3f1] bg-[#f7f5ff] p-4">
-                  <div><p className="font-semibold text-[#302d43]">Platform card policy</p><p className="mt-1 text-sm leading-5 text-[#777287]">This is your own client limit and has no connection to Kripicard verification.</p></div>
-                  <div className="mt-3 flex items-center justify-between border-t border-[#e4e0ef] pt-3 text-sm">
-                    <span className="text-[#777287]">Card allowance</span>
-                    <Badge variant="outline" className={activeClientCards.length >= maxCardsPerClient ? "border-red-200 bg-red-50 text-red-700" : "border-[#d9d5ff] bg-white text-[#5549ca]"}>{activeClientCards.length} of {maxCardsPerClient} cards</Badge>
-                  </div>
+                  {!activeClient.accountIds.length && <p className="text-sm text-amber-700">No Kripicard account is assigned yet. During first-card onboarding, choose the account in the payment panel above.</p>}
+                  <p className="text-xs leading-5 text-[#9692a3]">A Kripicard account can belong to one Telegram client only. The onboarding flow assigns the account before creating the first card.</p>
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                   <div className="rounded-[18px] border border-[#eceaf2] bg-white p-4"><p className="text-sm text-[#8f8b9c]">Total funded</p><p className="mt-1 text-xl font-semibold tracking-[-.03em] text-[#302d43]">{formatUsd(activeClient.totalFunded)}</p></div>
