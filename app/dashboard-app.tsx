@@ -3264,7 +3264,14 @@ function EmailRulesCard({ hidden }: { hidden: boolean }) {
     try { setRules((await fetchTrustedEmailRules()).items); }
     catch (error) { toast.error(error instanceof Error ? error.message : "Could not load trusted email rules."); }
   };
-  useEffect(() => { if (!hidden) void reload(); }, [hidden]);
+  useEffect(() => {
+    if (hidden) return;
+    let cancelled = false;
+    fetchTrustedEmailRules()
+      .then((result) => { if (!cancelled) setRules(result.items); })
+      .catch((error) => { if (!cancelled) toast.error(error instanceof Error ? error.message : "Could not load trusted email rules."); });
+    return () => { cancelled = true; };
+  }, [hidden]);
   const add = async () => {
     if (!draft.label.trim() || !draft.senderMatch.trim()) { toast.error("Rule label and sender are required."); return; }
     setBusy(true);
