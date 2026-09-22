@@ -6,8 +6,6 @@ import { randomToken } from "@/server/security/crypto";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
-
-// Sends the customer a "your account/card is ready" notice in their language.
 export async function POST(request: Request, context: { params: Promise<{ id: string }> }) {
   return apiRoute(request, async ({ requestId }) => {
     const session = await requireAdmin(request, "clients.assign");

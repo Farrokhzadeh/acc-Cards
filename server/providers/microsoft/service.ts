@@ -437,7 +437,6 @@ export async function syncConnectedOutlookInboxesSystem(requestId: string) {
       attempted,
       succeeded,
       failed,
-      // IDs are internal references only; no mailbox addresses or provider payloads are logged.
       failedAccountIds,
     };
 

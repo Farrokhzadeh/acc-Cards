@@ -24,7 +24,7 @@
   }
 }
 
-/* Custom variants */
+
 @custom-variant data-open {
   &:where([data-state="open"]),
   &:where([data-open]:not([data-open="false"])) {
@@ -94,7 +94,7 @@
   }
 }
 
-/* scroll-fade */
+
 @property --scroll-fade-t {
   syntax: "<length-percentage>";
   inherits: false;
@@ -518,7 +518,7 @@
   --scroll-fade-mask: none;
 }
 
-/* shimmer */
+
 @property --shimmer-angle {
   syntax: "<angle>";
   inherits: true;

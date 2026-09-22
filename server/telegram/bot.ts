@@ -173,8 +173,6 @@ async function setPaymentReceiptPending(userId: string, objectKey: string, mime:
     await db.query(`DELETE FROM telegram_bot_states WHERE user_id=$1::uuid`, [userId]);
   });
 }
-
-// Collects the paid amount, then moves on to receipt collection.
 async function handlePaymentAmountText(client: TelegramClient, user: BotUser, chatId: number, text: string): Promise<boolean> {
   const state = await getKycState(user.id);
   if (!state || state.mode !== "payment_amount") return false;
@@ -199,8 +197,6 @@ async function handlePaymentAmountText(client: TelegramClient, user: BotUser, ch
   await client.sendMessage({ chatId, text: `${instructions}\n\n${pick(PAYMENT.askReceipt, user.lang)}` });
   return true;
 }
-
-// Collects the payment receipt (photo/PDF) after the user declared payment.
 async function handlePaymentReceiptMedia(client: TelegramClient, user: BotUser, chatId: number, message: z.infer<typeof messageSchema>): Promise<boolean> {
   const state = await getKycState(user.id);
   if (!state || state.mode !== "payment_receipt") return false;
@@ -239,8 +235,6 @@ async function handlePaymentReceiptMedia(client: TelegramClient, user: BotUser, 
   }
   return true;
 }
-
-// Payment screen shown to KYC-approved users who haven't paid yet (menu stays locked).
 async function sendPaymentScreen(client: TelegramClient, user: BotUser, chatId: number) {
   const pc = await getPaymentCard();
   const choose = await createCallbackToken({ userId: user.id, action: "menu.paid" });
@@ -254,8 +248,6 @@ async function sendPaymentScreen(client: TelegramClient, user: BotUser, chatId: 
     replyMarkup: { inline_keyboard: [[{ text: pick(MENU.paidBtn, user.lang), callback_data: choose }], [{ text: pick(MENU.support, user.lang), callback_data: support }]] },
   });
 }
-
-// Shown after the user declared payment, until an admin activates the account.
 async function sendWaitingScreen(client: TelegramClient, user: BotUser, chatId: number) {
   const support = await createCallbackToken({ userId: user.id, action: "support.start" });
   await client.sendMessage({
@@ -264,10 +256,6 @@ async function sendWaitingScreen(client: TelegramClient, user: BotUser, chatId: 
     replyMarkup: { inline_keyboard: [[{ text: pick(MENU.support, user.lang), callback_data: support }]] },
   });
 }
-
-// Append a message to the user's conversation so the admin Inbox shows the FULL
-// bot<->user chat (not only support). Used for inbound user messages and, via
-// withChatLog, every outbound bot reply.
 export async function logChatMessage(user: { id: string }, direction: "client_to_admin" | "admin_to_client", text: string) {
   const conv = await getPool().query<{ id: string }>(
     `INSERT INTO conversations(user_id, status, closed_at, updated_at) VALUES ($1::uuid,'open',NULL,now())
@@ -286,8 +274,6 @@ export async function logChatMessage(user: { id: string }, direction: "client_to
     [conversationId],
   );
 }
-
-// Wraps a TelegramClient so every sendMessage is also written to the chat log.
 function withChatLog(client: TelegramClient, user: { id: string }): TelegramClient {
   return new Proxy(client, {
     get(target, prop, receiver) {
@@ -367,7 +353,6 @@ async function checkMembership(client: TelegramClient, user: BotUser) {
       const member = await client.getChatMember(channel.chat_id, user.telegramUserId.toString());
       if (!membershipSatisfied(member)) missing.push({ chatId: channel.chat_id, title: channel.title, inviteUrl: channel.invite_url });
     } catch (error) {
-      // Misconfigured channels must not silently lock every user out. Fail open and surface diagnostics to admins via audit.
       warnings.push(channel.chat_id);
       await getPool().query(
         `INSERT INTO audit_logs(actor_type, actor_id, action, entity_type, entity_id, metadata_redacted)
@@ -423,9 +408,6 @@ async function sendPaymentInfo(client: TelegramClient, user: BotUser, chatId: nu
     .replace("{holder}", escapeHtml(pc.cardHolder || "—"));
   await client.sendMessage({ chatId, text });
 }
-
-// Route a user "home" (/start, /menu, or right after choosing a language) with
-// messaging that reflects their real KYC / account state instead of a generic error.
 async function routeHome(client: TelegramClient, user: BotUser, chatId: number) {
   if (user.lang === null) { await sendLangPicker(client, user, chatId); return; }
   if (user.bannedAt) { await client.sendMessage({ chatId, text: pick(KYC.accessDisabled, user.lang) }); return; }
@@ -621,8 +603,6 @@ function validDob(input: string) {
   const date = new Date(`${input}T00:00:00Z`);
   return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === input && date.getTime() < Date.now();
 }
-
-// Jalali (Shamsi) -> Gregorian conversion (jalaali-js algorithm).
 function jalaliToGregorian(jy: number, jm: number, jd: number): { y: number; m: number; d: number } | null {
   if (jm < 1 || jm > 12 || jd < 1 || jd > 31) return null;
   const jy2 = jy + 1595;
@@ -642,8 +622,6 @@ function jalaliToGregorian(jy: number, jm: number, jd: number): { y: number; m: 
   if (gm < 1 || gm > 12) return null;
   return { y: gy, m: gm, d: rem };
 }
-
-// Accepts Shamsi (Jalali) YYYY-MM-DD (converts to Gregorian) or Gregorian as fallback.
 function parseDobToGregorian(value: string): string | null {
   const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
   if (!match) return null;
@@ -919,7 +897,6 @@ async function handleCallback(client: TelegramClient, callback: z.infer<typeof c
     resolved.action === "menu.add_funds" || resolved.action.startsWith("card.") ||
     resolved.action.startsWith("fundreq.");
   if (gated && (await getPaymentStatus(user.id)) !== "complete") { await routeHome(client, user, chatId); return; }
-  // KYC callbacks run before the account/membership gate so new customers can verify first.
   if (resolved.action === "menu.kyc" || resolved.action === "kyc.submit" || resolved.action === "kyc.cancel") {
     if (user.bannedAt) {
       await client.sendMessage({ chatId, text: pick(KYC.accessDisabled, user.lang) });
@@ -1259,8 +1236,6 @@ async function handleMessage(client: TelegramClient, message: z.infer<typeof mes
     else await routeHome(client, user, chatId);
     return;
   }
-
-  // KYC runs before the account/membership gate so brand-new customers can verify identity first.
   if (text && (await handlePaymentAmountText(client, user, chatId, text))) return;
   if (await handlePaymentReceiptMedia(client, user, chatId, message)) return;
   if (await handleKycMedia(client, user, chatId, message)) return;

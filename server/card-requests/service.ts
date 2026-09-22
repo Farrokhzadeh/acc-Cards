@@ -65,7 +65,6 @@ export async function getCardRequestPolicy(db: DatabaseQueryable = getPool()) {
 async function lockUserRequestCapacity(db: DatabaseQueryable, userId: string) {
   const user = await db.query<{ id: string }>(`SELECT id FROM telegram_users WHERE id=$1::uuid FOR UPDATE`, [userId]);
   if (!user.rows[0]) throw new ApiError(404, "client_not_found", "Telegram client not found.");
-  // Every capacity-changing request for one user shares this xact-scoped lock.
   await db.query(`SELECT pg_advisory_xact_lock(hashtext('card-request-capacity:' || $1))`, [userId]);
 }
 
@@ -279,7 +278,6 @@ export async function reviewCardRequest(args: {
       );
       if (!ownership.rows[0]) throw new ApiError(409, "account_not_assigned", "That account is no longer assigned to this client. Refresh the request.");
       const capacity = await capacitySnapshot(db, row.user_id, row.id);
-      // Excluding this request, there must still be room for this approved request.
       if (capacity.usedSlots >= capacity.platformLimit) throw new ApiError(409, "card_limit_reached", `The client has reached the ${capacity.platformLimit}-card platform limit.`);
       selectedAccountId = args.selectedAccountId;
       nextStatus = "approved";

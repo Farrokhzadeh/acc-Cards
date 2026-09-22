@@ -3,13 +3,6 @@ import { parseServerEnv } from "@/config/env-schema.mjs";
 import { decryptSecret, encryptSecret, randomToken } from "@/server/security/crypto";
 import { TelegramClient } from "@/server/providers/telegram/client";
 
-// Telegram bot credentials resolver.
-//
-// The bot token can come from two places, in priority order:
-//   1. The database (set from the admin panel, stored AES-256-GCM encrypted).
-//   2. The TELEGRAM_BOT_TOKEN / TELEGRAM_WEBHOOK_SECRET environment variables.
-// The token is never returned to the browser in full - only a last-4 hint.
-
 const SETTING_KEY = "telegram_bot_credentials";
 const TOKEN_PATTERN = /^\d{5,15}:[A-Za-z0-9_-]{30,}$/;
 
@@ -47,7 +40,6 @@ export async function getTelegramCredentials(): Promise<TelegramCredentials> {
         return { token, webhookSecret, source: "database", tokenHint: hintOf(token) };
       }
     } catch {
-      // Stored token could not be decrypted (e.g. APP_ENCRYPTION_KEY rotated) - fall back to env.
     }
   }
   const token = env.TELEGRAM_BOT_TOKEN || null;

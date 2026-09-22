@@ -138,9 +138,6 @@ export async function updateProviderReadiness(input: {
     );
     const current = currentResult.rows[0];
     if (!current) throw new ApiError(404, "provider_readiness_check_not_found", "Provider readiness check not found.");
-
-    // Public marketing/docs can add context, but cannot clear a live-money blocker. The
-    // exact appapi contract must be confirmed in writing by the provider or exercised in a controlled live/sandbox test.
     if (current.blocks_live_money && ["confirmed", "not_applicable"].includes(input.status) && input.sourceKind === "official_public") {
       throw new ApiError(400, "provider_evidence_insufficient", "Official public/marketing material cannot clear a live-money blocker for the appapi contract. Use provider-written confirmation or a controlled live test.");
     }

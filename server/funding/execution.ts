@@ -160,9 +160,6 @@ async function prepareFunding(requestId: string, session: AuthSession, request: 
     if (!FUNDING_SAFE_RETRY_STATUSES.has(row.status)) {
       throw new ApiError(409, "invalid_state", `This funding request cannot be executed from status ${row.status}.`);
     }
-
-    // A funding_failed request is retryable only when the previous operation explicitly recorded
-    // that no uncertain provider write remains.
     if (row.status === "funding_failed" && row.last_fund_operation_id) {
       const previous = await db.query<{ status: string; safe_result: Record<string, unknown> }>(
         `SELECT status,safe_result FROM card_operations WHERE id=$1::uuid AND operation_type='fund'`,
@@ -328,7 +325,6 @@ async function persistCompleted(args: {
       await getPool().query(`UPDATE card_operations SET status='needs_reconciliation',provider_status='provider_accepted_local_persistence_failed',provider_response_ref='provider_accepted',safe_result=safe_result||'{"safeToRetry":false}'::jsonb,updated_at=now() WHERE id=$1::uuid`, [args.operationId]);
       await getPool().query(`UPDATE funding_requests SET status='needs_reconciliation',updated_at=now() WHERE id=$1::uuid`, [args.row.id]);
     } catch {
-      // The unresolved operation remains locally locked; never convert this into a retryable provider error.
     }
     throw new ApiError(503, "persistence_error_after_provider_write", "Kripicard may have funded the card, but AccAbad could not persist the result. Do not retry fundcard; reconcile this request.");
   }
@@ -406,7 +402,6 @@ export async function executeAcceptedFundingRequest(requestId: string, session: 
     try {
       await reconcileFundingRequest(requestId, session, request, traceId);
     } catch {
-      // Preserve needs_reconciliation. Read failure must never trigger another fundcard request.
     }
     return { requestId: row.id, operationId, status: "needs_reconciliation" as const, needsReconciliation: true, reconciled: false, providerOutcome: providerError.kind };
   }
@@ -416,7 +411,6 @@ export async function executeAcceptedFundingRequest(requestId: string, session: 
     const details = await client.cardDetails({ cardId: card.provider_card_id! });
     postBalance = cents(details.balance);
   } catch {
-    // Provider success is authoritative. A failed follow-up read must not turn a successful fund into retryable failure.
   }
 
   return persistCompleted({ operationId, row, card, account, providerResponse: result, postBalanceUsdCents: postBalance, reconciled: false, session, request, traceId });
@@ -459,10 +453,6 @@ export async function reconcileFundingRequest(requestId: string, session: AuthSe
   if (!raw.encrypted_api_key?.startsWith("v1.")) throw new ApiError(409, "secret_unavailable", "The card account no longer has a usable encrypted API key.");
   if (["disabled", "archived"].includes(raw.account_status)) throw new ApiError(409, "account_unavailable", "The card account is disabled or archived.");
   if (!raw.provider_card_id) throw new ApiError(409, "provider_card_missing", "This card no longer has a provider ID.");
-
-  // A process can die after the local operation is committed but before the provider outcome is
-  // persisted. Once the operation is older than the provider timeout safety window, recover it as
-  // uncertain and continue with reads only. Never replay fundcard during crash recovery.
   if (raw.status === "funding" || raw.operation_status === "pending") {
     const env = parseServerEnv(process.env);
     const staleAfterMs = Math.max(60_000, env.KRIPICARD_REQUEST_TIMEOUT_MS * 3);
@@ -552,10 +542,6 @@ async function loadFundingReconciliationContext(db: DatabaseQueryable, requestId
     throw new ApiError(409, "nothing_to_reconcile", "This funding request is not waiting for reconciliation.");
   }
   if (!raw.provider_card_id) throw new ApiError(409, "provider_card_missing", "This card no longer has a provider ID.");
-
-  // Do not require the original Telegram assignment to still exist here. Once a money-changing
-  // provider call is uncertain, operators must always be able to resolve its historical outcome
-  // even if ownership changed afterwards. New/retry funding still rechecks current ownership.
   const row: FundingExecutionRow = {
     id: raw.id, reference: raw.reference, user_id: raw.user_id, card_id: raw.card_id,
     card_amount_usd_cents: raw.card_amount_usd_cents, provider_fee_usd_cents: raw.provider_fee_usd_cents,
@@ -601,13 +587,10 @@ export async function resolveFundingReconciliation(input: {
       const details = await client.cardDetails({ cardId: context.card.provider_card_id! });
       postBalance = cents(details.balance);
     } catch {
-      // A provider/support confirmation reference is the authoritative manual resolution evidence.
     }
   }
 
   return withTransaction(async (db) => {
-    // Re-lock immediately before resolving so two admins cannot resolve the same uncertain write
-    // in opposite directions. The earlier context read is only for optional provider evidence.
     const locked = await db.query<{ request_status: string; operation_status: string }>(
       `SELECT fr.status AS request_status,co.status AS operation_status
          FROM funding_requests fr

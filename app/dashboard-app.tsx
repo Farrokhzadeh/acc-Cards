@@ -1,6 +1,7 @@
 "use client";
 
 import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import Image from "next/image";
 import {
   Activity,
   AlertTriangle,
@@ -741,7 +742,7 @@ export default function DashboardApp() {
       setMessages((current) => ({ ...current, [clientId]: [...mapped, ...(current[clientId] ?? [])] }));
       setMsgHasMore((current) => ({ ...current, [clientId]: res.hasMore }));
       setMsgBefore((current) => ({ ...current, [clientId]: res.nextBefore }));
-    } catch { /* ignore */ }
+    } catch {}
   };
 
   useEffect(() => {
@@ -1386,7 +1387,7 @@ export default function DashboardApp() {
         toast.warning(`Funding remains unresolved. AccAbad will not retry fundcard automatically${delta != null ? `; observed balance delta: ${(Number(delta) / 100).toFixed(2)}` : ""}. Confirm the outcome with Kripicard before resolving.`);
       }
     } catch (error) {
-      try { await reloadFundingRequests(); } catch { /* keep original error */ }
+      try { await reloadFundingRequests(); } catch {}
       if (
         mode === "fund" &&
         options.allowReauthPrompt !== false &&
@@ -2312,7 +2313,7 @@ function KycView() {
                   <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-[#9692a3]">ID document</p>
                   {selected.hasDocument ? (
                     selected.documentMimeType?.startsWith("image/") ? (
-                      <img src={kycDocumentUrl(selected.id)} alt="KYC document" className="max-h-72 w-full rounded-[16px] border border-[#ece9f2] object-contain" />
+                      <Image unoptimized width={1200} height={800} src={kycDocumentUrl(selected.id)} alt="KYC document" className="max-h-72 w-full rounded-[16px] border border-[#ece9f2] object-contain" />
                     ) : (
                       <a href={kycDocumentUrl(selected.id)} target="_blank" rel="noreferrer"><Button variant="outline" className="rounded-xl"><FileText className="size-4" />Open document</Button></a>
                     )
@@ -2511,8 +2512,7 @@ function InboxView({ clients, activeClient, activeClientId, messages, draft, sea
   useEffect(() => {
     const el = containerRef.current;
     if (el) el.scrollTop = el.scrollHeight;
-    lastMsgIdRef.current = messages[messages.length - 1]?.id ?? null;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    lastMsgIdRef.current = null;
   }, [activeClientId]);
   useEffect(() => {
     const last = messages[messages.length - 1]?.id ?? null;

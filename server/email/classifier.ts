@@ -40,8 +40,6 @@ function subjectMatches(subject: string | null, contains: string | null) {
   if (!contains?.trim()) return true;
   return (subject ?? "").toLowerCase().includes(contains.trim().toLowerCase());
 }
-
-// Deliberately fixed patterns: admins cannot inject arbitrary regexes.
 export function extractOtpCandidate(text: string) {
   const normalized = text.replace(/\s+/g, " ");
   const contextual = normalized.match(/(?:otp|one[- ]?time(?: password| code)?|verification code|security code|auth(?:entication)? code|code)\D{0,24}(\d{4,8})(?!\d)/i);
@@ -127,7 +125,6 @@ export async function classifyPendingEmailMessages(options?: {
         });
         if (resolvedText?.trim()) text = `${message.subject ?? ""}\n${resolvedText}`;
       } catch {
-        // Full-body retrieval is best-effort; preview classification remains the safe fallback.
       }
     }
     const otpCandidate = extractOtpCandidate(text);
@@ -244,7 +241,6 @@ export async function createTrustedRule(input: {
      VALUES ($1, $2, $3, $4, $5, $6::uuid) RETURNING id`,
     [input.label.trim(), sender, input.subjectContains?.trim() || null, input.category, input.otpExpiryMinutes ?? 10, adminId],
   );
-  // A newly approved rule may legitimize messages that were previously ignored. Requeue ignored messages once.
   await getPool().query(`UPDATE email_messages SET classification_status = 'pending', classified_at = NULL, parser_note = NULL WHERE classification_status = 'ignored'`);
   return { id: result.rows[0].id };
 }
