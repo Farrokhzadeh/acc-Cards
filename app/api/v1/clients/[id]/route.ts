@@ -25,7 +25,7 @@ const moderationSchema = z.object({ banned: z.boolean() });
 
 export async function PATCH(request: Request, context: { params: Promise<{ id: string }> }) {
   return apiRoute(request, async ({ requestId }) => {
-    const session = await requireAdmin(request, "clients.manage");
+    const session = await requireAdmin(request, "clients.assign");
     requireCsrf(request, session);
     const { id: rawId } = await context.params;
     const id = requireUuid(rawId, "client id");
