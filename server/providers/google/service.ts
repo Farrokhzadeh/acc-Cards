@@ -10,6 +10,7 @@ import {
   createGooglePkcePair,
   exchangeGoogleAuthorizationCode,
   getGmailMessageMetadata,
+  getGmailMessageText,
   getGmailProfile,
   listGmailHistory,
   listGmailInboxMessages,
@@ -471,7 +472,11 @@ async function syncGmailInboxCore(accountId: string) {
       cursor: sync.cursor,
     });
 
-    const classification = await classifyPendingEmailMessages({ accountId, limit: 200 });
+    const classification = await classifyPendingEmailMessages({
+      accountId,
+      limit: 200,
+      resolveMessageText: (message) => getGmailMessageText(token.access_token, message.providerMessageId),
+    });
     return {
       received: sync.messages.length,
       removed: sync.removedIds.length,
