@@ -7,6 +7,7 @@ import { ensureOnboardingCardRequest, getOnboardingCardLink, markOnboardingCardR
 import { assertCardCreationAvailable, issueApprovedCardRequest, reconcileCardIssuance } from "@/server/card-requests/issuance";
 import { randomToken } from "@/server/security/crypto";
 import { requestIp } from "@/server/auth/request-meta";
+import { deletePrivateSupportAttachment } from "@/server/support/storage";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -78,6 +79,14 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
           WHERE id=$1::uuid`,
         [userId],
       );
+      if (user.payment_receipt_object_key) {
+        await deletePrivateSupportAttachment(user.payment_receipt_object_key).catch((error) => {
+          console.warn("[payment] receipt cleanup failed", {
+            userId,
+            errorName: error instanceof Error ? error.name : "unknown",
+          });
+        });
+      }
       await enqueuePaymentNotify(userId, "denied");
       await auditAdminEvent({ adminId: session.principal.id, action: "payment.denied", entityType: "telegram_user", entityId: userId, request, requestId });
       return { ok: true as const, status: "denied" };
