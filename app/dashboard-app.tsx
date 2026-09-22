@@ -2732,6 +2732,10 @@ function ClientPaymentSection({ clientId }: { clientId: string | null }) {
   const [accountId, setAccountId] = useState("");
   const [busy, setBusy] = useState(false);
   const [tick, setTick] = useState(0);
+  const [reauthAction, setReauthAction] = useState<"create_card" | "reconcile_card" | null>(null);
+  const [reauthPassword, setReauthPassword] = useState("");
+  const [reauthCode, setReauthCode] = useState("");
+  const [reauthBusy, setReauthBusy] = useState(false);
 
   useEffect(() => {
     if (!clientId) return;
@@ -2750,24 +2754,65 @@ function ClientPaymentSection({ clientId }: { clientId: string | null }) {
 
   if (!clientId || !payment || (!payment.declaredAt && !payment.hasReceipt && !payment.status)) return null;
 
-  const act = async (action: "accept" | "deny" | "create_card" | "reconcile_card" | "complete") => {
+  const applyActionResult = (
+    action: "accept" | "deny" | "create_card" | "reconcile_card" | "complete",
+    result: Awaited<ReturnType<typeof activateClient>>,
+  ) => {
+    if (action === "accept") toast.success("Receipt accepted. Choose a Kripicard account and create the first card.");
+    else if (action === "deny") toast.success("Payment denied. The customer can submit a new amount and receipt.");
+    else if (action === "create_card") {
+      if (result.needsReconciliation) toast.warning("Provider outcome is uncertain. Do not retry card creation; use Reconcile first card.");
+      else toast.success(`First card created${result.cardLast4 ? ` · •${result.cardLast4}` : ""}. Review it, then complete onboarding.`);
+    } else if (action === "reconcile_card") {
+      if (result.needsReconciliation) toast.warning("The provider outcome is still uncertain.");
+      else toast.success(`First-card issuance reconciled${result.cardLast4 ? ` · •${result.cardLast4}` : ""}.`);
+    } else toast.success("Onboarding completed. The customer was notified and can now use the card menu.");
+    setTick((value) => value + 1);
+  };
+
+  const act = async (
+    action: "accept" | "deny" | "create_card" | "reconcile_card" | "complete",
+    options: { allowReauthPrompt?: boolean } = { allowReauthPrompt: true },
+  ) => {
     setBusy(true);
     try {
       const result = await activateClient(clientId, { action, accountId: accountId || undefined });
-      if (action === "accept") toast.success("Receipt accepted. Choose a Kripicard account and create the first card.");
-      else if (action === "deny") toast.success("Payment denied. The customer can submit a new amount and receipt.");
-      else if (action === "create_card") {
-        if (result.needsReconciliation) toast.warning("Provider outcome is uncertain. Do not retry card creation; use Reconcile first card.");
-        else toast.success(`First card created${result.cardLast4 ? ` · •${result.cardLast4}` : ""}. Review it, then complete onboarding.`);
-      } else if (action === "reconcile_card") {
-        if (result.needsReconciliation) toast.warning("The provider outcome is still uncertain.");
-        else toast.success(`First-card issuance reconciled${result.cardLast4 ? ` · •${result.cardLast4}` : ""}.`);
-      } else toast.success("Onboarding completed. The customer was notified and can now use the card menu.");
-      setTick((value) => value + 1);
+      applyActionResult(action, result);
     } catch (error) {
+      if (
+        options.allowReauthPrompt !== false &&
+        error instanceof AdminApiError &&
+        error.code === "reauthentication_required" &&
+        (action === "create_card" || action === "reconcile_card")
+      ) {
+        setReauthAction(action);
+        return;
+      }
+      if (error instanceof AdminApiError && error.code === "mfa_required") {
+        toast.error("Enable MFA in Settings → Security before performing live provider card writes.");
+        return;
+      }
       toast.error(error instanceof Error ? error.message : "Onboarding action failed.");
     } finally {
       setBusy(false);
+    }
+  };
+
+  const submitReauthentication = async () => {
+    if (!reauthAction || !reauthPassword.trim()) return;
+    const pendingAction = reauthAction;
+    setReauthBusy(true);
+    try {
+      await reauthenticateAdmin(reauthPassword, reauthCode.trim() || undefined);
+      setReauthAction(null);
+      setReauthPassword("");
+      setReauthCode("");
+      toast.success("Reauthenticated. Continuing the provider action.");
+      await act(pendingAction, { allowReauthPrompt: false });
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Reauthentication failed.");
+    } finally {
+      setReauthBusy(false);
     }
   };
 
@@ -2792,6 +2837,7 @@ function ClientPaymentSection({ clientId }: { clientId: string | null }) {
           : "border-amber-200 bg-amber-50 text-amber-800";
 
   return (
+    <>
     <div className="border-b border-[#eceaf2] bg-[#efeaff] px-6 py-4">
       <div className="flex flex-wrap items-center gap-2">
         <p className="text-xs font-bold uppercase tracking-[.14em] text-[#8179e8]">First-card onboarding</p>
@@ -2832,6 +2878,63 @@ function ClientPaymentSection({ clientId }: { clientId: string | null }) {
       {status === "complete" && <p className="mt-2 text-xs text-emerald-700">Onboarding is complete. The customer can view the card, balance, transactions, support, and add-funds flow.</p>}
       {status === "denied" && <p className="mt-2 text-xs text-red-700">The customer was notified and can choose a new amount and upload a replacement receipt.</p>}
     </div>
+
+    <Dialog open={Boolean(reauthAction)} onOpenChange={(open) => {
+      if (!open && !reauthBusy) {
+        setReauthAction(null);
+        setReauthPassword("");
+        setReauthCode("");
+      }
+    }}>
+      <DialogContent className="rounded-[24px] border-[#e5e2ee] sm:max-w-[430px]">
+        <DialogHeader>
+          <DialogTitle>Confirm live provider action</DialogTitle>
+          <DialogDescription>
+            Card creation and reconciliation require a recently reauthenticated admin session. Re-enter your admin credentials, then AccAbad will continue the same action automatically.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="grid gap-4 py-2">
+          <div className="grid gap-2">
+            <Label htmlFor="onboarding-reauth-password">Admin password</Label>
+            <Input
+              id="onboarding-reauth-password"
+              type="password"
+              autoComplete="current-password"
+              value={reauthPassword}
+              onChange={(event) => setReauthPassword(event.target.value)}
+              onKeyDown={(event) => { if (event.key === "Enter" && reauthPassword.trim()) void submitReauthentication(); }}
+              disabled={reauthBusy}
+              autoFocus
+            />
+          </div>
+          <div className="grid gap-2">
+            <Label htmlFor="onboarding-reauth-code">MFA code <span className="font-normal text-[#9692a3]">(if enabled)</span></Label>
+            <Input
+              id="onboarding-reauth-code"
+              inputMode="numeric"
+              autoComplete="one-time-code"
+              maxLength={6}
+              value={reauthCode}
+              onChange={(event) => setReauthCode(event.target.value.replace(/\D/g, "").slice(0, 6))}
+              onKeyDown={(event) => { if (event.key === "Enter" && reauthPassword.trim()) void submitReauthentication(); }}
+              disabled={reauthBusy}
+              placeholder="123456"
+            />
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" className="rounded-xl" disabled={reauthBusy} onClick={() => {
+            setReauthAction(null);
+            setReauthPassword("");
+            setReauthCode("");
+          }}>Cancel</Button>
+          <Button className="rounded-xl bg-[#6157e7] text-white hover:bg-[#554bcf]" disabled={reauthBusy || !reauthPassword.trim()} onClick={() => void submitReauthentication()}>
+            {reauthBusy ? "Verifying…" : "Reauthenticate & continue"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+    </>
   );
 }
 
