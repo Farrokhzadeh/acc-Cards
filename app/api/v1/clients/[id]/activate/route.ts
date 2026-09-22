@@ -6,6 +6,7 @@ import { getPool } from "@/server/database/pool";
 import { ensureOnboardingCardRequest, getOnboardingCardLink, markOnboardingCardResult } from "@/server/clients/onboarding";
 import { assertCardCreationAvailable, issueApprovedCardRequest, reconcileCardIssuance } from "@/server/card-requests/issuance";
 import { randomToken } from "@/server/security/crypto";
+import { requestIp } from "@/server/auth/request-meta";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -92,7 +93,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
         accountId: input.accountId,
         adminId: session.principal.id,
         requestId,
-        ip: request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || request.headers.get("x-real-ip"),
+        ip: requestIp(request),
       });
       if (onboarding.status === "issued" && onboarding.cardId) {
         await markOnboardingCardResult({ userId, cardId: onboarding.cardId, status: "card_ready" });
