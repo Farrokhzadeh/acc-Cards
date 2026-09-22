@@ -105,9 +105,13 @@ test("readiness is operation-specific so unresolved deposit/funding questions do
   assert.match(readiness, /readyByOperation/);
 });
 
-test("first-card onboarding exposes explicit Create and Reconcile actions with guarded provider writes", () => {
+test("first-card onboarding exposes guarded Create/Reconcile actions and interactive reauthentication", () => {
   assert.match(dashboard, /Create first card/);
   assert.match(dashboard, /Reconcile first card/);
+  assert.match(dashboard, /reauthentication_required/);
+  assert.match(dashboard, /Confirm live provider action/);
+  assert.match(dashboard, /Reauthenticate & continue/);
+  assert.match(dashboard, /reauthenticateAdmin\(reauthPassword/);
   assert.match(activateRoute, /input\.action === "create_card"/);
   assert.match(activateRoute, /input\.action === "reconcile_card"/);
   assert.match(activateRoute, /requireRecentReauthentication\(session\)/);
