@@ -113,6 +113,10 @@ export async function updateAccount(id: string, input: { label?: string; loginEm
   return apiJson<{ ok: true }>(`/api/v1/accounts/${encodeURIComponent(id)}`, { method: "PATCH", body: JSON.stringify(input) });
 }
 
+export async function archiveAccount(id: string) {
+  return apiJson<{ archived: true }>(`/api/v1/accounts/${encodeURIComponent(id)}`, { method: "DELETE" });
+}
+
 export async function revealAccountSecrets(id: string) {
   return apiJson<{ loginEmail: string; password: string; apiKey: string }>(`/api/v1/accounts/${encodeURIComponent(id)}/reveal`, { method: "POST", body: "{}" });
 }
