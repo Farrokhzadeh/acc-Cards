@@ -11,6 +11,7 @@ const issueRoute = await readFile(new URL("../app/api/v1/card-requests/[id]/issu
 const reconcileRoute = await readFile(new URL("../app/api/v1/card-requests/[id]/reconcile/route.ts", import.meta.url), "utf8");
 const env = await readFile(new URL("../config/env-schema.mjs", import.meta.url), "utf8");
 const dashboard = await readFile(new URL("../app/dashboard-app.tsx", import.meta.url), "utf8");
+const activateRoute = await readFile(new URL("../app/api/v1/clients/[id]/activate/route.ts", import.meta.url), "utf8");
 const readiness = await readFile(new URL("../server/providers/kripicard/readiness.ts", import.meta.url), "utf8");
 const contract = await readFile(new URL("../docs/KRIPICARD-PROVIDER-CONTRACT.md", import.meta.url), "utf8");
 const success = JSON.parse(await readFile(new URL("./fixtures/kripicard/create-card.json", import.meta.url), "utf8"));
