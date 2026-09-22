@@ -1999,7 +1999,7 @@ export default function DashboardApp() {
                       ))}
                       <ListPagination page={clientCardPaging.page} pageSize={clientCardPaging.pageSize} totalItems={clientCardPaging.totalItems} totalPages={clientCardPaging.totalPages} onPageChange={clientCardPaging.setPage} />
                     </div>
-                  ) : <div className="rounded-2xl border border-dashed p-6 text-center text-sm text-slate-500">{activeClient.accountIds.length ? "No cards exist in the connected accounts." : "No account connected. The bot shows only Contact the admin."}</div>}
+                  ) : <div className="rounded-2xl border border-dashed p-6 text-center text-sm text-slate-500">{activeClient.accountIds.length ? "No cards exist in the connected account yet." : "No Kripicard account is assigned yet. Complete first-card onboarding to assign one."}</div>}
                 </div>
                 <div>
                   <h3 className="mb-3 font-semibold">Recent transactions</h3>
@@ -2984,7 +2984,7 @@ function ClientPaymentSection({ clientId }: { clientId: string | null }) {
       </div>}
 
       {status === "card_reconciliation" && <div className="mt-3 space-y-2">
-        <Alert className="border-amber-200 bg-amber-50"><AlertTriangle className="text-amber-700" /><AlertTitle>Provider outcome uncertain</AlertTitle><AlertDescription>Do not send another create-card request. Reconcile the existing provider operation.</AlertDescription></Alert>
+        <Alert className="border-amber-200 bg-amber-50"><AlertTriangle className="text-amber-700" /><AlertTitle>Provider outcome uncertain</AlertTitle><AlertDescription>Do not send another provider create-card call. Reconcile the existing operation.</AlertDescription></Alert>
         <Button size="sm" variant="outline" className="rounded-xl border-amber-300 bg-white text-amber-900" disabled={busy} onClick={() => void act("reconcile_card")}><RefreshCw className="size-4" />Reconcile first card</Button>
       </div>}
 
