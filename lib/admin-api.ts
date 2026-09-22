@@ -348,10 +348,10 @@ export async function clearTelegramBotToken() {
 }
 
 export async function fetchPaymentCard() {
-  return apiJson<{ cardNumber: string; cardHolder: string; minLoadUsd?: number }>("/api/v1/settings/payment-card", { method: "GET" });
+  return apiJson<{ cardNumber: string; cardHolder: string; minLoadUsd: number; onboardingBin: string }>("/api/v1/settings/payment-card", { method: "GET" });
 }
 
-export async function updatePaymentCard(input: { cardNumber: string; cardHolder: string; minLoadUsd?: number }) {
+export async function updatePaymentCard(input: { cardNumber: string; cardHolder: string; minLoadUsd?: number; onboardingBin?: string }) {
   return apiJson<{ ok: true }>("/api/v1/settings/payment-card", { method: "PUT", body: JSON.stringify(input) });
 }
 
@@ -377,7 +377,16 @@ export type ClientKyc = {
 } | null;
 
 export type ClientPayment = {
-  declaredAt: string | null; hasReceipt: boolean; receiptMime: string | null; receiptAt: string | null; amountUsdCents: string | null; status: string | null;
+  declaredAt: string | null;
+  hasReceipt: boolean;
+  receiptMime: string | null;
+  receiptAt: string | null;
+  amountUsdCents: string | null;
+  status: string | null;
+  onboardingCardRequestId: string | null;
+  onboardingCardId: string | null;
+  onboardingCardLast4: string | null;
+  onboardingCardRequestStatus: string | null;
 } | null;
 
 export async function fetchClientKyc(id: string) {
@@ -388,8 +397,8 @@ export function clientReceiptUrl(id: string) {
   return `/api/v1/clients/${encodeURIComponent(id)}/receipt`;
 }
 
-export async function activateClient(id: string, input: { action: "accept" | "deny" | "complete"; accountId?: string }) {
-  return apiJson<{ ok: true; status: string }>(`/api/v1/clients/${encodeURIComponent(id)}/activate`, { method: "POST", body: JSON.stringify(input) });
+export async function activateClient(id: string, input: { action: "accept" | "deny" | "create_card" | "reconcile_card" | "complete"; accountId?: string }) {
+  return apiJson<{ ok: true; status: string; cardId?: string | null; cardLast4?: string | null; needsReconciliation?: boolean }>(`/api/v1/clients/${encodeURIComponent(id)}/activate`, { method: "POST", body: JSON.stringify(input) });
 }
 
 export async function fetchForceJoinChannels() {
