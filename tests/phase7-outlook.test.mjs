@@ -79,3 +79,9 @@ test("Outlook can fetch message body transiently for trusted OTP parsing without
   assert.match(microsoftClient, /\$select.*body/);
   assert.doesNotMatch(microsoftService, /body_html_ref\s*=/);
 });
+
+
+test("unconfigured Outlook is a no-op for scheduled worker sync", () => {
+  assert.match(microsoftService, /reason: "microsoft_not_configured"/);
+  assert.doesNotMatch(microsoftService, /syncConnectedOutlookInboxesSystem[\s\S]*throw new ApiError\(503, "microsoft_not_configured"/);
+});
