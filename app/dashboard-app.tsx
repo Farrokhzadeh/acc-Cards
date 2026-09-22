@@ -46,7 +46,7 @@ import {
   XCircle,
 } from "lucide-react";
 import { toast } from "sonner";
-import { AdminApiError, createAccount, fetchDashboardSnapshot, reauthenticateAdmin, revealAccountSecrets, updateAccount, verifyAccountConnection, syncAccountCards, revealLiveCardDetails, syncCardTransactions, fetchCardTransactions, fetchTransactions, fetchTransactionNotificationIssues, reconcileTransactionNotification, setCardFrozenState, refreshCardStatus, connectOutlookMailbox, syncOutlookMailbox, disconnectOutlookMailbox, connectGmailMailbox, syncGmailMailbox, disconnectGmailMailbox, fetchAccountEmailMessages, classifyAccountEmail, revealParsedOtp, fetchTrustedEmailRules, createTrustedEmailRule, updateTrustedEmailRule, fetchTelegramBotStatus, configureTelegramWebhook, setTelegramBotToken, clearTelegramBotToken, fetchPaymentCard, updatePaymentCard, notifyClient, fetchClientPipeline, fetchClientKyc, type ClientKyc, type ClientPayment, clientReceiptUrl, activateClient, fetchForceJoinChannels, upsertForceJoinChannel, deleteForceJoinChannel, fetchSupportConversations, updateSupportConversation, retrySupportMessage, fetchClientSupportMessages, sendClientSupportMessage, fetchClientAssignableAccounts, assignClientAccount, unassignClientAccount, unassignAllClientAccounts, fetchCardRequests, reviewCardRequest, issueCardRequest, reconcileCardRequest, fetchFundingRequests, reviewFundingRequest, executeFundingRequest, reconcileFundingRequest, resolveFundingRequest, fundingReceiptDownloadUrl, fetchFundingSettings, updateFundingSettings, fetchCardPolicy, updateCardPolicy, type ApiCardRequest, type ApiFundingRequest, type AssignableClientAccount, type LiveCardDetails, type StoredCardTransaction, type StoredEmailMessage, type TelegramBotStatus, fetchProviderReadiness, updateProviderReadinessCheck, type ProviderReadinessSnapshot, type TransactionNotificationIssue, type SupportConversationSummary, fetchOperationalSnapshot, updateOperationalAlert, updateRuntimeControl, type OperationalSnapshot, fetchKycSubmissions, reviewKycSubmission, kycDocumentUrl, type ApiKycSubmission } from "@/lib/admin-api";
+import { AdminApiError, createAccount, archiveAccount, fetchDashboardSnapshot, reauthenticateAdmin, revealAccountSecrets, updateAccount, verifyAccountConnection, syncAccountCards, revealLiveCardDetails, syncCardTransactions, fetchCardTransactions, fetchTransactions, fetchTransactionNotificationIssues, reconcileTransactionNotification, setCardFrozenState, refreshCardStatus, connectOutlookMailbox, syncOutlookMailbox, disconnectOutlookMailbox, connectGmailMailbox, syncGmailMailbox, disconnectGmailMailbox, fetchAccountEmailMessages, classifyAccountEmail, revealParsedOtp, fetchTrustedEmailRules, createTrustedEmailRule, updateTrustedEmailRule, fetchTelegramBotStatus, configureTelegramWebhook, setTelegramBotToken, clearTelegramBotToken, fetchPaymentCard, updatePaymentCard, notifyClient, fetchClientPipeline, fetchClientKyc, type ClientKyc, type ClientPayment, clientReceiptUrl, activateClient, fetchForceJoinChannels, upsertForceJoinChannel, deleteForceJoinChannel, fetchSupportConversations, updateSupportConversation, retrySupportMessage, fetchClientSupportMessages, sendClientSupportMessage, fetchClientAssignableAccounts, assignClientAccount, unassignClientAccount, unassignAllClientAccounts, fetchCardRequests, reviewCardRequest, issueCardRequest, reconcileCardRequest, fetchFundingRequests, reviewFundingRequest, executeFundingRequest, reconcileFundingRequest, resolveFundingRequest, fundingReceiptDownloadUrl, fetchFundingSettings, updateFundingSettings, fetchCardPolicy, updateCardPolicy, type ApiCardRequest, type ApiFundingRequest, type AssignableClientAccount, type LiveCardDetails, type StoredCardTransaction, type StoredEmailMessage, type TelegramBotStatus, fetchProviderReadiness, updateProviderReadinessCheck, type ProviderReadinessSnapshot, type TransactionNotificationIssue, type SupportConversationSummary, fetchOperationalSnapshot, updateOperationalAlert, updateRuntimeControl, type OperationalSnapshot, fetchKycSubmissions, reviewKycSubmission, kycDocumentUrl, type ApiKycSubmission } from "@/lib/admin-api";
 import { disableAdminMfa, enableAdminMfa, fetchCurrentAdmin, logoutAdmin, setupAdminMfa, type CurrentAdmin } from "@/lib/auth-client";
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -1512,24 +1512,25 @@ export default function DashboardApp() {
     toast.success(assignedClient ? `Legacy prototype card created for ${assignedClient.name} through ${account.name}.` : `Legacy prototype card created in ${account.name}; assign the account to show it in Telegram.`);
   };
 
-  const removeAccount = () => {
+  const removeAccount = async () => {
     if (!deleteAccountId) return;
-    if (backendDataLoaded) {
-      toast.info("Account archive/delete is not enabled yet; production records are preserved.");
-      setDeleteAccountId(null);
-      return;
-    }
-    const connectedUsers = clients.filter((client) => client.accountIds.includes(deleteAccountId)).length;
+    const id = deleteAccountId;
+    const connectedUsers = clients.filter((client) => client.accountIds.includes(id)).length;
     if (connectedUsers) {
-      toast.error(`Reassign ${connectedUsers} connected client${connectedUsers > 1 ? "s" : ""} before deleting this account.`);
+      toast.error(`Reassign ${connectedUsers} connected client${connectedUsers > 1 ? "s" : ""} before archiving this account.`);
       setDeleteAccountId(null);
       return;
     }
-    setAccounts((current) => current.filter((account) => account.id !== deleteAccountId));
-    setCards((current) => current.filter((card) => card.accountId !== deleteAccountId));
-    setAccountEmails((current) => current.filter((email) => email.accountId !== deleteAccountId));
-    setDeleteAccountId(null);
-    toast.success("Account deleted.");
+    try {
+      if (backendDataLoaded) await archiveAccount(id);
+      setAccounts((current) => current.filter((account) => account.id !== id));
+      setCards((current) => current.filter((card) => card.accountId !== id));
+      setAccountEmails((current) => current.filter((email) => email.accountId !== id));
+      setDeleteAccountId(null);
+      toast.success(backendDataLoaded ? "Account archived and mailbox authorization disabled." : "Account removed from the local demo.");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Account archive failed.");
+    }
   };
 
   const openAccountEmail = (emailId: string) => {
@@ -2325,8 +2326,8 @@ export default function DashboardApp() {
       <AlertDialog open={Boolean(deleteAccountId)} onOpenChange={(open) => !open && setDeleteAccountId(null)}>
         <AlertDialogContent className="rounded-[24px] border-[#e5e2ee] shadow-[0_28px_80px_rgba(26,24,48,.18)]">
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete this account connection?</AlertDialogTitle>
-            <AlertDialogDescription>This removes the saved API connection. It does not delete cards at Kripicard.</AlertDialogDescription>
+            <AlertDialogTitle>Archive this account connection?</AlertDialogTitle>
+            <AlertDialogDescription>This archives the AccAbad connection and disables its mailbox authorization. It does not delete cards at Kripicard.</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
