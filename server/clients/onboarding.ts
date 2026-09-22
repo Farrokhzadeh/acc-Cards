@@ -2,6 +2,7 @@ import { getPool, withTransaction } from "@/server/database/pool";
 import { ApiError } from "@/server/http/api";
 import { getCardRequestBins } from "@/server/card-requests/service";
 import { getPaymentCard } from "@/server/settings/payment-card";
+import { assignAccountInTransaction } from "@/server/clients/assignments";
 
 type OnboardingRequestRow = {
   id: string;
@@ -15,6 +16,7 @@ export async function ensureOnboardingCardRequest(args: {
   accountId: string;
   adminId: string;
   requestId: string;
+  ip?: string | null;
 }) {
   return withTransaction(async (db) => {
     const userResult = await db.query<{
@@ -53,6 +55,13 @@ export async function ensureOnboardingCardRequest(args: {
       if (row.selected_account_id && row.selected_account_id !== args.accountId) {
         throw new ApiError(409, "onboarding_account_locked", "This first-card issuance is already tied to a different Kripicard account.");
       }
+      await assignAccountInTransaction(db, {
+        clientId: args.userId,
+        accountId: args.accountId,
+        adminId: args.adminId,
+        requestId: args.requestId,
+        ip: args.ip,
+      });
       return { requestId: row.id, status: row.status, providerCardId: row.provider_card_id, cardId: user.onboarding_card_id };
     }
 
@@ -91,6 +100,14 @@ export async function ensureOnboardingCardRequest(args: {
     if (configuredBin.requiresDob && !dob) {
       throw new ApiError(409, "date_of_birth_required", "The configured first-card BIN requires a date of birth, but approved KYC has none.");
     }
+
+    await assignAccountInTransaction(db, {
+      clientId: args.userId,
+      accountId: args.accountId,
+      adminId: args.adminId,
+      requestId: args.requestId,
+      ip: args.ip,
+    });
 
     const result = await db.query<{ id: string; reference: string }>(
       `INSERT INTO card_requests(
