@@ -175,3 +175,13 @@ test("onboarding can switch accounts only after safely retryable issuance failur
   assert.match(onboarding, /encrypted_api_key\.startsWith\("v1\."\)/);
   assert.doesNotMatch(onboarding, /\["approved", "issue_failed", "needs_reconciliation"/);
 });
+
+
+test("corrupted provider API keys fail before issuance state is committed", () => {
+  const decrypt = issuance.indexOf("apiKey = decryptSecret(account.encrypted_api_key)");
+  const operation = issuance.indexOf("INSERT INTO card_operations", decrypt);
+  const issuing = issuance.indexOf("SET status='issuing'", decrypt);
+  assert.ok(decrypt >= 0 && operation > decrypt && issuing > decrypt);
+  assert.match(issuance, /throw new ApiError\(409, "secret_unavailable"/);
+  assert.match(issuance, /new KripicardClient\(\{ apiKey \}\)/);
+});
