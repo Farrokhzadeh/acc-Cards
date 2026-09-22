@@ -42,11 +42,11 @@ test("callback data is opaque, hashed, user-bound, and expiring", () => {
   assert.doesNotMatch(bot, /callback_data:\s*card\.id/);
 });
 
-test("bot rechecks ban, force-join membership, and assignment gates", () => {
+test("bot rechecks ban, force-join membership, and completed first-card onboarding", () => {
   assert.match(bot, /user\.bannedAt/);
   assert.match(bot, /getChatMember/);
-  assert.match(bot, /accountCount\(user\.id\)/);
-  assert.match(bot, /contact_admin_text/);
+  assert.match(bot, /paymentStatus !== "complete"/);
+  assert.match(bot, /userCards\(user\.id\)/);
 });
 
 test("misconfigured force-join checks fail open instead of locking every user out", () => {
