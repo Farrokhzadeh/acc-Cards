@@ -95,6 +95,10 @@ export class TelegramClient {
     });
   }
 
+  setMyCommands(commands: Array<{ command: string; description: string }>) {
+    return this.call<boolean>("setMyCommands", { commands });
+  }
+
   async sendMessage(input: {
     chatId: number | string;
     text: string;
