@@ -11,6 +11,7 @@ const outboxRoute = await readFile(new URL("../app/api/internal/jobs/telegram-ou
 const env = await readFile(new URL("../config/env-schema.mjs", import.meta.url), "utf8");
 const cardService = await readFile(new URL("../server/providers/kripicard/service.ts", import.meta.url), "utf8");
 const messagesRoute = await readFile(new URL("../app/api/v1/clients/[id]/messages/route.ts", import.meta.url), "utf8");
+const activateRoute = await readFile(new URL("../app/api/v1/clients/[id]/activate/route.ts", import.meta.url), "utf8");
 
 
 test("Phase 10 adds persistent force-join, callback token, and bot-state tables", () => {
@@ -89,4 +90,13 @@ test("Telegram credentials stay in environment configuration, not browser code",
   assert.match(env, /TELEGRAM_WEBHOOK_SECRET/);
   assert.match(telegramClient, /process\.env/);
   assert.doesNotMatch(bot, /123456789:AA/);
+});
+
+
+test("first-card receipt persistence is atomic and denied receipts are cleaned from private storage", () => {
+  assert.match(bot, /setPaymentReceiptPending/);
+  assert.match(bot, /payment_status='pending'/);
+  assert.match(bot, /DELETE FROM telegram_bot_states/);
+  assert.match(bot, /deletePrivateSupportAttachment\(stored\.objectKey\)/);
+  assert.match(activateRoute, /deletePrivateSupportAttachment\(user\.payment_receipt_object_key\)/);
 });
