@@ -50,7 +50,7 @@ export const KYC = {
   useButtons: m("Use the Submit or Cancel button below, or send /cancel.", "از دکمهٔ ثبت یا لغو در زیر استفاده کنید، یا /cancel بفرستید."),
   submitted: m("✅ Thank you! Your identity verification was submitted and is now <b>pending admin review</b>.", "✅ سپاس! درخواست احراز هویت شما ثبت شد و اکنون <b>در انتظار بررسی مدیر</b> است."),
   cancelled: m("Identity verification cancelled.", "احراز هویت لغو شد."),
-  approvedNotice: m("🎉 Your identity has been <b>approved</b>. Next step: pay the setup/load fee to get your card.", "🎉 هویت شما <b>تأیید</b> شد. مرحله بعد: پرداخت هزینه راه‌اندازی/شارژ برای دریافت کارت."),
+  approvedNotice: m("🎉 Your identity has been <b>approved</b>. Next, choose how much you want on your first card and make that payment.", "🎉 هویت شما <b>تأیید</b> شد. حالا مبلغی را که می‌خواهید روی اولین کارت شما باشد انتخاب کنید و همان مبلغ را پرداخت کنید."),
   rejectedNotice: m("Your identity verification was <b>rejected</b>. You can start again with /kyc.", "احراز هویت شما <b>رد</b> شد. می‌توانید با /kyc دوباره شروع کنید."),
   approvedNoAccount: m(
     "Your identity is approved ✅. An administrator still needs to assign your account before you can request cards. Please contact them.",
@@ -67,7 +67,7 @@ export const MENU = {
   support: m("💬 Support", "💬 پشتیبانی"),
   language: m("🌐 Language", "🌐 زبان"),
   payment: m("💳 Payment info", "💳 اطلاعات پرداخت"),
-  paidBtn: m("✅ I've made the payment", "✅ پرداخت را انجام داده‌ام"),
+  paidBtn: m("💵 Choose first-card amount", "💵 انتخاب مبلغ اولین کارت"),
   back: m("← Menu", "← منو"),
 };
 
@@ -89,17 +89,22 @@ export const COMMON = {
 
 export const PAYMENT = {
   info: m(
-    "💳 <b>Make your payment</b>\nSend your payment to the card below; our team will activate your card after confirmation.\nCard number: <code>{card}</code>\nCard holder: <b>{holder}</b>",
-    "💳 <b>پرداخت خود را انجام دهید</b>\nمبلغ را به کارت زیر واریز کنید؛ پس از تأیید، تیم ما کارت شما را فعال می‌کند.\nشماره کارت: <code>{card}</code>\nبه نام: <b>{holder}</b>",
+    "💳 <b>Pay exactly ${amount} for your first card</b>\nCard number: <code>{card}</code>\nCard holder: <b>{holder}</b>\nThe approved amount becomes the initial balance of your first card.",
+    "💳 <b>برای اولین کارت دقیقاً ${amount} پرداخت کنید</b>\nشماره کارت: <code>{card}</code>\nبه نام: <b>{holder}</b>\nمبلغ تأییدشده، موجودی اولیه اولین کارت شما خواهد بود.",
+  ),
+  chooseAmount: m(
+    "✅ KYC approved. Choose how much you want on your first card. Minimum: <b>${min}</b>. After you enter the amount, we will show the payment card and exact amount to send.",
+    "✅ احراز هویت تأیید شد. مبلغ موردنظر برای اولین کارت را انتخاب کنید. حداقل: <b>${min}</b>. بعد از وارد کردن مبلغ، کارت پرداخت و مبلغ دقیق نمایش داده می‌شود.",
   ),
   notConfigured: m("Payment card is not configured yet. Please contact support.", "کارت پرداخت هنوز تنظیم نشده است. لطفاً با پشتیبانی تماس بگیرید."),
-  askReceipt: m("🧾 Please send your <b>payment receipt</b> (screenshot or PDF) so we can verify your payment. This speeds up activation.", "🧾 لطفاً <b>رسید پرداخت</b> خود را (اسکرین‌شات یا PDF) بفرستید تا پرداخت شما را تأیید کنیم. این کار فعال‌سازی را سریع‌تر می‌کند."),
-  askAmount: m("💵 Enter the amount you paid in USD (for example <code>20</code>):", "💵 مبلغ پرداختی خود را به دلار وارد کنید (مثلاً <code>20</code>):"),
+  askReceipt: m("🧾 Now send the <b>payment receipt</b> as a screenshot/image or PDF. The receipt is required for admin approval.", "🧾 حالا <b>رسید پرداخت</b> را به‌صورت تصویر یا PDF ارسال کنید. رسید برای تأیید مدیر الزامی است."),
+  askAmount: m("💵 Enter the amount you want on your first card in USD:", "💵 مبلغی را که می‌خواهید روی اولین کارت شما باشد به دلار وارد کنید:"),
   errAmount: m("Enter a valid amount in USD, for example <code>20</code>.", "یک مبلغ معتبر به دلار وارد کنید، مثلاً <code>20</code>."),
   errMinAmount: m("The minimum load is <code>{min}</code>. Please enter at least that amount.", "حداقل شارژ <code>{min}</code> است. لطفاً حداقل این مبلغ را وارد کنید."),
   denied: m("❌ Your payment receipt was <b>denied</b>. Please check the amount and receipt and send them again, or contact support.", "❌ رسید پرداخت شما <b>رد</b> شد. لطفاً مبلغ و رسید را بررسی و دوباره بفرستید، یا با پشتیبانی تماس بگیرید."),
   complete: m("✅ Payment confirmed! Your card (Ucard) is active. Open the menu to view your card and its balance.", "✅ پرداخت تأیید شد! کارت شما (Ucard) فعال است. منو را باز کنید تا کارت و موجودی آن را ببینید."),
-  skipReceipt: m("I don't have a receipt", "رسید ندارم"),
+  skipReceipt: m("Receipt required", "رسید الزامی است"),
+  receiptRequired: m("A payment receipt is required. Upload an image or PDF of the payment to continue.", "رسید پرداخت الزامی است. برای ادامه تصویر یا PDF رسید را ارسال کنید."),
 };
 
 export const FLOW = {
@@ -119,12 +124,12 @@ export const FLOW = {
   requestsHeader: m("<b>My requests</b>\nTap a request to see its status and timeline.", "<b>درخواست‌های من</b>\nبرای وضعیت و زمان‌بندی روی یک درخواست بزنید."),
   emptyTransactions: m("No transactions yet. Once you use your card, its activity appears here.", "هنوز تراکنشی نیست. پس از استفاده از کارت، فعالیت‌ها اینجا نمایش می‌گیرد."),
   waitPayment: m("⏳ Payment received. Our team is reviewing it — please wait. We'll message you here as soon as your card is ready.", "⏳ پرداخت دریافت شد. تیم ما در حال بررسی است — لطفاً صبر کنید. به محض آماده شدن کارت، اینجا پیام می‌دهیم."),
-  waitingActivation: m("⏳ Thank you! We've received your payment notice. An administrator is verifying it now — your account will be activated shortly. We'll message you here as soon as it's ready.", "⏳ سپاس! اعلام پرداخت شما دریافت شد. مدیر در حال بررسی است — حساب شما به‌زودی فعال می‌شود. وقتی آماده شد اینجا پیام می‌گیرید."),
+  waitingActivation: m("⏳ Receipt received. An administrator will verify the payment, assign a Kripicard account, create your first card with the approved amount, and then complete your onboarding. We'll notify you when the card is ready.", "⏳ رسید دریافت شد. مدیر پرداخت را بررسی می‌کند، یک حساب Kripicard اختصاص می‌دهد، اولین کارت شما را با مبلغ تأییدشده ایجاد می‌کند و سپس ثبت‌نام را تکمیل می‌کند. وقتی کارت آماده شد به شما اطلاع می‌دهیم."),
 };
 
 export const NOTIFY = {
   cardReady: m("✅ Your card is ready ••{last4}. Open the menu to start using it.", "✅ کارت شما آماده است ••{last4}. منو را باز کنید و استفاده را شروع کنید."),
-  accountReady: m("✅ Your account is active. Open the menu to request your card.", "✅ حساب شما فعال است. منو را باز کنید و کارت درخواست کنید."),
+  accountReady: m("✅ Your onboarding is complete. Open the menu to view your card.", "✅ ثبت‌نام شما تکمیل شد. منو را باز کنید و کارت خود را ببینید."),
 };
 
 // Confirmation summary for the KYC review step (single language).
