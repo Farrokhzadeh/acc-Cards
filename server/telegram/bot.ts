@@ -132,12 +132,17 @@ async function getPaymentStatus(userId: string): Promise<string | null> {
 
 async function setPaymentAmountAwaitingReceipt(userId: string, cents: number) {
   await withTransaction(async (db) => {
-    await db.query(
+    const updated = await db.query(
       `UPDATE telegram_users
           SET payment_amount_usd_cents=$2,payment_declared_at=now(),updated_at=now()
-        WHERE id=$1::uuid`,
+        WHERE id=$1::uuid
+          AND (payment_status IS NULL OR payment_status='denied')
+        RETURNING id`,
       [userId, cents],
     );
+    if (!updated.rowCount) {
+      throw new ApiError(409, "invalid_state", "This first-card payment can no longer be changed.");
+    }
     await db.query(
       `INSERT INTO telegram_bot_states(user_id,mode,payload,expires_at,updated_at)
        VALUES($1::uuid,'payment_receipt','{}'::jsonb,now()+(60 * interval '1 minute'),now())
@@ -150,12 +155,21 @@ async function setPaymentAmountAwaitingReceipt(userId: string, cents: number) {
 
 async function setPaymentReceiptPending(userId: string, objectKey: string, mime: string) {
   await withTransaction(async (db) => {
-    await db.query(
+    const updated = await db.query(
       `UPDATE telegram_users
           SET payment_receipt_object_key=$2,payment_receipt_mime=$3,payment_receipt_at=now(),payment_status='pending',updated_at=now()
-        WHERE id=$1::uuid`,
+        WHERE id=$1::uuid
+          AND (payment_status IS NULL OR payment_status='denied')
+          AND EXISTS (
+            SELECT 1 FROM telegram_bot_states
+             WHERE user_id=$1::uuid AND mode='payment_receipt' AND expires_at>now()
+          )
+        RETURNING id`,
       [userId, objectKey, mime],
     );
+    if (!updated.rowCount) {
+      throw new ApiError(409, "invalid_state", "This receipt session expired or the first-card payment already progressed.");
+    }
     await db.query(`DELETE FROM telegram_bot_states WHERE user_id=$1::uuid`, [userId]);
   });
 }
@@ -886,7 +900,7 @@ async function handleCallback(client: TelegramClient, callback: z.infer<typeof c
   if (resolved.action === "menu.paid") {
     if (user.bannedAt) { await client.sendMessage({ chatId, text: pick(KYC.accessDisabled, user.lang) }); return; }
     const ps = await getPaymentStatus(user.id);
-    if (ps === "pending" || ps === "accepted") { await sendWaitingScreen(client, user, chatId); return; }
+    if (ps !== null && ps !== "denied") { await routeHome(client, user, chatId); return; }
     await auditTelegramEvent({ userId: user.id, action: "telegram.payment.amount_started", entityType: "telegram_user", entityId: user.id });
     await setKycState(user.id, "payment_amount", {}, 60);
     await client.sendMessage({ chatId, text: pick(PAYMENT.askAmount, user.lang) });

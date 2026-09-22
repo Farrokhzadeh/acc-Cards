@@ -1,7 +1,7 @@
-import { getPool } from "@/server/database/pool";
+import { getPool, withTransaction } from "@/server/database/pool";
 import { ApiError } from "@/server/http/api";
-import { auditAdminEvent } from "@/server/auth/service";
 import { encodeCursor, type PageCursor } from "@/server/http/cursor";
+import { requestIp } from "@/server/auth/request-meta";
 
 export type KycStatus = "pending" | "approved" | "rejected";
 
@@ -228,36 +228,34 @@ export async function reviewKycSubmission(args: {
   requestId: string;
 }): Promise<{ ok: true; status: KycStatus }> {
   const status: KycStatus = args.decision === "approve" ? "approved" : "rejected";
-  const result = await getPool().query<{ id: string; status: KycStatus }>(
-    `UPDATE kyc_submissions
-        SET status = $2, review_note = $3, reviewed_by = $4::uuid, reviewed_at = now(), updated_at = now()
-      WHERE id = $1::uuid
-      RETURNING id, status`,
-    [args.id, status, args.note, args.adminId],
-  );
-  const row = result.rows[0];
-  if (!row) throw new ApiError(404, "not_found", "KYC submission not found.");
-  await auditAdminEvent({
-    adminId: args.adminId,
-    action: `kyc.${status}`,
-    entityType: "kyc_submission",
-    entityId: args.id,
-    request: args.request,
-    requestId: args.requestId,
-    metadata: { decision: args.decision },
-  });
-  const sub = await getPool().query<{ telegram_user_id: string }>(
-    `SELECT telegram_user_id FROM kyc_submissions WHERE id = $1::uuid`,
-    [args.id],
-  );
-  const userId = sub.rows[0]?.telegram_user_id;
-  if (userId) {
-    await getPool().query(
+  return withTransaction(async (db) => {
+    const result = await db.query<{ id: string; status: KycStatus; telegram_user_id: string }>(
+      `UPDATE kyc_submissions
+          SET status = $2, review_note = $3, reviewed_by = $4::uuid, reviewed_at = now(), updated_at = now()
+        WHERE id = $1::uuid AND status = 'pending'
+        RETURNING id, status, telegram_user_id`,
+      [args.id, status, args.note, args.adminId],
+    );
+    const row = result.rows[0];
+    if (!row) {
+      const existing = await db.query<{ status: KycStatus }>(
+        `SELECT status FROM kyc_submissions WHERE id = $1::uuid`,
+        [args.id],
+      );
+      if (!existing.rows[0]) throw new ApiError(404, "not_found", "KYC submission not found.");
+      throw new ApiError(409, "already_reviewed", `This KYC submission is already ${existing.rows[0].status}.`);
+    }
+    await db.query(
+      `INSERT INTO audit_logs(actor_type, actor_id, action, entity_type, entity_id, metadata_redacted, ip, request_id)
+       VALUES ('admin', $1::uuid, $2, 'kyc_submission', $3, $4::jsonb, $5::inet, $6)`,
+      [args.adminId, `kyc.${status}`, args.id, JSON.stringify({ decision: args.decision }), requestIp(args.request), args.requestId],
+    );
+    await db.query(
       `INSERT INTO outbox_events(topic, aggregate_type, aggregate_id, event_type, payload, idempotency_key, status, available_at)
        VALUES ('telegram', 'kyc_submission', $1, 'kyc.decision', $2::jsonb, $3, 'pending', now())
        ON CONFLICT (idempotency_key) DO NOTHING`,
-      [args.id, JSON.stringify({ userId, decision: args.decision }), `kyc-decision:${args.id}:${status}`],
+      [args.id, JSON.stringify({ userId: row.telegram_user_id, decision: args.decision }), `kyc-decision:${args.id}:${status}`],
     );
-  }
-  return { ok: true, status: row.status };
+    return { ok: true as const, status: row.status };
+  });
 }

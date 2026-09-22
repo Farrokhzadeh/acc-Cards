@@ -12,6 +12,7 @@ const env = await readFile(new URL("../config/env-schema.mjs", import.meta.url),
 const cardService = await readFile(new URL("../server/providers/kripicard/service.ts", import.meta.url), "utf8");
 const messagesRoute = await readFile(new URL("../app/api/v1/clients/[id]/messages/route.ts", import.meta.url), "utf8");
 const activateRoute = await readFile(new URL("../app/api/v1/clients/[id]/activate/route.ts", import.meta.url), "utf8");
+const kycService = await readFile(new URL("../server/kyc/service.ts", import.meta.url), "utf8");
 
 
 test("Phase 10 adds persistent force-join, callback token, and bot-state tables", () => {
@@ -108,4 +109,18 @@ test("first-card amount declaration and receipt-mode transition are atomic", () 
   assert.match(bot, /mode='payment_receipt'/);
   assert.doesNotMatch(bot, /async function setPaymentDeclared/);
   assert.doesNotMatch(bot, /async function setPaymentAmount\(/);
+});
+
+test("stale payment callbacks cannot regress an accepted or completed onboarding", () => {
+  assert.match(bot, /payment_status IS NULL OR payment_status='denied'/);
+  assert.match(bot, /mode='payment_receipt' AND expires_at>now\(\)/);
+  assert.match(bot, /if \(ps !== null && ps !== "denied"\)/);
+});
+
+test("KYC review is a single atomic decision with its audit and notification", () => {
+  assert.match(kycService, /withTransaction/);
+  assert.match(kycService, /WHERE id = \$1::uuid AND status = 'pending'/);
+  assert.match(kycService, /already_reviewed/);
+  assert.match(kycService, /INSERT INTO audit_logs/);
+  assert.match(kycService, /INSERT INTO outbox_events/);
 });
