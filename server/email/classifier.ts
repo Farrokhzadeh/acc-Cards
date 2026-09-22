@@ -22,6 +22,7 @@ type MessageRow = {
   subject: string | null;
   preview: string | null;
   received_at: Date;
+  provider_message_id: string;
 };
 
 function normalizedSender(value: string) {
@@ -88,7 +89,11 @@ async function resolveCardAndUser(db: DatabaseQueryable, accountId: string, text
   return { cardId, userId: assignment.rows[0]?.telegram_user_id ?? null, last4 };
 }
 
-export async function classifyPendingEmailMessages(options?: { accountId?: string; limit?: number }) {
+export async function classifyPendingEmailMessages(options?: {
+  accountId?: string;
+  limit?: number;
+  resolveMessageText?: (message: { providerMessageId: string; sender: string; subject: string | null; preview: string | null }) => Promise<string | null>;
+}) {
   const limit = Math.max(1, Math.min(500, options?.limit ?? 100));
   const params: unknown[] = [];
   let accountFilter = "";
@@ -98,7 +103,7 @@ export async function classifyPendingEmailMessages(options?: { accountId?: strin
   }
   params.push(limit);
   const messages = await getPool().query<MessageRow>(
-    `SELECT em.id, em.email_account_id, ea.account_id, em.sender, em.subject, em.preview, em.received_at
+    `SELECT em.id, em.email_account_id, ea.account_id, em.sender, em.subject, em.preview, em.received_at, em.provider_message_id
        FROM email_messages em
        JOIN email_accounts ea ON ea.id = em.email_account_id
       WHERE em.classification_status = 'pending' ${accountFilter}
@@ -110,9 +115,22 @@ export async function classifyPendingEmailMessages(options?: { accountId?: strin
   const summary = { processed: 0, classified: 0, quarantined: 0, otpCreated: 0 };
 
   for (const message of messages.rows) {
-    const text = `${message.subject ?? ""}\n${message.preview ?? ""}`;
-    const otpCandidate = extractOtpCandidate(text);
     const rule = rules.find((candidate) => senderMatches(message.sender, candidate.senderMatch) && subjectMatches(message.subject, candidate.subjectContains));
+    let text = `${message.subject ?? ""}\n${message.preview ?? ""}`;
+    if (rule?.category === "otp_3ds" && options?.resolveMessageText) {
+      try {
+        const resolvedText = await options.resolveMessageText({
+          providerMessageId: message.provider_message_id,
+          sender: message.sender,
+          subject: message.subject,
+          preview: message.preview,
+        });
+        if (resolvedText?.trim()) text = `${message.subject ?? ""}\n${resolvedText}`;
+      } catch {
+        // Full-body retrieval is best-effort; preview classification remains the safe fallback.
+      }
+    }
+    const otpCandidate = extractOtpCandidate(text);
 
     await withTransaction(async (db) => {
       summary.processed += 1;
