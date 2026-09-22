@@ -361,6 +361,18 @@ function mapApiFundingRequest(request: ApiFundingRequest): FundingRequest {
   };
 }
 
+async function fetchAllKycSubmissions(signal?: AbortSignal) {
+  const items: ApiKycSubmission[] = [];
+  let cursor: string | undefined;
+  for (let page = 0; page < 100; page += 1) {
+    const result = await fetchKycSubmissions({ limit: 100, cursor }, signal);
+    items.push(...result.items);
+    if (!result.nextCursor) return items;
+    cursor = result.nextCursor;
+  }
+  return items;
+}
+
 function formatRial(value: number) {
   return `${new Intl.NumberFormat("en-US").format(Math.round(value))} IRR`;
 }
@@ -579,10 +591,10 @@ export default function DashboardApp() {
   }, [activeCardId, backendDataLoaded]);
 
   useEffect(() => {
-    if (!backendDataLoaded || view !== "requests") return;
+    if (!backendDataLoaded || (view !== "overview" && view !== "requests")) return;
     let cancelled = false;
     const timer = window.setTimeout(() => {
-      fetchFundingRequests({ search, limit: 100 })
+      fetchFundingRequests({ search: view === "requests" ? search : undefined, limit: 100 })
         .then((fundingResult) => {
           if (!cancelled) setFundingRequests(fundingResult.items.map(mapApiFundingRequest));
         })
@@ -641,22 +653,23 @@ export default function DashboardApp() {
   useEffect(() => {
     if (!backendDataLoaded) return;
     let cancelled = false;
-    fetchKycSubmissions({ limit: 200 })
-      .then((res) => {
+    const controller = new AbortController();
+    fetchAllKycSubmissions(controller.signal)
+      .then((items) => {
         if (cancelled) return;
         const rank = { approved: 3, pending: 2, rejected: 1 } as const;
         const map: Record<string, "approved" | "pending" | "rejected"> = {};
-        for (const item of res.items) {
+        for (const item of items) {
           const key = item.customer?.telegramUserId;
           if (!key) continue;
           const cur = map[key];
           if (!cur || rank[item.status] > rank[cur]) map[key] = item.status;
         }
         setKycStatusByUser(map);
-        setKycPendingCount(res.items.filter((i) => i.status === "pending").length);
+        setKycPendingCount(items.filter((i) => i.status === "pending").length);
       })
       .catch(() => {});
-    return () => { cancelled = true; };
+    return () => { cancelled = true; controller.abort(); };
   }, [backendDataLoaded]);
 
   useEffect(() => {
@@ -755,12 +768,10 @@ export default function DashboardApp() {
   }, [backendDataLoaded]);
 
   useEffect(() => {
-    if (!backendDataLoaded || view !== "requests") return;
+    if (!backendDataLoaded || (view !== "requests" && view !== "clients")) return;
     const timer = window.setTimeout(() => {
-      Promise.all([
-        fetchTransactions({ search: search.trim() || undefined, limit: 100 }),
-        fetchTransactionNotificationIssues({ search: search.trim() || undefined, limit: 50 }),
-      ]).then(([stored, issues]) => {
+      const transactionSearch = view === "requests" ? search.trim() || undefined : undefined;
+      const applyTransactions = (stored: Awaited<ReturnType<typeof fetchTransactions>>) => {
         setTransactions(stored.items.map((tx) => ({
           id: tx.id,
           clientId: tx.clientId,
@@ -774,8 +785,20 @@ export default function DashboardApp() {
           notificationStatus: tx.notificationStatus,
           notificationError: tx.notificationError,
         })));
-        setTransactionNotificationIssues(issues.items);
-      }).catch((error) => toast.error(error instanceof Error ? error.message : "Could not load transactions."));
+      };
+      if (view === "requests") {
+        Promise.all([
+          fetchTransactions({ search: transactionSearch, limit: 100 }),
+          fetchTransactionNotificationIssues({ search: transactionSearch, limit: 50 }),
+        ]).then(([stored, issues]) => {
+          applyTransactions(stored);
+          setTransactionNotificationIssues(issues.items);
+        }).catch((error) => toast.error(error instanceof Error ? error.message : "Could not load transactions."));
+      } else {
+        fetchTransactions({ limit: 100 })
+          .then(applyTransactions)
+          .catch((error) => toast.error(error instanceof Error ? error.message : "Could not load transactions."));
+      }
     }, 250);
     return () => window.clearTimeout(timer);
   }, [backendDataLoaded, search, view]);
@@ -2153,6 +2176,7 @@ function KycDetailField({ label, value }: { label: string; value: string }) {
 
 function KycView() {
   const [items, setItems] = useState<ApiKycSubmission[]>([]);
+  const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [filter, setFilter] = useState<"pending" | "approved" | "rejected" | "all">("pending");
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
@@ -2160,18 +2184,36 @@ function KycView() {
   const [selected, setSelected] = useState<ApiKycSubmission | null>(null);
   const [note, setNote] = useState("");
   const [busy, setBusy] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
 
   useEffect(() => {
     const controller = new AbortController();
     fetchKycSubmissions({ status: filter, search: search || undefined, limit: 50 }, controller.signal)
-      .then((res) => setItems(res.items))
+      .then((res) => {
+        setItems(res.items);
+        setNextCursor(res.nextCursor);
+      })
       .catch((error) => {
         if (error instanceof DOMException && error.name === "AbortError") return;
         toast.error(error instanceof AdminApiError ? error.message : "Could not load KYC submissions.");
       })
-      .finally(() => setLoading(false));
+      .finally(() => { if (!controller.signal.aborted) setLoading(false); });
     return () => controller.abort();
   }, [filter, search, tick]);
+
+  async function loadMore() {
+    if (!nextCursor || loadingMore) return;
+    setLoadingMore(true);
+    try {
+      const result = await fetchKycSubmissions({ status: filter, search: search || undefined, limit: 50, cursor: nextCursor });
+      setItems((current) => [...current, ...result.items]);
+      setNextCursor(result.nextCursor);
+    } catch (error) {
+      toast.error(error instanceof AdminApiError ? error.message : "Could not load more KYC submissions.");
+    } finally {
+      setLoadingMore(false);
+    }
+  }
 
   async function decide(decision: "approve" | "reject") {
     if (!selected) return;
@@ -2181,6 +2223,8 @@ function KycView() {
       toast.success(decision === "approve" ? "Customer approved." : "Customer rejected.");
       setSelected(null);
       setNote("");
+      setLoading(true);
+      setNextCursor(null);
       setTick((t) => t + 1);
     } catch (error) {
       toast.error(error instanceof AdminApiError ? error.message : "Could not update the submission.");
@@ -2208,16 +2252,16 @@ function KycView() {
       <PageIntro
         title="Customer KYC"
         description="Identity verifications submitted through the Telegram bot. Review who your customers are."
-        action={<Button variant="outline" className="rounded-xl" onClick={() => setTick((t) => t + 1)}><RefreshCw className="size-4" />Refresh</Button>}
+        action={<Button variant="outline" className="rounded-xl" onClick={() => { setLoading(true); setNextCursor(null); setTick((t) => t + 1); }}><RefreshCw className="size-4" />Refresh</Button>}
       />
 
       <div className="mb-4 flex flex-wrap items-center gap-2">
         {filters.map((f) => (
-          <Button key={f.id} variant={filter === f.id ? "default" : "outline"} className="rounded-full" onClick={() => { setFilter(f.id); setLoading(true); }}>{f.label}</Button>
+          <Button key={f.id} variant={filter === f.id ? "default" : "outline"} className="rounded-full" onClick={() => { setFilter(f.id); setLoading(true); setNextCursor(null); }}>{f.label}</Button>
         ))}
         <div className="relative ml-auto w-full sm:w-72">
           <Search className="absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-[#9d99aa]" />
-          <Input value={search} onChange={(event) => { setSearch(event.target.value); setLoading(true); }} placeholder="Search name, ID, phone…" className="h-11 rounded-[14px] border-[#e5e3ec] bg-white pl-10 shadow-sm" />
+          <Input value={search} onChange={(event) => { setSearch(event.target.value); setLoading(true); setNextCursor(null); }} placeholder="Search name, ID, phone…" className="h-11 rounded-[14px] border-[#e5e3ec] bg-white pl-10 shadow-sm" />
         </div>
       </div>
 
@@ -2244,6 +2288,7 @@ function KycView() {
                 </button>
               ))
             )}
+            {nextCursor && !loading && <Button variant="outline" className="w-full rounded-xl" disabled={loadingMore} onClick={() => void loadMore()}>{loadingMore ? "Loading…" : "Load more submissions"}</Button>}
           </CardContent>
         </Card>
 
@@ -2280,17 +2325,17 @@ function KycView() {
                     <Button variant="outline" size="sm" className="rounded-xl"><Paperclip className="size-4" />Download document</Button>
                   </a>
                 )}
-                <div>
+                {selected.status === "pending" ? <div>
                   <Label htmlFor="kyc-note">Review note (optional)</Label>
                   <Textarea id="kyc-note" value={note} onChange={(event) => setNote(event.target.value)} placeholder="Add a note for the record…" className="mt-1 min-h-20 rounded-[14px]" />
-                </div>
+                </div> : selected.reviewNote ? <div className="rounded-[14px] border border-[#ece9f2] bg-[#faf9fc] p-3 text-sm text-[#55516b]"><span className="font-semibold">Review note:</span> {selected.reviewNote}</div> : null}
 
                 <div className="flex items-center gap-2">
                   <Badge variant="outline" className={`rounded-full ${badgeClass(selected.status)}`}>{selected.status}</Badge>
-                  <div className="ml-auto flex gap-2">
+                  {selected.status === "pending" && <div className="ml-auto flex gap-2">
                     <Button variant="outline" className="rounded-xl border-red-200 text-red-700 hover:bg-red-50" disabled={busy} onClick={() => decide("reject")}><XCircle className="size-4" />Reject</Button>
                     <Button className="rounded-xl" disabled={busy} onClick={() => decide("approve")}><Check className="size-4" />Approve</Button>
-                  </div>
+                  </div>}
                 </div>
               </div>
             )}
@@ -3083,4 +3128,3 @@ function ClientPaymentSection({ clientId }: { clientId: string | null }) {
     </>
   );
 }
-
