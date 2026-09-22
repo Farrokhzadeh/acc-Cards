@@ -1233,7 +1233,11 @@ export default function DashboardApp() {
       toast.success(result.noOp ? `Card is already ${result.status}.` : `Card ${action === "freeze" ? "frozen" : "unfrozen"} by Kripicard${result.reconciled ? " after reconciliation" : ""}.`);
     } catch (error) {
       if (error instanceof AdminApiError && error.code === "feature_disabled") {
-        toast.error("Freeze/unfreeze is installed but disabled. Enable the provider card-state write gates in deployment configuration after testing.");
+        toast.error("Freeze/unfreeze is installed but disabled. Enable the live-provider and card-state write gates in deployment configuration.");
+      } else if (error instanceof AdminApiError && error.code === "runtime_kill_switch") {
+        toast.error("Kripicard writes are disabled by an emergency runtime control. Open Operations and enable Provider writes before changing card state.");
+      } else if (error instanceof AdminApiError && error.code === "read_only_mode") {
+        toast.error("AccAbad is in emergency read-only mode. Disable Read-only mode from Operations before changing card state.");
       } else {
         toast.error(error instanceof Error ? error.message : "Card state update failed.");
       }
@@ -1375,7 +1379,11 @@ export default function DashboardApp() {
       } else if (error instanceof AdminApiError && error.code === "mfa_required") {
         toast.error("Enable MFA in Settings → Security before performing live provider money writes.");
       } else if (error instanceof AdminApiError && error.code === "feature_disabled") {
-        toast.error("Card funding is installed but disabled. Enable both provider-write and card-funding gates after staging validation.");
+        toast.error("Card funding is installed but disabled. Enable the live-provider and card-funding deployment gates, including LIVE_PROVIDER_WRITE_CONFIRMATION, then recreate the app and worker containers.");
+      } else if (error instanceof AdminApiError && error.code === "runtime_kill_switch") {
+        toast.error("Card funding is disabled by an emergency runtime control. Open Operations and enable both Provider writes and Card funding.");
+      } else if (error instanceof AdminApiError && error.code === "read_only_mode") {
+        toast.error("AccAbad is in emergency read-only mode. Disable Read-only mode from Operations before funding a card.");
       } else if (error instanceof AdminApiError && providerGateMessage(error)) {
         toast.error(providerGateMessage(error)!);
       } else {
