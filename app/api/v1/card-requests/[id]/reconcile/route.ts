@@ -1,16 +1,13 @@
 import { requireAdmin, requireCsrf } from "@/server/auth/service";
-import { apiRoute } from "@/server/http/api";
-import { requireUuid } from "@/server/http/ids";
-import { reconcileCardIssuance } from "@/server/card-requests/issuance";
+import { apiRoute, ApiError } from "@/server/http/api";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
-export async function POST(request: Request, context: { params: Promise<{ id: string }> }) {
-  return apiRoute(request, async ({ requestId }) => {
-    const session = await requireAdmin(request, "card_requests.issue");
+export async function POST(request: Request) {
+  return apiRoute(request, async () => {
+    const session = await requireAdmin(request, "clients.assign");
     requireCsrf(request, session);
-    const { id } = await context.params;
-    return reconcileCardIssuance(requireUuid(id, "card request id"), session, request, requestId);
+    throw new ApiError(410, "card_request_flow_disabled", "Standalone card requests are disabled. The customer's first card is created only through first-card onboarding.");
   });
 }
