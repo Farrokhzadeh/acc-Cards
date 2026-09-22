@@ -8,7 +8,6 @@ const bot = await readFile(new URL("../server/telegram/bot.ts", import.meta.url)
 const listRoute = await readFile(new URL("../app/api/v1/card-requests/route.ts", import.meta.url), "utf8");
 const transitionRoute = await readFile(new URL("../app/api/v1/card-requests/[id]/transition/route.ts", import.meta.url), "utf8");
 const outbox = await readFile(new URL("../server/telegram/outbox.ts", import.meta.url), "utf8");
-const adminApi = await readFile(new URL("../lib/admin-api.ts", import.meta.url), "utf8");
 const dashboard = await readFile(new URL("../app/dashboard-app.tsx", import.meta.url), "utf8");
 
 test("Phase 12 adds immutable-style card request timeline records and review permissions", () => {
