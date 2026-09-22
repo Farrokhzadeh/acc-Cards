@@ -13,3 +13,15 @@ test("admin dashboard never performs local demo mutations when the backend is un
   assert.match(dashboard, /Backend unavailable\. Card state was not changed/);
   assert.match(dashboard, /Backend unavailable\. The message was not queued/);
 });
+
+test("dashboard loads workflow data before operators visit each screen", () => {
+  assert.match(dashboard, /view !== "overview" && view !== "requests"/);
+  assert.match(dashboard, /view !== "requests" && view !== "clients"/);
+  assert.match(dashboard, /fetchAllKycSubmissions/);
+  assert.doesNotMatch(dashboard, /fetchKycSubmissions\(\{ limit: 200 \}\)/);
+});
+
+test("KYC list supports pagination and reviewed decisions are read-only", () => {
+  assert.match(dashboard, /Load more submissions/);
+  assert.match(dashboard, /selected\.status === "pending"/);
+});
