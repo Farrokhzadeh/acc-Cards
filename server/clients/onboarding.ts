@@ -85,9 +85,9 @@ export async function ensureOnboardingCardRequest(args: {
         });
         await db.query(
           `UPDATE card_requests
-              SET preferred_account_id=$2::uuid,selected_account_id=$2::uuid,updated_at=now()
+              SET preferred_account_id=$2::uuid,selected_account_id=$2::uuid,email=$3,updated_at=now()
             WHERE id=$1::uuid`,
-          [row.id, args.accountId],
+          [row.id, args.accountId, account.rows[0].email],
         );
         await db.query(
           `INSERT INTO card_request_events(request_id,from_status,to_status,actor_type,admin_id,note,safe_metadata)
