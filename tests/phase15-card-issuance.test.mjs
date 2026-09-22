@@ -162,3 +162,14 @@ test("legacy card-policy mutation is closed so provider BIN catalogue cannot dri
   assert.match(cardPolicyRoute, /card_policy_mutation_disabled/);
   assert.match(cardPolicyRoute, /requireCsrf/);
 });
+
+
+test("onboarding can switch accounts only after safely retryable issuance failures", () => {
+  assert.match(onboarding, /\["approved", "issue_failed"\]\.includes\(row\.status\)/);
+  assert.match(onboarding, /unassignAccountInTransaction/);
+  assert.match(onboarding, /assignAccountInTransaction/);
+  assert.match(onboarding, /onboarding_account_locked/);
+  assert.match(onboarding, /onboarding\.issuing_account\.changed/);
+  assert.match(onboarding, /encrypted_api_key\.startsWith\("v1\."\)/);
+  assert.doesNotMatch(onboarding, /\["approved", "issue_failed", "needs_reconciliation"/);
+});
