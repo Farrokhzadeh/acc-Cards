@@ -262,6 +262,7 @@ type Message = {
   from: "client" | "admin";
   body: string;
   time: string;
+  day?: string;
   status?: string;
   lastDeliveryError?: string | null;
   attachment?: { filename: string; downloadUrl?: string | null; mimeType?: string | null } | null;
@@ -908,6 +909,7 @@ export default function DashboardApp() {
           from: item.direction === "client_to_admin" ? "client" : "admin",
           body: item.text,
           time: new Date(item.createdAt).toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }),
+          day: item.createdAt.slice(0, 10),
           status: item.status,
           lastDeliveryError: item.lastDeliveryError,
           attachment: item.attachment ? { filename: item.attachment.filename, downloadUrl: item.attachment.downloadUrl, mimeType: item.attachment.mimeType } : null,
@@ -2973,7 +2975,8 @@ function InboxView({ clients, activeClient, activeClientId, messages, draft, sea
           <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#eceaf2] px-5 py-4"><div className="flex items-center gap-3"><Avatar className="size-10"><AvatarFallback className="bg-[#eeecff] text-xs font-bold text-[#5b50d6]">{initials(activeClient.name)}</AvatarFallback></Avatar><div><p className="font-semibold text-[#353146]">{activeClient.name}</p><p className="text-xs text-[#9692a3]">{activeClient.username} · {activeConversation?.status ?? "no conversation"}{activeConversation?.assignedAdminName ? ` · ${activeConversation.assignedAdminName}` : ""}</p></div></div><div className="flex flex-wrap gap-2"><Button variant="outline" size="sm" className="rounded-xl" onClick={() => void onConversationAction("assign_me")}>Assign to me</Button><Button variant="outline" size="sm" className="rounded-xl" onClick={() => void onConversationAction("pending")}>Pending</Button><Button variant="outline" size="sm" className="rounded-xl" onClick={() => void onConversationAction(activeConversation?.status === "closed" ? "open" : "closed")}>{activeConversation?.status === "closed" ? "Reopen" : "Close"}</Button></div></div>
           <div ref={containerRef} onScroll={handleScroll} className="flex flex-1 min-h-0 flex-col gap-3 overflow-y-auto bg-[radial-gradient(circle_at_80%_0%,rgba(97,87,231,.06),transparent_18rem),linear-gradient(180deg,#fff_0%,#faf9fc_100%)] p-5">
             <div className="mt-auto" />
-            {messages.map((message) => <div key={message.id} className={`max-w-[82%] ${message.from === "admin" ? "ml-auto" : "mr-auto"}`}><div className={`rounded-[18px] px-4 py-3 text-sm leading-6 ${message.from === "admin" ? "rounded-br-md bg-[#6157e7] text-white shadow-[0_8px_20px_rgba(97,87,231,.16)]" : "rounded-bl-md border border-[#e9e6f0] bg-white text-[#464254] shadow-sm"}`}>{message.body && <p>{message.body}</p>}{message.attachment && <a href={message.attachment.downloadUrl ?? undefined} className="mt-2 flex items-center gap-2 rounded-lg bg-white/10 p-2 text-xs underline-offset-2 hover:underline"><Paperclip className="size-3.5" />{message.attachment.filename}</a>}</div><div className={`mt-1 flex items-center gap-2 text-xs text-[#aaa6b8] ${message.from === "admin" ? "justify-end" : ""}`}><span>{message.time}</span>{message.from === "admin" && message.status && <span>· {message.status}</span>}{message.status === "failed" && <button className="font-semibold text-[#b53847] underline" onClick={() => void onRetry(message.id)}>Retry</button>}</div>{message.lastDeliveryError && <p className="mt-1 text-right text-[11px] text-[#b53847]">{message.lastDeliveryError}</p>}</div>)}
+            {messages.map((message, i) => (<Fragment key={message.id}>{(i === 0 || message.day !== messages[i - 1]?.day) && (<div className="mt-2 text-center text-[10px] font-semibold uppercase tracking-wide text-[#b3aec6]">{message.day ? new Date(message.day + "T00:00:00").toLocaleDateString([], { month: "long", day: "numeric" }) : ""}</div>)
+}<div className={`max-w-[82%] ${message.from === "admin" ? "ml-auto" : "mr-auto"}`}><div className={`rounded-[18px] px-4 py-3 text-sm leading-6 ${message.from === "admin" ? "rounded-br-md bg-[#6157e7] text-white shadow-[0_8px_20px_rgba(97,87,231,.16)]" : "rounded-bl-md border border-[#e9e6f0] bg-white text-[#464254] shadow-sm"}`}>{message.body && <p>{message.body}</p>}{message.attachment && <a href={message.attachment.downloadUrl ?? undefined} className="mt-2 flex items-center gap-2 rounded-lg bg-white/10 p-2 text-xs underline-offset-2 hover:underline"><Paperclip className="size-3.5" />{message.attachment.filename}</a>}</div><div className={`mt-1 flex items-center gap-2 text-xs text-[#aaa6b8] ${message.from === "admin" ? "justify-end" : ""}`}><span>{message.time}</span>{message.from === "admin" && <span className="text-[10px] text-[#d6d1ee]">{message.status === "delivered" ? "✓✓" : "✓"}</span>}{message.from === "admin" && message.status && <span>· {message.status}</span>}{message.status === "failed" && <button className="font-semibold text-[#b53847] underline" onClick={() => void onRetry(message.id)}>Retry</button>}</div>{message.lastDeliveryError && <p className="mt-1 text-right text-[11px] text-[#b53847]">{message.lastDeliveryError}</p>}</div></Fragment>))}
           </div>
           {!atBottom && (
             <button onClick={scrollToBottom} aria-label="Scroll to latest" className="absolute right-5 bottom-32 grid size-10 place-items-center rounded-full bg-[#6157e7] text-white shadow-[0_8px_24px_rgba(97,87,231,.4)] transition hover:bg-[#554bcf]">↓</button>
@@ -3254,7 +3257,8 @@ function ClientPaymentSection({ clientId }: { clientId: string | null }) {
     setBusy(true);
     try {
       await activateClient(clientId, { action, accountId: accountId || undefined });
-      toast.success(action === "complete" ? "Activation completed and customer notified." : `Payment ${action === "accept" ? "accepted" : "denied"}.`);
+      if (action === "complete" && accountId) { await syncAccountCards(accountId).catch(() => {}); }
+      toast.success(action === "complete" ? "Activation completed, cards synced, customer notified." : `Payment ${action === "accept" ? "accepted" : "denied"}.`);
       setTick((t) => t + 1);
     } catch (error) { toast.error(error instanceof Error ? error.message : "Action failed."); }
     finally { setBusy(false); }
