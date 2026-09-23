@@ -13,6 +13,8 @@ const cardService = await readFile(new URL("../../server/providers/kripicard/ser
 const messagesRoute = await readFile(new URL("../../app/api/v1/clients/[id]/messages/route.ts", import.meta.url), "utf8");
 const activateRoute = await readFile(new URL("../../app/api/v1/clients/[id]/activate/route.ts", import.meta.url), "utf8");
 const kycService = await readFile(new URL("../../server/kyc/service.ts", import.meta.url), "utf8");
+const dashboard = await readFile(new URL("../../app/dashboard-app.tsx", import.meta.url), "utf8");
+const telegramProvider = await readFile(new URL("../../server/providers/telegram/client.ts", import.meta.url), "utf8");
 
 
 test("Phase 10 adds persistent force-join, callback token, and bot-state tables", () => {
@@ -123,4 +125,18 @@ test("KYC review is a single atomic decision with its audit and notification", (
   assert.match(kycService, /already_reviewed/);
   assert.match(kycService, /INSERT INTO audit_logs/);
   assert.match(kycService, /INSERT INTO outbox_events/);
+});
+
+test("Request Center shows first-card work instead of an empty funding table", () => {
+  assert.match(dashboard, /value="onboarding"/);
+  assert.match(dashboard, /First cards/);
+  assert.match(dashboard, /paymentStatusByUser/);
+  assert.match(dashboard, /No existing-card funding requests/);
+});
+
+test("Telegram transport uses grammY while domain processing remains durable", () => {
+  assert.match(telegramProvider, /from "grammy"/);
+  assert.match(telegramProvider, /new Api/);
+  assert.match(bot, /webhook_events/);
+  assert.match(bot, /ON CONFLICT \(source, external_id\)/);
 });

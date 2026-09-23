@@ -16,6 +16,7 @@ import {
   CreditCard,
   Eye,
   EyeOff,
+  ExternalLink,
   FileText,
   Hash,
   KeyRound,
@@ -46,7 +47,7 @@ import {
   XCircle,
 } from "lucide-react";
 import { toast } from "sonner";
-import { AdminApiError, createAccount, archiveAccount, fetchDashboardSnapshot, reauthenticateAdmin, revealAccountSecrets, updateAccount, verifyAccountConnection, syncAccountCards, revealLiveCardDetails, syncCardTransactions, fetchCardTransactions, fetchTransactions, fetchTransactionNotificationIssues, reconcileTransactionNotification, setCardFrozenState, refreshCardStatus, connectOutlookMailbox, syncOutlookMailbox, disconnectOutlookMailbox, connectGmailMailbox, syncGmailMailbox, disconnectGmailMailbox, fetchAccountEmailMessages, classifyAccountEmail, revealParsedOtp, fetchTrustedEmailRules, createTrustedEmailRule, updateTrustedEmailRule, fetchTelegramBotStatus, configureTelegramWebhook, setTelegramBotToken, clearTelegramBotToken, fetchPaymentCard, updatePaymentCard, notifyClient, fetchClientPipeline, setClientBanned, fetchClientKyc, type ClientKyc, type ClientPayment, clientReceiptUrl, activateClient, fetchForceJoinChannels, upsertForceJoinChannel, deleteForceJoinChannel, fetchSupportConversations, updateSupportConversation, retrySupportMessage, fetchClientSupportMessages, sendClientSupportMessage, fetchClientAssignableAccounts, fetchFundingRequests, reviewFundingRequest, executeFundingRequest, reconcileFundingRequest, resolveFundingRequest, fundingReceiptDownloadUrl, fetchFundingSettings, updateFundingSettings, type ApiFundingRequest, type AssignableClientAccount, type LiveCardDetails, type StoredCardTransaction, type StoredEmailMessage, type TelegramBotStatus, fetchProviderReadiness, updateProviderReadinessCheck, type ProviderReadinessSnapshot, type TransactionNotificationIssue, type SupportConversationSummary, fetchOperationalSnapshot, updateOperationalAlert, updateRuntimeControl, type OperationalSnapshot, fetchKycSubmissions, reviewKycSubmission, kycDocumentUrl, type ApiKycSubmission } from "@/lib/admin-api";
+import { AdminApiError, createAccount, archiveAccount, fetchDashboardSnapshot, reauthenticateAdmin, revealAccountSecrets, updateAccount, verifyAccountConnection, syncAccountCards, revealLiveCardDetails, syncCardTransactions, fetchCardTransactions, fetchTransactions, fetchTransactionNotificationIssues, reconcileTransactionNotification, setCardFrozenState, refreshCardStatus, connectOutlookMailbox, syncOutlookMailbox, disconnectOutlookMailbox, connectGmailMailbox, syncGmailMailbox, disconnectGmailMailbox, fetchEmailOAuthSetup, type EmailOAuthSetup, fetchAccountEmailMessages, classifyAccountEmail, revealParsedOtp, fetchTrustedEmailRules, createTrustedEmailRule, updateTrustedEmailRule, fetchTelegramBotStatus, configureTelegramWebhook, setTelegramBotToken, clearTelegramBotToken, fetchPaymentCard, updatePaymentCard, fetchFirstCardSettings, updateFirstCardSettings, notifyClient, fetchClientPipeline, setClientBanned, fetchClientKyc, type ClientKyc, type ClientPayment, clientReceiptUrl, activateClient, fetchForceJoinChannels, upsertForceJoinChannel, deleteForceJoinChannel, fetchSupportConversations, updateSupportConversation, retrySupportMessage, fetchClientSupportMessages, sendClientSupportMessage, fetchClientAssignableAccounts, fetchFundingRequests, reviewFundingRequest, executeFundingRequest, reconcileFundingRequest, resolveFundingRequest, fetchProviderWalletGate, type ProviderWalletGate, fundingReceiptDownloadUrl, fetchFundingSettings, updateFundingSettings, type ApiFundingRequest, type AssignableClientAccount, type LiveCardDetails, type StoredCardTransaction, type StoredEmailMessage, type TelegramBotStatus, fetchProviderReadiness, updateProviderReadinessCheck, type ProviderReadinessSnapshot, type TransactionNotificationIssue, type SupportConversationSummary, fetchOperationalSnapshot, updateOperationalAlert, updateRuntimeControl, type OperationalSnapshot, fetchKycSubmissions, reviewKycSubmission, kycDocumentUrl, type ApiKycSubmission } from "@/lib/admin-api";
 import { disableAdminMfa, enableAdminMfa, fetchCurrentAdmin, logoutAdmin, setupAdminMfa, type CurrentAdmin } from "@/lib/auth-client";
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -63,6 +64,7 @@ import {
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Dialog,
@@ -209,6 +211,7 @@ type FundingRequest = {
   reference?: string;
   clientId: string;
   cardLast4: string;
+  accountId: string;
   amount: number;
   providerFee: number;
   serviceFee: number;
@@ -347,6 +350,7 @@ function mapApiFundingRequest(request: ApiFundingRequest): FundingRequest {
     reference: request.reference,
     clientId: request.userId,
     cardLast4: request.card?.last4 ?? "????",
+    accountId: request.card?.accountId ?? "",
     amount: Number(request.cardAmountUsdCents) / 100,
     providerFee: Number(request.providerFeeUsdCents) / 100,
     serviceFee: Number(request.ownFeeUsdCents) / 100,
@@ -462,6 +466,8 @@ export default function DashboardApp() {
   const [fundingReauthPassword, setFundingReauthPassword] = useState("");
   const [fundingReauthCode, setFundingReauthCode] = useState("");
   const [fundingReauthBusy, setFundingReauthBusy] = useState(false);
+  const [fundingWalletGate, setFundingWalletGate] = useState<{ request: FundingRequest; details: ProviderWalletGate } | null>(null);
+  const [fundingWalletConfirmed, setFundingWalletConfirmed] = useState(false);
   const [emailActionPendingId, setEmailActionPendingId] = useState<string | null>(null);
   const [activeRequestId, setActiveRequestId] = useState<string | null>(null);
   const [activeChatId, setActiveChatId] = useState("");
@@ -1373,12 +1379,12 @@ export default function DashboardApp() {
   const executeAcceptedFunding = async (
     request: FundingRequest,
     mode: "fund" | "reconcile",
-    options: { allowReauthPrompt?: boolean } = { allowReauthPrompt: true },
+    options: { allowReauthPrompt?: boolean; walletFundingConfirmed?: boolean } = { allowReauthPrompt: true },
   ) => {
     if (!backendDataLoaded || fundingExecutionPendingId) return;
     setFundingExecutionPendingId(request.id);
     try {
-      const result = mode === "fund" ? await executeFundingRequest(request.id) : await reconcileFundingRequest(request.id);
+      const result = mode === "fund" ? await executeFundingRequest(request.id, options.walletFundingConfirmed === true) : await reconcileFundingRequest(request.id);
       await reloadFundingRequests();
       if (result.status === "completed") {
         toast.success(result.reconciled ? "Funding was reconciled and marked completed." : "Kripicard funded the card and the request is complete.");
@@ -1397,7 +1403,7 @@ export default function DashboardApp() {
         queueFundingReauthentication(
           "Confirm live card funding",
           `Funding card •${request.cardLast4} changes provider money state. Re-enter your admin credentials, then AccAbad will retry this exact funding action automatically.`,
-          () => executeAcceptedFunding(request, mode, { allowReauthPrompt: false }),
+          () => executeAcceptedFunding(request, mode, { allowReauthPrompt: false, walletFundingConfirmed: options.walletFundingConfirmed }),
         );
       } else if (error instanceof AdminApiError && error.code === "mfa_required") {
         toast.error("Enable MFA in Settings → Security before performing live provider money writes.");
@@ -1412,6 +1418,20 @@ export default function DashboardApp() {
       } else {
         toast.error(error instanceof Error ? error.message : "Card funding action failed.");
       }
+    } finally {
+      setFundingExecutionPendingId(null);
+    }
+  };
+
+  const openFundingWalletGate = async (request: FundingRequest) => {
+    if (!request.accountId) { toast.error("This request has no Kripicard account assignment."); return; }
+    setFundingExecutionPendingId(request.id);
+    try {
+      const details = await fetchProviderWalletGate(request.accountId);
+      setFundingWalletConfirmed(false);
+      setFundingWalletGate({ request, details });
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not prepare the Kripicard wallet step.");
     } finally {
       setFundingExecutionPendingId(null);
     }
@@ -1522,7 +1542,11 @@ export default function DashboardApp() {
   const clientName = (id: string | null) => id ? clients.find((client) => client.id === id)?.name ?? "Unknown client" : "No Telegram user";
   const pendingRequestCount =
     fundingRequests.filter((request) => request.status === "pending_review" || request.status === "needs_reconciliation").length +
-    kycPendingCount;
+    kycPendingCount +
+    clients.filter((client) => {
+      const status = paymentStatusByUser[client.id];
+      return status && status !== "complete" && status !== "denied";
+    }).length;
   const unreadInboxCount = supportConversations.reduce((sum, c) => sum + (c.unreadAdminCount ?? 0), 0);
   const badgeFor = (view: View): number => (view === "requests" ? pendingRequestCount : view === "inbox" ? unreadInboxCount : 0);
 
@@ -1683,10 +1707,13 @@ export default function DashboardApp() {
                 clientName={clientName}
                 search={search}
                 kycPendingCount={kycPendingCount}
+                clients={clients}
+                paymentStatusByUser={paymentStatusByUser}
                 transactions={transactions}
                 issues={transactionNotificationIssues}
                 onReconcileIssue={reconcileNotificationIssue}
                 onOpenRequest={setActiveRequestId}
+                onOpenClient={setActiveClientId}
               />
             )}
             {view === "operations" && (
@@ -2107,7 +2134,7 @@ export default function DashboardApp() {
                 {!(["completed", "rejected", "cancelled"] as FundingStatus[]).includes(activeRequest.status) && (
                   <>
                     {(["pending_review", "correction_needed"] as FundingStatus[]).includes(activeRequest.status) && <Button variant="outline" className="rounded-xl text-red-700" onClick={() => setRejectDialogOpen(true)}>Reject</Button>}
-                    {activeRequest.status === "pending_review" ? <><Button variant="outline" className="rounded-xl" onClick={() => void requestFundingCorrection()}>Request correction</Button><Button className="rounded-xl bg-[#6157e7] text-white hover:bg-[#554bcf]" onClick={() => void advanceRequest(activeRequest)}>Accept payment<ChevronRight className="size-4" /></Button></> : activeRequest.status === "accepted" || activeRequest.status === "funding_failed" ? <Button className="rounded-xl bg-[#6157e7] text-white hover:bg-[#554bcf]" disabled={fundingExecutionPendingId === activeRequest.id} onClick={() => void executeAcceptedFunding(activeRequest, "fund")}><WalletCards className="size-4" />{fundingExecutionPendingId === activeRequest.id ? "Working…" : activeRequest.status === "funding_failed" ? "Retry safe failure" : "Fund card"}</Button> : activeRequest.status === "needs_reconciliation" ? <><Button variant="outline" className="rounded-xl border-amber-300 bg-amber-50 text-amber-900" disabled={fundingExecutionPendingId === activeRequest.id} onClick={() => void executeAcceptedFunding(activeRequest, "reconcile")}><RefreshCw className="size-4" />Recheck provider state</Button><Button variant="outline" className="rounded-xl" disabled={fundingExecutionPendingId === activeRequest.id} onClick={() => void resolveFundingOutcome(activeRequest, "not_funded")}>Provider confirms not funded</Button><Button className="rounded-xl bg-[#6157e7] text-white hover:bg-[#554bcf]" disabled={fundingExecutionPendingId === activeRequest.id} onClick={() => void resolveFundingOutcome(activeRequest, "completed")}>Provider confirms funded</Button></> : activeRequest.status === "funding" ? <Button variant="outline" className="rounded-xl" disabled={fundingExecutionPendingId === activeRequest.id} onClick={() => void executeAcceptedFunding(activeRequest, "reconcile")}><RefreshCw className={`size-4 ${fundingExecutionPendingId === activeRequest.id ? "animate-spin" : ""}`} />{fundingExecutionPendingId === activeRequest.id ? "Checking…" : "Recheck if stuck"}</Button> : null}
+                    {activeRequest.status === "pending_review" ? <><Button variant="outline" className="rounded-xl" onClick={() => void requestFundingCorrection()}>Request correction</Button><Button className="rounded-xl bg-[#6157e7] text-white hover:bg-[#554bcf]" onClick={() => void advanceRequest(activeRequest)}>Accept payment<ChevronRight className="size-4" /></Button></> : activeRequest.status === "accepted" || activeRequest.status === "funding_failed" ? <Button className="rounded-xl bg-[#6157e7] text-white hover:bg-[#554bcf]" disabled={fundingExecutionPendingId === activeRequest.id} onClick={() => void openFundingWalletGate(activeRequest)}><WalletCards className="size-4" />{fundingExecutionPendingId === activeRequest.id ? "Preparing…" : activeRequest.status === "funding_failed" ? "Prepare crypto & retry" : "Prepare crypto funding"}</Button> : activeRequest.status === "needs_reconciliation" ? <><Button variant="outline" className="rounded-xl border-amber-300 bg-amber-50 text-amber-900" disabled={fundingExecutionPendingId === activeRequest.id} onClick={() => void executeAcceptedFunding(activeRequest, "reconcile")}><RefreshCw className="size-4" />Recheck provider state</Button><Button variant="outline" className="rounded-xl" disabled={fundingExecutionPendingId === activeRequest.id} onClick={() => void resolveFundingOutcome(activeRequest, "not_funded")}>Provider confirms not funded</Button><Button className="rounded-xl bg-[#6157e7] text-white hover:bg-[#554bcf]" disabled={fundingExecutionPendingId === activeRequest.id} onClick={() => void resolveFundingOutcome(activeRequest, "completed")}>Provider confirms funded</Button></> : activeRequest.status === "funding" ? <Button variant="outline" className="rounded-xl" disabled={fundingExecutionPendingId === activeRequest.id} onClick={() => void executeAcceptedFunding(activeRequest, "reconcile")}><RefreshCw className={`size-4 ${fundingExecutionPendingId === activeRequest.id ? "animate-spin" : ""}`} />{fundingExecutionPendingId === activeRequest.id ? "Checking…" : "Recheck if stuck"}</Button> : null}
                   </>
                 )}
               </SheetFooter>
@@ -2115,6 +2142,14 @@ export default function DashboardApp() {
           )}
         </SheetContent>
       </Sheet>
+
+      <Dialog open={Boolean(fundingWalletGate)} onOpenChange={(open) => { if (!open) { setFundingWalletGate(null); setFundingWalletConfirmed(false); } }}>
+        <DialogContent className="rounded-[24px] border-[#e5e2ee] sm:max-w-[480px]">
+          <DialogHeader><DialogTitle>Fund Kripicard wallet with crypto</DialogTitle><DialogDescription>Kripicard card funding debits the account wallet. AccAbad cannot read that wallet balance, so complete the crypto deposit in Kripicard before the one-shot provider call.</DialogDescription></DialogHeader>
+          {fundingWalletGate && <div className="space-y-4"><div className="rounded-xl border bg-slate-50 p-3 text-sm"><p className="font-semibold">{fundingWalletGate.details.accountLabel}</p><p className="text-xs text-[#777287]">{fundingWalletGate.details.loginEmail}</p><p className="mt-2">Required card amount: <b>{formatUsd(fundingWalletGate.request.amount)}</b></p><p className="text-xs text-[#777287]">Also cover the Kripicard provider fee shown on the request.</p></div><a href={fundingWalletGate.details.portalUrl} target="_blank" rel="noreferrer"><Button variant="outline" className="w-full rounded-xl"><ExternalLink className="size-4" />Open Kripicard crypto deposit</Button></a><label className="flex items-start gap-3 rounded-xl border p-3 text-sm"><Checkbox checked={fundingWalletConfirmed} onCheckedChange={(value) => setFundingWalletConfirmed(value === true)} /><span>I deposited crypto into this exact Kripicard account and waited for it to be credited.</span></label></div>}
+          <DialogFooter><Button variant="outline" onClick={() => setFundingWalletGate(null)}>Cancel</Button><Button disabled={!fundingWalletConfirmed || !fundingWalletGate} onClick={() => { const request = fundingWalletGate?.request; setFundingWalletGate(null); setFundingWalletConfirmed(false); if (request) void executeAcceptedFunding(request, "fund", { walletFundingConfirmed: true }); }}>Continue to fund card</Button></DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={rejectDialogOpen} onOpenChange={setRejectDialogOpen}>
         <DialogContent className="rounded-[24px] border-[#e5e2ee] p-7 shadow-[0_28px_80px_rgba(26,24,48,.18)]">
@@ -2452,26 +2487,35 @@ function ClientsView({ clients, cards, onOpen, onToggleBan, accountName, kycStat
   );
 }
 
-function RequestsView({ fundingRequests, clientName, search, onOpenRequest, kycPendingCount, transactions, issues, onReconcileIssue }: { fundingRequests: FundingRequest[]; clientName: (id: string | null) => string; search: string; onOpenRequest: (id: string) => void; kycPendingCount: number; transactions: Transaction[]; issues: TransactionNotificationIssue[]; onReconcileIssue: (id: string, action: "acknowledge" | "retry") => void | Promise<void> }) {
+function RequestsView({ fundingRequests, clientName, search, onOpenRequest, kycPendingCount, clients, paymentStatusByUser, onOpenClient, transactions, issues, onReconcileIssue }: { fundingRequests: FundingRequest[]; clientName: (id: string | null) => string; search: string; onOpenRequest: (id: string) => void; kycPendingCount: number; clients: Client[]; paymentStatusByUser: Record<string, string | null>; onOpenClient: (id: string) => void; transactions: Transaction[]; issues: TransactionNotificationIssue[]; onReconcileIssue: (id: string, action: "acknowledge" | "retry") => void | Promise<void> }) {
   const needle = search.trim().toLowerCase();
   const matchingFundingRequests = fundingRequests.filter((request) => !needle || `${request.id} ${clientName(request.clientId)} ${request.cardLast4} ${request.receipt} ${request.receiptType} ${fundingMeta[request.status].label}`.toLowerCase().includes(needle));
+  const onboardingClients = clients.filter((client) => {
+    const status = paymentStatusByUser[client.id];
+    return status && status !== "complete" && status !== "denied" && (!needle || `${client.name} ${client.username} ${client.telegramId} ${status}`.toLowerCase().includes(needle));
+  });
   const fundingPaging = usePaginatedItems(matchingFundingRequests);
+  const onboardingPaging = usePaginatedItems(onboardingClients);
+  const defaultTab = matchingFundingRequests.length ? "funding" : onboardingClients.length ? "onboarding" : kycPendingCount ? "kyc" : "funding";
 
   return (
     <>
       <PageIntro title="Request center" description="Review existing-card add-funds requests, KYC, and transaction notification issues. First-card onboarding is handled from the client record." />
-      <Tabs defaultValue="funding">
+      <Tabs defaultValue={defaultTab}>
         <TabsList className="mb-4 h-11 rounded-[14px] border border-[#e7e5ef] bg-white p-1 shadow-[0_4px_18px_rgba(26,24,48,.04)]">
           <TabsTrigger className="rounded-[10px] px-4 data-[state=active]:bg-[#eeecff] data-[state=active]:text-[#5146ca]" value="funding">Funding <Badge className="ml-1.5 rounded-full bg-[#6157e7] text-white">{fundingRequests.filter((item) => !["completed", "rejected", "cancelled"].includes(item.status)).length}</Badge></TabsTrigger>
+          <TabsTrigger className="rounded-[10px] px-4 data-[state=active]:bg-[#eeecff] data-[state=active]:text-[#5146ca]" value="onboarding">First cards <Badge className="ml-1.5 rounded-full bg-[#6157e7] text-white">{onboardingClients.length}</Badge></TabsTrigger>
           <TabsTrigger className="rounded-[10px] px-4 data-[state=active]:bg-[#eeecff] data-[state=active]:text-[#5146ca]" value="kyc">KYC <Badge className="ml-1.5 rounded-full bg-[#6157e7] text-white">{kycPendingCount}</Badge></TabsTrigger>
           <TabsTrigger className="rounded-[10px] px-4 data-[state=active]:bg-[#eeecff] data-[state=active]:text-[#5146ca]" value="transactions">Transactions <Badge variant="outline" className="ml-1.5 rounded-full">{transactions.length}</Badge></TabsTrigger>
         </TabsList>
         <TabsContent value="funding">
           <Card className="data-table overflow-hidden surface-card rounded-[24px]">
             <div className="overflow-x-auto"><Table><TableHeader><TableRow className="bg-[#faf9fc]"><TableHead className="pl-6">Request</TableHead><TableHead>Client</TableHead><TableHead>Card</TableHead><TableHead>Receipt</TableHead><TableHead>Client pays</TableHead><TableHead>Status</TableHead><TableHead /></TableRow></TableHeader><TableBody>{fundingPaging.pageItems.map((request) => <TableRow key={request.id} className="cursor-pointer" onClick={() => onOpenRequest(request.id)}><TableCell className="pl-6 font-semibold text-[#353146]">{request.id}<span className="mt-0.5 block text-xs font-normal text-[#9692a3]">{request.submitted}</span></TableCell><TableCell>{clientName(request.clientId)}</TableCell><TableCell><span className="font-semibold">{formatUsd(request.amount)}</span><span className="block text-xs text-[#9d99aa]">to •{request.cardLast4}</span></TableCell><TableCell><span className="inline-flex items-center gap-2 text-sm"><ReceiptIcon type={request.receiptType} />{request.receiptType.toUpperCase()}</span></TableCell><TableCell className="font-medium">{formatRial(request.rialTotal)}</TableCell><TableCell><StatusBadge status={request.status} /></TableCell><TableCell><span className="grid size-8 place-items-center rounded-lg bg-[#f4f2fa]"><ChevronRight className="size-4 text-[#777287]" /></span></TableCell></TableRow>)}</TableBody></Table></div>
+            {matchingFundingRequests.length === 0 && <div className="border-t p-8 text-center text-sm text-[#9692a3]">No existing-card funding requests. First-card payments appear in the First cards tab.</div>}
             <ListPagination page={fundingPaging.page} pageSize={fundingPaging.pageSize} totalItems={fundingPaging.totalItems} totalPages={fundingPaging.totalPages} onPageChange={fundingPaging.setPage} />
           </Card>
         </TabsContent>
+        <TabsContent value="onboarding"><Card className="data-table overflow-hidden surface-card rounded-[24px]"><div className="overflow-x-auto"><Table><TableHeader><TableRow className="bg-[#faf9fc]"><TableHead className="pl-6">Client</TableHead><TableHead>Telegram</TableHead><TableHead>Joined</TableHead><TableHead>Status</TableHead><TableHead /></TableRow></TableHeader><TableBody>{onboardingPaging.pageItems.map((client) => { const status = paymentStatusByUser[client.id] ?? "waiting"; return <TableRow key={client.id} className="cursor-pointer" onClick={() => onOpenClient(client.id)}><TableCell className="pl-6 font-semibold text-[#353146]">{client.name}</TableCell><TableCell>{client.username}<span className="block text-xs text-[#9d99aa]">{client.telegramId}</span></TableCell><TableCell>{client.joined}</TableCell><TableCell><Badge variant="outline" className="border-amber-200 bg-amber-50 text-amber-800">{status.replaceAll("_", " ")}</Badge></TableCell><TableCell><ChevronRight className="size-4 text-[#777287]" /></TableCell></TableRow>; })}</TableBody></Table></div>{onboardingClients.length === 0 && <div className="border-t p-8 text-center text-sm text-[#9692a3]">No first-card requests are waiting for admin action.</div>}<ListPagination page={onboardingPaging.page} pageSize={onboardingPaging.pageSize} totalItems={onboardingPaging.totalItems} totalPages={onboardingPaging.totalPages} onPageChange={onboardingPaging.setPage} /></Card></TabsContent>
         <TabsContent value="kyc"><KycView /></TabsContent>
         <TabsContent value="transactions"><TransactionsView transactions={transactions} clientName={clientName} search={search} issues={issues} onReconcileIssue={onReconcileIssue} /></TabsContent>
       </Tabs>
@@ -2622,21 +2666,31 @@ function SettingsView({ serviceFee, exchangeRate, minimumFunding, botToken, show
   const [settingsTab, setSettingsTab] = useState("general");
   const [mfaSetup, setMfaSetup] = useState<{ secret: string; otpauthUri: string } | null>(null);
   const [securityBusy, setSecurityBusy] = useState(false);
-  const [payCard, setPayCard] = useState<{ cardNumber: string; cardHolder: string; minLoadUsd: number; onboardingBin: string; allowedBins: Array<{ bin: string; requiresDob: boolean }> }>({ cardNumber: "", cardHolder: "", minLoadUsd: 25, onboardingBin: "539502", allowedBins: [] });
+  const [payCard, setPayCard] = useState({ cardNumber: "", cardHolder: "" });
+  const [firstCard, setFirstCard] = useState<{ minLoadUsd: number; onboardingBin: string; allowedBins: Array<{ bin: string; requiresDob: boolean }> }>({ minLoadUsd: 25, onboardingBin: "539502", allowedBins: [] });
   const [payBusy, setPayBusy] = useState(false);
-  useEffect(() => { fetchPaymentCard().then(setPayCard).catch(() => {}); }, []);
+  const [emailOAuth, setEmailOAuth] = useState<EmailOAuthSetup | null>(null);
+  useEffect(() => { Promise.all([fetchPaymentCard(), fetchFirstCardSettings()]).then(([payment, onboarding]) => { setPayCard(payment); setFirstCard(onboarding); }).catch(() => {}); }, []);
+  useEffect(() => { fetchEmailOAuthSetup().then(setEmailOAuth).catch(() => {}); }, []);
   const savePayCard = async () => {
     setPayBusy(true);
     try {
       await updatePaymentCard({
         cardNumber: payCard.cardNumber,
         cardHolder: payCard.cardHolder,
-        minLoadUsd: payCard.minLoadUsd,
-        onboardingBin: payCard.onboardingBin,
       });
-      toast.success("First-card setup saved.");
+      toast.success("Customer payment destination saved.");
     }
     catch (error) { toast.error(error instanceof Error ? error.message : "Could not save payment card."); }
+    finally { setPayBusy(false); }
+  };
+  const saveFirstCard = async () => {
+    setPayBusy(true);
+    try {
+      await updateFirstCardSettings({ minLoadUsd: firstCard.minLoadUsd, onboardingBin: firstCard.onboardingBin });
+      toast.success("First-card issuance settings saved.");
+    }
+    catch (error) { toast.error(error instanceof Error ? error.message : "Could not save first-card settings."); }
     finally { setPayBusy(false); }
   };
   const [providerReadiness, setProviderReadiness] = useState<ProviderReadinessSnapshot | null>(null);
@@ -2745,12 +2799,13 @@ function SettingsView({ serviceFee, exchangeRate, minimumFunding, botToken, show
         <Card className={`surface-card rounded-[24px] xl:col-span-2 ${settingsTab==="security"?"":"hidden"}`}><CardHeader><div className="flex items-center gap-3"><span className="grid size-10 place-items-center rounded-[13px] bg-[#eeecff] text-[#6157e7]"><ShieldCheck className="size-5" /></span><div><CardTitle className="text-[17px] tracking-[-.02em] text-[#2c2940]">Admin security</CardTitle><p className="mt-1 text-sm text-[#8f8b9c]">Server-side session, recent reauthentication, and TOTP multi-factor authentication.</p></div></div></CardHeader><CardContent className="space-y-4"><div className="flex flex-wrap items-center gap-2"><Badge variant="outline" className="rounded-full">{securityAdmin?.email ?? "Loading admin…"}</Badge><Badge variant="outline" className={securityAdmin?.mfaEnabled ? "rounded-full border-emerald-200 bg-emerald-50 text-emerald-700" : "rounded-full border-amber-200 bg-amber-50 text-amber-700"}>{securityAdmin?.mfaEnabled ? "MFA enabled" : "MFA not enabled"}</Badge><Badge variant="outline" className="rounded-full">{securityAdmin?.role ?? "—"}</Badge></div><div className="grid gap-3 md:grid-cols-[1fr_220px_auto]"><Input type="password" value={securityPassword} onChange={(event) => setSecurityPassword(event.target.value)} placeholder="Admin password for reauthentication" /><Input inputMode="numeric" value={securityCode} onChange={(event) => setSecurityCode(event.target.value.replace(/\D/g, "").slice(0, 6))} placeholder="6-digit MFA code (if enabled)" /><Button variant="outline" disabled={securityBusy} onClick={() => void handleReauthenticate()} className="rounded-xl">Reauthenticate</Button></div>{!securityAdmin?.mfaEnabled && !mfaSetup && <div className="space-y-2"><Button disabled={securityBusy} onClick={() => void handleMfaSetup()} className="rounded-xl bg-[#6157e7] text-white hover:bg-[#554bcf]">Set up authenticator MFA</Button><p className="text-xs leading-5 text-[#8f8b9c]">Before setting up MFA, enter your admin password above and click <b>Reauthenticate</b> — the server requires a recent re-authentication for this action.</p></div>}{mfaSetup && <div className="space-y-3 rounded-[16px] border border-[#dedaff] bg-[#f8f7ff] p-4"><p className="text-sm font-semibold">Add this secret to your authenticator app</p><p className="break-all rounded-xl bg-white p-3 font-mono text-sm">{mfaSetup.secret}</p><p className="break-all text-xs text-[#777287]">{mfaSetup.otpauthUri}</p><div className="flex gap-2"><Input inputMode="numeric" value={securityCode} onChange={(event) => setSecurityCode(event.target.value.replace(/\D/g, "").slice(0, 6))} placeholder="Current 6-digit code" /><Button disabled={securityBusy} onClick={() => void handleMfaEnable()} className="rounded-xl bg-[#6157e7] text-white hover:bg-[#554bcf]">Enable MFA</Button></div></div>}{securityAdmin?.mfaEnabled && <div className="flex items-center gap-2"><Button variant="outline" disabled={securityBusy} onClick={() => void handleMfaDisable()} className="rounded-xl border-red-200 text-red-700 hover:bg-red-50">Disable MFA</Button><p className="text-xs text-[#8f8b9c]">Requires recent reauthentication plus the current authenticator code.</p></div>}<p className="text-xs leading-5 text-[#8f8b9c]">Sensitive credential reveal requires a recent reauthentication window. Session and secret events are recorded in the immutable audit log.</p></CardContent></Card>
         <Card className={`surface-card rounded-[24px] ${settingsTab==="general"?"":"hidden"}`}><CardHeader><div className="flex items-center gap-3"><span className="grid size-10 place-items-center rounded-[13px] bg-[#eeecff] text-[#6157e7]"><CircleDollarSign className="size-5" /></span><div><CardTitle className="text-[17px] tracking-[-.02em] text-[#2c2940]">Pricing and exchange</CardTitle><p className="mt-1 text-sm text-[#8f8b9c]">Calculate the Rial amount before a request is created.</p></div></div></CardHeader><CardContent className="space-y-5"><div className="grid gap-4 sm:grid-cols-2"><div className="grid gap-2"><Label htmlFor="service-fee">Your funding fee (%)</Label><Input id="service-fee" type="number" min="0" step="0.1" value={serviceFee} onChange={(event) => onServiceFee(Number(event.target.value))} /></div><div className="grid gap-2"><Label>Provider card fee</Label><Input value="4% + $1.00" readOnly className="bg-[#f8f7fb]" /></div><div className="grid gap-2 sm:col-span-2"><Label htmlFor="minimum-funding">Minimum existing-card funding (USD)</Label><Input id="minimum-funding" type="number" min="1" step="1" value={minimumFunding} onChange={(event) => onMinimumFunding(Number(event.target.value))} /><p className="text-xs text-[#8f8b9c]">Applies only after onboarding when a customer adds money to an existing card. The first-card minimum is configured separately below.</p></div></div><div className="grid gap-2"><div className="flex items-center justify-between gap-2"><Label htmlFor="exchange-rate">Rial per 1 USD</Label><Badge variant="outline" className="rounded-full border-amber-200 bg-amber-50 text-amber-800">Manual snapshot</Badge></div><Input id="exchange-rate" type="number" min="1" value={exchangeRate} onChange={(event) => onExchangeRate(Number(event.target.value))} /><div className="rounded-[14px] border border-[#ece9f2] bg-[#faf9fc] p-3 text-xs leading-5 text-[#777287]"><p className="font-semibold text-[#353146]">Source: admin-approved manual snapshot</p><p>Saving creates a new immutable exchange-rate row used by new funding quotes until it expires.</p><p className="mt-1 text-[#9692a3]">Existing funding requests never recalculate when this value changes.</p></div><Button variant="outline" className="mt-3 rounded-xl" onClick={() => void onSavePricing()}><Check className="size-4" />Save pricing & rate snapshot</Button></div><div className="hero-grid rounded-[20px] p-5 text-white"><p className="text-xs font-medium uppercase tracking-[.14em] text-[#c8c3ff]">Example · $100 card funding request</p><div className="mt-3 grid grid-cols-2 gap-4"><div><p className="text-sm text-[#aaa5c8]">USD basis</p><p className="mt-1 text-xl font-semibold">{formatUsd(total)}</p></div><div><p className="text-sm text-[#aaa5c8]">Client pays</p><p className="mt-1 text-xl font-semibold">{formatRial(total * exchangeRate)}</p></div></div><div className="mt-3 border-t border-white/10 pt-3 text-xs text-[#aaa5c8]">$100 + {formatUsd(providerFee)} provider + {formatUsd(ownFee)} service fee</div></div></CardContent></Card>
 
-        <Card className={`surface-card rounded-[24px] ${settingsTab==="general"?"":"hidden"}`}><CardHeader><div className="flex items-center gap-3"><span className="grid size-10 place-items-center rounded-[13px] bg-[#eeecff] text-[#6157e7]"><CreditCard className="size-5" /></span><div><CardTitle className="text-[17px] tracking-[-.02em] text-[#2c2940]">First card setup</CardTitle><p className="mt-1 text-sm text-[#8f8b9c]">After KYC approval, customers choose their first-card balance, pay exactly that amount to this card, and upload a receipt.</p></div></div></CardHeader><CardContent className="space-y-4"><div className="grid gap-3 sm:grid-cols-2"><div className="grid gap-2"><Label htmlFor="pay-card-number">Card number</Label><Input id="pay-card-number" value={payCard.cardNumber} onChange={(e) => setPayCard((c) => ({ ...c, cardNumber: e.target.value }))} placeholder="6037-9911-2233-4455" className="bg-white" /></div><div className="grid gap-2"><Label htmlFor="pay-card-holder">Card holder name</Label><Input id="pay-card-holder" value={payCard.cardHolder} onChange={(e) => setPayCard((c) => ({ ...c, cardHolder: e.target.value }))} placeholder="Full name as on the card" className="bg-white" /></div>
-<div className="grid gap-2"><Label htmlFor="pay-min-load">Minimum first-card amount (USD)</Label><Input id="pay-min-load" type="number" min={1} value={payCard.minLoadUsd} onChange={(e) => setPayCard((c) => ({ ...c, minLoadUsd: Number(e.target.value) || 25 }))} className="bg-white" /><p className="text-xs text-[#8f8b9c]">Default is $25. The customer may choose any higher amount; the accepted amount becomes the initial card balance.</p></div><div className="grid gap-2"><Label htmlFor="onboarding-bin">First-card BIN</Label><Select value={payCard.onboardingBin} onValueChange={(value) => setPayCard((c) => ({ ...c, onboardingBin: value }))}><SelectTrigger id="onboarding-bin" className="bg-white"><SelectValue placeholder="Choose a provider BIN" /></SelectTrigger><SelectContent>{payCard.allowedBins.map((item) => <SelectItem key={item.bin} value={item.bin}>{item.bin}{item.requiresDob ? " · DOB required" : ""}</SelectItem>)}</SelectContent></Select><p className="text-xs text-[#8f8b9c]">Only provider-supported BINs can be saved. BINs marked DOB required use the approved KYC date of birth.</p></div></div><Button className="rounded-xl bg-[#6157e7] text-white hover:bg-[#554bcf]" disabled={payBusy} onClick={() => void savePayCard()}><Check className="size-4" />Save first-card setup</Button></CardContent></Card>
+        <Card className={`surface-card rounded-[24px] ${settingsTab==="general"?"":"hidden"}`}><CardHeader><div className="flex items-center gap-3"><span className="grid size-10 place-items-center rounded-[13px] bg-[#eeecff] text-[#6157e7]"><CreditCard className="size-5" /></span><div><CardTitle className="text-[17px] tracking-[-.02em] text-[#2c2940]">Customer payment destination</CardTitle><p className="mt-1 text-sm text-[#8f8b9c]">Customers pay this local card and upload a receipt. This is separate from Kripicard issuance.</p></div></div></CardHeader><CardContent className="space-y-4"><div className="grid gap-3 sm:grid-cols-2"><div className="grid gap-2"><Label htmlFor="pay-card-number">Card number</Label><Input id="pay-card-number" value={payCard.cardNumber} onChange={(e) => setPayCard((c) => ({ ...c, cardNumber: e.target.value }))} placeholder="6037-9911-2233-4455" className="bg-white" /></div><div className="grid gap-2"><Label htmlFor="pay-card-holder">Card holder name</Label><Input id="pay-card-holder" value={payCard.cardHolder} onChange={(e) => setPayCard((c) => ({ ...c, cardHolder: e.target.value }))} placeholder="Full name as on the card" className="bg-white" /></div></div><Button className="rounded-xl bg-[#6157e7] text-white hover:bg-[#554bcf]" disabled={payBusy} onClick={() => void savePayCard()}><Check className="size-4" />Save payment destination</Button></CardContent></Card>
+        <Card className={`surface-card rounded-[24px] ${settingsTab==="general"?"":"hidden"}`}><CardHeader><div className="flex items-center gap-3"><span className="grid size-10 place-items-center rounded-[13px] bg-[#e6f8f1] text-[#16815e]"><WalletCards className="size-5" /></span><div><CardTitle className="text-[17px] tracking-[-.02em] text-[#2c2940]">First-card issuance</CardTitle><p className="mt-1 text-sm text-[#8f8b9c]">Controls the virtual card created after payment and KYC approval.</p></div></div></CardHeader><CardContent className="space-y-4"><div className="grid gap-3 sm:grid-cols-2"><div className="grid gap-2"><Label htmlFor="pay-min-load">Minimum first-card amount (USD)</Label><Input id="pay-min-load" type="number" min={1} value={firstCard.minLoadUsd} onChange={(e) => setFirstCard((c) => ({ ...c, minLoadUsd: Number(e.target.value) || 25 }))} className="bg-white" /><p className="text-xs text-[#8f8b9c]">The accepted amount becomes the initial virtual-card balance.</p></div><div className="grid gap-2"><Label htmlFor="onboarding-bin">Virtual-card BIN</Label><Select value={firstCard.onboardingBin} onValueChange={(value) => setFirstCard((c) => ({ ...c, onboardingBin: value }))}><SelectTrigger id="onboarding-bin" className="bg-white"><SelectValue placeholder="Choose a provider BIN" /></SelectTrigger><SelectContent>{firstCard.allowedBins.map((item) => <SelectItem key={item.bin} value={item.bin}>{item.bin}{item.requiresDob ? " · DOB required" : ""}</SelectItem>)}</SelectContent></Select><p className="text-xs text-[#8f8b9c]">This BIN belongs to the issued Kripicard, not the customer payment card.</p></div></div><Button className="rounded-xl bg-[#167957] text-white hover:bg-[#116144]" disabled={payBusy} onClick={() => void saveFirstCard()}><Check className="size-4" />Save issuance settings</Button></CardContent></Card>
         <Card className={`surface-card rounded-[24px] ${settingsTab==="telegram"?"":"hidden"}`}><CardHeader><div className="flex items-center gap-3"><span className="grid size-10 place-items-center rounded-[13px] bg-[#f1eefe] text-[#7864c9]"><Bot className="size-5" /></span><div><CardTitle className="text-[17px] tracking-[-.02em] text-[#2c2940]">Telegram bot</CardTitle><p className="mt-1 text-sm text-[#8f8b9c]">Webhook readiness, server-side token status, and required channels.</p></div></div></CardHeader><CardContent className="space-y-5"><div className="grid gap-2"><Label htmlFor="bot-token">Bot token</Label><div className="flex flex-wrap gap-2"><div className="relative min-w-[220px] flex-1"><Input id="bot-token" type={showToken ? "text" : "password"} value={botToken} onChange={(event) => onBotToken(event.target.value)} placeholder={telegramStatus?.tokenHint ? `Update token (current ends ${telegramStatus.tokenHint})` : "Paste bot token from @BotFather"} className="pr-10" autoComplete="off" /><button type="button" aria-label={showToken ? "Hide token" : "Show token"} onClick={() => onShowToken(!showToken)} className="absolute right-3 top-1/2 -translate-y-1/2 text-[#9692a3]">{showToken ? <EyeOff className="size-4" /> : <Eye className="size-4" />}</button></div><Button className="rounded-xl bg-[#6157e7] text-white hover:bg-[#554bcf]" disabled={!botToken.trim()} onClick={() => void onSaveBotToken()}><Check className="size-4" />Save token</Button><Button variant="outline" className="rounded-xl" disabled={!telegramStatus?.configured} onClick={() => void onConfigureWebhook()}><Radio className="size-4" />Configure webhook</Button>{telegramStatus?.tokenSource === "database" && <Button variant="outline" className="rounded-xl border-red-200 text-red-700 hover:bg-red-50" onClick={() => void onClearBotToken()}><Trash2 className="size-4" />Clear</Button>}</div><p className="text-xs text-[#8f8b9c]">{telegramStatus?.tokenHint ? <>Current token: <code>••••{telegramStatus.tokenHint}</code> · stored {telegramStatus.tokenSource === "database" ? "encrypted in the database (set here)" : "in the server environment"}. Only the last 4 characters are ever shown.</> : <>Paste a token from <b>@BotFather</b> and click <b>Save token</b>. It is stored encrypted (AES-256-GCM); only the last 4 characters are shown afterward.</>}</p></div><div className="rounded-[14px] border border-[#ece9f2] bg-[#faf9fc] p-3 text-sm"><div className="flex flex-wrap gap-2"><Badge variant="outline" className={telegramStatus?.configured ? "rounded-full border-emerald-200 bg-emerald-50 text-emerald-700" : "rounded-full border-amber-200 bg-amber-50 text-amber-700"}>{telegramStatus?.configured ? "Bot configured" : "Bot not configured"}</Badge>{telegramStatus?.bot?.username && <Badge variant="outline" className="rounded-full">@{telegramStatus.bot.username}</Badge>}{telegramStatus?.webhook?.url && <Badge variant="outline" className="rounded-full border-emerald-200 text-emerald-700">Webhook connected</Badge>}</div><p className="mt-2 break-all text-xs text-[#777287]">Expected webhook: {telegramStatus?.expectedWebhookUrl ?? "Configure Telegram environment variables to inspect status."}</p>{telegramStatus?.webhook?.lastErrorMessage && <p className="mt-1 text-xs text-red-600">Telegram: {telegramStatus.webhook.lastErrorMessage}</p>}{telegramStatus?.error && <p className="mt-1 text-xs text-red-600">Telegram: {telegramStatus.error}</p>}</div><div><div className="mb-2 flex items-center justify-between"><Label>Force-join channels</Label><Badge variant="outline" className="rounded-full">{channels.length} required</Badge></div><div className="space-y-2">{channels.map((channel) => <div key={channel} className="flex items-center gap-3 rounded-[14px] border border-[#ebe9f1] bg-[#fbfafc] p-3"><Hash className="size-4 text-[#9692a3]" /><span className="flex-1 text-sm font-medium">{channel}</span><button onClick={() => void onRemoveChannel(channel)} className="text-[#9692a3] hover:text-red-600"><Trash2 className="size-4" /><span className="sr-only">Remove {channel}</span></button></div>)}</div><div className="mt-2 flex gap-2"><Input value={newChannel} onChange={(event) => onNewChannel(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); void onAddChannel(); } }} placeholder="@channel_username" /><Button variant="outline" className="rounded-xl" onClick={() => void onAddChannel()}><Plus className="size-4" />Add</Button></div><p className="mt-2 text-xs text-[#8f8b9c]">Membership checks fail open on Telegram/API configuration errors so one broken channel cannot lock out every client; explicit left/kicked status is enforced.</p></div><Alert className="rounded-[16px] border-[#cfeadf] bg-[#f0faf6]"><CheckCircle2 className="text-[#167957]" /><AlertTitle className="text-[#245f4c]">Telegram backend implemented</AlertTitle><AlertDescription className="text-[#4f7669]">The bot uses verified and deduplicated webhooks, assignment and ban gates, opaque callbacks, guarded card actions, support relay, and durable OTP delivery.</AlertDescription></Alert></CardContent></Card>
 
+        <Card className={`surface-card rounded-[24px] xl:col-span-2 ${settingsTab==="email"?"":"hidden"}`}><CardHeader><CardTitle>Email OAuth setup</CardTitle><p className="text-sm text-[#8f8b9c]">Register these exact callback URLs before using Connect on an account.</p></CardHeader><CardContent className="grid gap-4 md:grid-cols-2">{(["outlook","gmail"] as const).map((provider) => { const setup = emailOAuth?.providers[provider]; const label = provider === "outlook" ? "Outlook / Hotmail" : "Gmail"; return <div key={provider} className="rounded-xl border p-4"><div className="flex items-center justify-between gap-2"><p className="font-semibold">{label}</p><Badge variant="outline" className={setup?.configured ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "border-amber-200 bg-amber-50 text-amber-800"}>{setup?.configured ? "Configured" : "Missing credentials"}</Badge></div><p className="mt-3 text-xs font-medium text-[#777287]">Authorized redirect URI</p><code className="mt-1 block break-all rounded-lg bg-slate-50 p-2 text-xs">{setup?.callbackUrl ?? "Loading…"}</code><ol className="mt-3 list-decimal space-y-1 pl-5 text-xs leading-5 text-[#777287]"><li>Create an OAuth web application in the provider console.</li><li>Add the exact redirect URI shown above.</li><li>Set the client ID and secret in the deployment environment, then restart.</li><li>Open Accounts, choose the matching mailbox provider, and click Connect.</li></ol><p className="mt-3 text-xs text-[#9692a3]">{provider === "outlook" ? "Environment: MICROSOFT_OAUTH_CLIENT_ID and MICROSOFT_OAUTH_CLIENT_SECRET" : "Environment: GOOGLE_OAUTH_CLIENT_ID and GOOGLE_OAUTH_CLIENT_SECRET"}</p></div>; })}</CardContent></Card>
         <EmailRulesCard hidden={settingsTab !== "email"} />
-                <Card className="surface-card rounded-[24px]"><CardHeader><div className="flex items-center gap-3"><span className="grid size-10 place-items-center rounded-xl bg-amber-100 text-amber-800"><KeyRound className="size-5" /></span><div><CardTitle className="text-base">3DS code delivery</CardTitle><p className="mt-1 text-sm text-slate-500">Protect the mailbox while giving clients only their code.</p></div></div></CardHeader><CardContent className="space-y-4"><Alert className="border-amber-200 bg-amber-50"><AlertTriangle className="text-amber-700" /><AlertTitle className="text-amber-950">3DS comes from the connected mailbox, not the Kripicard API</AlertTitle><AlertDescription className="text-amber-900/70">Trusted Outlook/Gmail verification messages are classified, short-lived OTPs are encrypted, and unknown templates are quarantined. Add issuer sender/template rules only after validating real messages.</AlertDescription></Alert><div className="space-y-3"><RoutingStep icon={Mail} title="Use a dedicated external mailbox" detail="Create or choose a mailbox from Outlook/Hotmail or Gmail and associate it with the Kripicard account." /><RoutingStep icon={ShieldCheck} title="Extract only the one-time code" detail="Read the mailbox through Microsoft Graph or the Gmail API, then parse only trusted verification messages." /><RoutingStep icon={Send} title="Relay to the assigned Telegram user" detail="Expire the code after delivery and keep a minimal audit event, not the message content." /></div><div className="rounded-xl border border-dashed p-3 text-sm text-slate-500"><strong>AccAbad email policy:</strong> use only Outlook/Hotmail or Gmail mailboxes. Connect them with OAuth using Microsoft Graph or the Gmail API. Do not depend on a custom AccAbad mail domain and do not store mailbox passwords for inbox access.</div><div className="overflow-hidden rounded-xl border text-sm"><div className="grid grid-cols-[1.1fr_1fr_1.4fr] bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-500"><span>Provider</span><span>Inbox access</span><span>AccAbad approach</span></div>{[["Outlook / Hotmail","API","Microsoft Graph OAuth"],["Gmail","API","Gmail API OAuth"]].map(([provider, access, approach]) => <div key={provider} className="grid grid-cols-[1.1fr_1fr_1.4fr] border-t px-3 py-2.5"><span className="font-medium text-slate-700">{provider}</span><span className="text-slate-500">{access}</span><span className="text-slate-500">{approach}</span></div>)}</div></CardContent></Card>
+                <Card className={`surface-card rounded-[24px] ${settingsTab==="email"?"":"hidden"}`}><CardHeader><div className="flex items-center gap-3"><span className="grid size-10 place-items-center rounded-xl bg-amber-100 text-amber-800"><KeyRound className="size-5" /></span><div><CardTitle className="text-base">3DS code delivery</CardTitle><p className="mt-1 text-sm text-slate-500">Protect the mailbox while giving clients only their code.</p></div></div></CardHeader><CardContent className="space-y-4"><Alert className="border-amber-200 bg-amber-50"><AlertTriangle className="text-amber-700" /><AlertTitle className="text-amber-950">3DS comes from the connected mailbox, not the Kripicard API</AlertTitle><AlertDescription className="text-amber-900/70">Trusted Outlook/Gmail verification messages are classified, short-lived OTPs are encrypted, and unknown templates are quarantined. Add issuer sender/template rules only after validating real messages.</AlertDescription></Alert><div className="space-y-3"><RoutingStep icon={Mail} title="Use a dedicated external mailbox" detail="Create or choose a mailbox from Outlook/Hotmail or Gmail and associate it with the Kripicard account." /><RoutingStep icon={ShieldCheck} title="Extract only the one-time code" detail="Read the mailbox through Microsoft Graph or the Gmail API, then parse only trusted verification messages." /><RoutingStep icon={Send} title="Relay to the assigned Telegram user" detail="Expire the code after delivery and keep a minimal audit event, not the message content." /></div><div className="rounded-xl border border-dashed p-3 text-sm text-slate-500"><strong>AccAbad email policy:</strong> use only Outlook/Hotmail or Gmail mailboxes. Connect them with OAuth using Microsoft Graph or the Gmail API. Do not depend on a custom AccAbad mail domain and do not store mailbox passwords for inbox access.</div><div className="overflow-hidden rounded-xl border text-sm"><div className="grid grid-cols-[1.1fr_1fr_1.4fr] bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-500"><span>Provider</span><span>Inbox access</span><span>AccAbad approach</span></div>{[["Outlook / Hotmail","API","Microsoft Graph OAuth"],["Gmail","API","Gmail API OAuth"]].map(([provider, access, approach]) => <div key={provider} className="grid grid-cols-[1.1fr_1fr_1.4fr] border-t px-3 py-2.5"><span className="font-medium text-slate-700">{provider}</span><span className="text-slate-500">{access}</span><span className="text-slate-500">{approach}</span></div>)}</div></CardContent></Card>
 
         <Card className="surface-card rounded-[24px]"><CardHeader><div className="flex items-center justify-between gap-3"><div className="flex items-center gap-3"><span className={`grid size-10 place-items-center rounded-xl ${providerReadiness?.readyForMoneyWrites ? "bg-emerald-100 text-emerald-800" : "bg-amber-100 text-amber-800"}`}><ShieldCheck className="size-5" /></span><div><CardTitle className="text-base">Kripicard money readiness</CardTitle><p className="mt-1 text-sm text-slate-500">Provider contract gate for deposits, card creation, and card funding. Card creation and card funding are evaluated independently from deposit behavior.</p></div></div><Button variant="outline" size="sm" disabled={providerReadinessLoading} onClick={() => void reloadProviderReadiness()} className="rounded-xl"><RefreshCw className={`size-4 ${providerReadinessLoading ? "animate-spin" : ""}`} />Refresh</Button></div></CardHeader><CardContent className="space-y-4">
           <Alert className={providerReadiness?.readyForMoneyWrites ? "border-emerald-200 bg-emerald-50" : "border-amber-200 bg-amber-50"}><AlertTriangle className={providerReadiness?.readyForMoneyWrites ? "text-emerald-700" : "text-amber-700"} /><AlertTitle>{providerReadiness?.readyByOperation?.card_create?.ready && providerReadiness?.readyByOperation?.card_fund?.ready ? "Card create + funding contracts cleared" : providerReadiness?.readyForMoneyWrites ? "Provider contract checks cleared" : "Some live money operations remain blocked"}</AlertTitle><AlertDescription>{providerReadiness ? `Card creation: ${providerReadiness.readyByOperation?.card_create?.ready ? "ready" : `blocked by ${(providerReadiness.readyByOperation?.card_create?.blockers ?? []).join(", ")}`}. Card funding: ${providerReadiness.readyByOperation?.card_fund?.ready ? "ready" : `blocked by ${(providerReadiness.readyByOperation?.card_fund?.blockers ?? []).join(", ")}`}. Deposit creation remains independently gated. ${providerReadiness.summary.blockers} broader provider question${providerReadiness.summary.blockers === 1 ? "" : "s"} remain. The supplied contract is wallet-based.` : "Loading provider readiness checks…"}</AlertDescription></Alert>
@@ -2907,6 +2962,8 @@ function ClientPaymentSection({ clientId }: { clientId: string | null }) {
   const [reauthPassword, setReauthPassword] = useState("");
   const [reauthCode, setReauthCode] = useState("");
   const [reauthBusy, setReauthBusy] = useState(false);
+  const [walletGate, setWalletGate] = useState<ProviderWalletGate | null>(null);
+  const [walletConfirmed, setWalletConfirmed] = useState(false);
 
   useEffect(() => {
     if (!clientId) return;
@@ -2943,11 +3000,11 @@ function ClientPaymentSection({ clientId }: { clientId: string | null }) {
 
   const act = async (
     action: "accept" | "deny" | "create_card" | "reconcile_card" | "complete",
-    options: { allowReauthPrompt?: boolean } = { allowReauthPrompt: true },
+    options: { allowReauthPrompt?: boolean; walletFundingConfirmed?: boolean } = { allowReauthPrompt: true },
   ) => {
     setBusy(true);
     try {
-      const result = await activateClient(clientId, { action, accountId: accountId || undefined });
+      const result = await activateClient(clientId, { action, accountId: accountId || undefined, walletFundingConfirmed: options.walletFundingConfirmed });
       applyActionResult(action, result);
     } catch (error) {
       if (
@@ -2999,7 +3056,7 @@ function ClientPaymentSection({ clientId }: { clientId: string | null }) {
       setReauthPassword("");
       setReauthCode("");
       toast.success("Reauthenticated. Continuing the provider action.");
-      await act(pendingAction, { allowReauthPrompt: false });
+      await act(pendingAction, { allowReauthPrompt: false, walletFundingConfirmed: pendingAction === "create_card" });
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Reauthentication failed.");
     } finally {
@@ -3052,7 +3109,7 @@ function ClientPaymentSection({ clientId }: { clientId: string | null }) {
             <option value="">Choose Kripicard account…</option>
             {accounts.map((account) => <option key={account.id} value={account.id}>{account.label}{account.selected ? " · assigned" : ""}</option>)}
           </select>
-          <Button size="sm" className="rounded-xl bg-[#167957] text-white hover:bg-[#116144]" disabled={busy || !accountId} onClick={() => void act("create_card")}><CreditCard className="size-4" />Create first card</Button>
+          <Button size="sm" className="rounded-xl bg-[#167957] text-white hover:bg-[#116144]" disabled={busy || !accountId} onClick={() => { setBusy(true); fetchProviderWalletGate(accountId).then((details) => { setWalletConfirmed(false); setWalletGate(details); }).catch((error) => toast.error(error instanceof Error ? error.message : "Could not prepare the Kripicard wallet step.")).finally(() => setBusy(false)); }}><CreditCard className="size-4" />Prepare crypto & create</Button>
         </div>
       </div>}
 
@@ -3069,6 +3126,14 @@ function ClientPaymentSection({ clientId }: { clientId: string | null }) {
       {status === "complete" && <p className="mt-2 text-xs text-emerald-700">Onboarding is complete. The customer can view the card, balance, transactions, support, and add-funds flow.</p>}
       {status === "denied" && <p className="mt-2 text-xs text-red-700">The customer was notified and can choose a new amount and upload a replacement receipt.</p>}
     </div>
+
+    <Dialog open={Boolean(walletGate)} onOpenChange={(open) => { if (!open) { setWalletGate(null); setWalletConfirmed(false); } }}>
+      <DialogContent className="rounded-[24px] border-[#e5e2ee] sm:max-w-[480px]">
+        <DialogHeader><DialogTitle>Fund Kripicard wallet with crypto</DialogTitle><DialogDescription>The initial card balance is debited from the selected Kripicard account wallet. Deposit crypto in Kripicard first.</DialogDescription></DialogHeader>
+        {walletGate && <div className="space-y-4"><div className="rounded-xl border bg-slate-50 p-3 text-sm"><p className="font-semibold">{walletGate.accountLabel}</p><p className="text-xs text-[#777287]">{walletGate.loginEmail}</p><p className="mt-2">Initial card amount: <b>{formatUsd(Number(payment.amountUsdCents ?? "0") / 100)}</b></p></div><a href={walletGate.portalUrl} target="_blank" rel="noreferrer"><Button variant="outline" className="w-full rounded-xl"><ExternalLink className="size-4" />Open Kripicard crypto deposit</Button></a><label className="flex items-start gap-3 rounded-xl border p-3 text-sm"><Checkbox checked={walletConfirmed} onCheckedChange={(value) => setWalletConfirmed(value === true)} /><span>I deposited crypto into this exact Kripicard account and waited for it to be credited.</span></label></div>}
+        <DialogFooter><Button variant="outline" onClick={() => setWalletGate(null)}>Cancel</Button><Button disabled={!walletConfirmed} onClick={() => { setWalletGate(null); setWalletConfirmed(false); void act("create_card", { walletFundingConfirmed: true }); }}>Continue to create card</Button></DialogFooter>
+      </DialogContent>
+    </Dialog>
 
     <Dialog open={Boolean(reauthAction)} onOpenChange={(open) => {
       if (!open && !reauthBusy) {
