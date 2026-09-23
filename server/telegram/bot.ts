@@ -11,6 +11,7 @@ import { deletePrivateSupportAttachment, storePrivateSupportAttachment } from "@
 import { createKycSubmission, getKycStatusForUser } from "@/server/kyc/service";
 import { KYC, kycConfirmSummary, pick, MENU, COMMON, PAYMENT, FLOW } from "@/server/kyc/messages";
 import { getPaymentCard } from "@/server/settings/payment-card";
+import { getFirstCardSettings } from "@/server/settings/first-card";
 import { getTelegramClient } from "@/server/telegram/credentials";
 
 const telegramUserSchema = z.object({
@@ -178,10 +179,10 @@ async function handlePaymentAmountText(client: TelegramClient, user: BotUser, ch
   if (!state || state.mode !== "payment_amount") return false;
   const cents = dollarsToCents(text.trim());
   if (cents == null || cents <= 0) { await client.sendMessage({ chatId, text: pick(PAYMENT.errAmount, user.lang) }); return true; }
-  const pc = await getPaymentCard();
-  const minCents = Math.round(pc.minLoadUsd * 100);
+  const [pc, firstCard] = await Promise.all([getPaymentCard(), getFirstCardSettings()]);
+  const minCents = Math.round(firstCard.minLoadUsd * 100);
   if (cents < minCents) {
-    await client.sendMessage({ chatId, text: pick(PAYMENT.errMinAmount, user.lang).replace("{min}", `${pc.minLoadUsd}`) });
+    await client.sendMessage({ chatId, text: pick(PAYMENT.errMinAmount, user.lang).replace("{min}", `${firstCard.minLoadUsd}`) });
     return true;
   }
   if (!pc.cardNumber) {
@@ -236,11 +237,11 @@ async function handlePaymentReceiptMedia(client: TelegramClient, user: BotUser, 
   return true;
 }
 async function sendPaymentScreen(client: TelegramClient, user: BotUser, chatId: number) {
-  const pc = await getPaymentCard();
+  const [pc, firstCard] = await Promise.all([getPaymentCard(), getFirstCardSettings()]);
   const choose = await createCallbackToken({ userId: user.id, action: "menu.paid" });
   const support = await createCallbackToken({ userId: user.id, action: "support.start" });
   const text = pc.cardNumber
-    ? pick(PAYMENT.chooseAmount, user.lang).replace("{min}", escapeHtml(String(pc.minLoadUsd)))
+    ? pick(PAYMENT.chooseAmount, user.lang).replace("{min}", escapeHtml(String(firstCard.minLoadUsd)))
     : pick(PAYMENT.notConfigured, user.lang);
   await client.sendMessage({
     chatId,

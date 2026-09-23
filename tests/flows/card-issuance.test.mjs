@@ -14,6 +14,7 @@ const dashboard = await readFile(new URL("../../app/dashboard-app.tsx", import.m
 const activateRoute = await readFile(new URL("../../app/api/v1/clients/[id]/activate/route.ts", import.meta.url), "utf8");
 const onboarding = await readFile(new URL("../../server/clients/onboarding.ts", import.meta.url), "utf8");
 const paymentSettingsRoute = await readFile(new URL("../../app/api/v1/settings/payment-card/route.ts", import.meta.url), "utf8");
+const firstCardSettingsRoute = await readFile(new URL("../../app/api/v1/settings/first-card/route.ts", import.meta.url), "utf8");
 const cardPolicyRoute = await readFile(new URL("../../app/api/v1/settings/card-policy/route.ts", import.meta.url), "utf8");
 const readiness = await readFile(new URL("../../server/providers/kripicard/readiness.ts", import.meta.url), "utf8");
 const contract = await readFile(new URL("../../docs/KRIPICARD-PROVIDER-CONTRACT.md", import.meta.url), "utf8");
@@ -142,11 +143,18 @@ test("provider contract states the one-shot purchase rule", () => {
 
 
 test("first-card configuration validates BINs early and does not retroactively apply a newer minimum", () => {
-  assert.match(paymentSettingsRoute, /unsupported_onboarding_bin/);
-  assert.match(paymentSettingsRoute, /getCardRequestBins/);
+  assert.match(firstCardSettingsRoute, /unsupported_onboarding_bin/);
+  assert.match(firstCardSettingsRoute, /getCardRequestBins/);
+  assert.doesNotMatch(paymentSettingsRoute, /onboardingBin|BIN/);
   assert.match(onboarding, /payment_amount_usd_cents/);
   assert.doesNotMatch(onboarding, /amount_below_minimum/);
   assert.doesNotMatch(onboarding, /minCents/);
+});
+
+test("first-card creation requires an explicit crypto wallet confirmation", () => {
+  assert.match(activateRoute, /provider_wallet_confirmation_required/);
+  assert.match(activateRoute, /walletFundingConfirmed/);
+  assert.match(dashboard, /Open Kripicard crypto deposit/);
 });
 
 
