@@ -6,6 +6,7 @@ const migration = await readFile(new URL("../../db/migrations/0006_outlook_graph
 const microsoftClient = await readFile(new URL("../../server/providers/microsoft/client.ts", import.meta.url), "utf8");
 const microsoftService = await readFile(new URL("../../server/providers/microsoft/service.ts", import.meta.url), "utf8");
 const envExample = await readFile(new URL("../../.env.example", import.meta.url), "utf8");
+const oauthSetupRoute = await readFile(new URL("../../app/api/v1/settings/email-oauth/route.ts", import.meta.url), "utf8");
 const dashboard = await readFile(new URL("../../app/dashboard-app.tsx", import.meta.url), "utf8");
 const backgroundRoute = await readFile(new URL("../../app/api/internal/jobs/outlook-sync/route.ts", import.meta.url), "utf8");
 const envSchema = await readFile(new URL("../../config/env-schema.mjs", import.meta.url), "utf8");
@@ -54,6 +55,12 @@ test("deployment example exposes Microsoft app registration placeholders only", 
   assert.match(envExample, /MICROSOFT_OAUTH_CLIENT_SECRET=/);
   assert.match(envExample, /MICROSOFT_OAUTH_TENANT=consumers/);
   assert.doesNotMatch(envExample, /[A-Za-z0-9_-]{30,}\.[A-Za-z0-9_-]{30,}\.[A-Za-z0-9_-]{20,}/);
+});
+
+test("admin setup exposes the exact Outlook OAuth callback and configuration state", () => {
+  assert.match(oauthSetupRoute, /email\/outlook\/callback/);
+  assert.match(oauthSetupRoute, /MICROSOFT_OAUTH_CLIENT_ID/);
+  assert.match(oauthSetupRoute, /configured/);
 });
 
 const authCookies = await readFile(new URL("../../server/auth/cookies.ts", import.meta.url), "utf8");
