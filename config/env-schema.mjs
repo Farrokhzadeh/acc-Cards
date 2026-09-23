@@ -31,6 +31,7 @@ const schema = z
     API_MAX_BODY_BYTES: z.coerce.number().int().min(1024).max(25 * 1024 * 1024).default(12 * 1024 * 1024),
 
     KRIPICARD_BASE_URL: z.string().url().default("https://appapi.kripicard.com"),
+    KRIPICARD_PORTAL_URL: z.string().url().default("https://app.kripicard.com"),
     KRIPICARD_REQUEST_TIMEOUT_MS: z.coerce.number().int().min(1000).max(60000).default(10000),
     KRIPICARD_READ_RETRY_COUNT: z.coerce.number().int().min(0).max(5).default(2),
     KRIPICARD_READ_RETRY_BASE_MS: z.coerce.number().int().min(50).max(5000).default(250),
