@@ -315,6 +315,18 @@ export async function disconnectGmailMailbox(id: string) {
   return apiJson<{ disconnected: true }>(`/api/v1/accounts/${encodeURIComponent(id)}/email/gmail/disconnect`, { method: "POST", body: "{}" });
 }
 
+export type EmailOAuthSetup = {
+  appBaseUrl: string;
+  providers: {
+    outlook: { configured: boolean; callbackUrl: string; accountTypes: string };
+    gmail: { configured: boolean; callbackUrl: string; accountTypes: string };
+  };
+};
+
+export async function fetchEmailOAuthSetup() {
+  return apiJson<EmailOAuthSetup>("/api/v1/settings/email-oauth", { method: "GET" });
+}
+
 export async function fetchAccountEmailMessages(id: string) {
   return apiJson<{ items: StoredEmailMessage[] }>(`/api/v1/accounts/${encodeURIComponent(id)}/email/messages?limit=100`, { method: "GET" });
 }
@@ -366,11 +378,19 @@ export async function clearTelegramBotToken() {
 }
 
 export async function fetchPaymentCard() {
-  return apiJson<{ cardNumber: string; cardHolder: string; minLoadUsd: number; onboardingBin: string; allowedBins: Array<{ bin: string; requiresDob: boolean }> }>("/api/v1/settings/payment-card", { method: "GET" });
+  return apiJson<{ cardNumber: string; cardHolder: string }>("/api/v1/settings/payment-card", { method: "GET" });
 }
 
-export async function updatePaymentCard(input: { cardNumber: string; cardHolder: string; minLoadUsd?: number; onboardingBin?: string }) {
+export async function updatePaymentCard(input: { cardNumber: string; cardHolder: string }) {
   return apiJson<{ ok: true }>("/api/v1/settings/payment-card", { method: "PUT", body: JSON.stringify(input) });
+}
+
+export async function fetchFirstCardSettings() {
+  return apiJson<{ minLoadUsd: number; onboardingBin: string; allowedBins: Array<{ bin: string; requiresDob: boolean }> }>("/api/v1/settings/first-card", { method: "GET" });
+}
+
+export async function updateFirstCardSettings(input: { minLoadUsd: number; onboardingBin: string }) {
+  return apiJson<{ ok: true }>("/api/v1/settings/first-card", { method: "PUT", body: JSON.stringify(input) });
 }
 
 export async function notifyClient(id: string) {
@@ -415,7 +435,7 @@ export function clientReceiptUrl(id: string) {
   return `/api/v1/clients/${encodeURIComponent(id)}/receipt`;
 }
 
-export async function activateClient(id: string, input: { action: "accept" | "deny" | "create_card" | "reconcile_card" | "complete"; accountId?: string }) {
+export async function activateClient(id: string, input: { action: "accept" | "deny" | "create_card" | "reconcile_card" | "complete"; accountId?: string; walletFundingConfirmed?: boolean }) {
   return apiJson<{ ok: true; status: string; cardId?: string | null; cardLast4?: string | null; needsReconciliation?: boolean }>(`/api/v1/clients/${encodeURIComponent(id)}/activate`, { method: "POST", body: JSON.stringify(input) });
 }
 
@@ -588,8 +608,14 @@ export type FundingExecutionResult = {
   };
 };
 
-export async function executeFundingRequest(id: string) {
-  return apiJson<FundingExecutionResult>(`/api/v1/funding-requests/${encodeURIComponent(id)}/fund`, { method: "POST", body: "{}" });
+export async function executeFundingRequest(id: string, walletFundingConfirmed: boolean) {
+  return apiJson<FundingExecutionResult>(`/api/v1/funding-requests/${encodeURIComponent(id)}/fund`, { method: "POST", body: JSON.stringify({ walletFundingConfirmed }) });
+}
+
+export type ProviderWalletGate = { accountId: string; accountLabel: string; loginEmail: string; portalUrl: string; paymentMethod: "crypto_only"; balanceVerification: "unavailable" };
+
+export async function fetchProviderWalletGate(accountId: string) {
+  return apiJson<ProviderWalletGate>(`/api/v1/accounts/${encodeURIComponent(accountId)}/wallet-gate`, { method: "GET" });
 }
 
 export async function reconcileFundingRequest(id: string) {

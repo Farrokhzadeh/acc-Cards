@@ -15,6 +15,7 @@ export const runtime = "nodejs";
 const schema = z.object({
   action: z.enum(["accept", "deny", "create_card", "reconcile_card", "complete"]),
   accountId: z.string().uuid().optional(),
+  walletFundingConfirmed: z.boolean().optional(),
 });
 
 async function enqueuePaymentNotify(userId: string, kind: "denied" | "complete") {
@@ -94,6 +95,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
 
     if (input.action === "create_card") {
       requireRecentReauthentication(session);
+      if (input.walletFundingConfirmed !== true) throw new ApiError(409, "provider_wallet_confirmation_required", "Fund the selected Kripicard wallet with crypto and confirm it before creating the card.");
       if (current !== "accepted" && current !== "card_creating") throw new ApiError(409, "invalid_state", "Accept the payment before creating the first card.");
       if (!input.accountId) throw new ApiError(400, "validation_error", "Choose the Kripicard account that will own this customer's first card.");
       await assertCardCreationAvailable();

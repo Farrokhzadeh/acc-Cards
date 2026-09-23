@@ -1,7 +1,7 @@
 import { getPool, withTransaction } from "@/server/database/pool";
 import { ApiError } from "@/server/http/api";
 import { getCardRequestBins } from "@/server/card-requests/service";
-import { getPaymentCard } from "@/server/settings/payment-card";
+import { getFirstCardSettings } from "@/server/settings/first-card";
 import { assignAccountInTransaction, unassignAccountInTransaction } from "@/server/clients/assignments";
 
 type OnboardingRequestRow = {
@@ -122,10 +122,10 @@ export async function ensureOnboardingCardRequest(args: {
     const approvedKyc = kyc.rows[0];
     if (!approvedKyc) throw new ApiError(409, "kyc_required", "Approved KYC is required before first-card creation.");
 
-    const paymentConfig = await getPaymentCard();
+    const firstCardSettings = await getFirstCardSettings();
 
     const bins = await getCardRequestBins(db);
-    const onboardingBin = paymentConfig.onboardingBin || bins[0]?.bin || "";
+    const onboardingBin = firstCardSettings.onboardingBin || bins[0]?.bin || "";
     const configuredBin = bins.find((item) => item.bin === onboardingBin);
     if (!configuredBin) {
       throw new ApiError(409, "onboarding_bin_unavailable", "Configure a valid first-card BIN in Settings before creating a card.");

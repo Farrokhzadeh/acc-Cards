@@ -59,9 +59,10 @@ test("admin support POST accepts multipart attachments and persists before queue
   assert.match(messageRoute, /support\.admin_message/);
 });
 
-test("Telegram provider supports one-message document delivery and outbox tracks delivery errors", () => {
+test("Telegram provider uses grammY document delivery and outbox tracks delivery errors", () => {
   assert.match(telegramClient, /sendDocument/);
-  assert.match(telegramClient, /callMultipart/);
+  assert.match(telegramClient, /from "grammy"/);
+  assert.match(telegramClient, /new InputFile/);
   assert.match(outbox, /readPrivateSupportAttachment/);
   assert.match(outbox, /delivery_attempted_at=now\(\)/);
   assert.match(outbox, /last_delivery_error/);

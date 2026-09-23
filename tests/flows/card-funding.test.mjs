@@ -106,9 +106,11 @@ test("card-fund readiness now uses documented rate, fee, and purchase-202 contra
   assert.match(migration, /never auto-retries uncertainty/);
 });
 
-test("admin UI exposes Fund, safe retry, reconciliation, and provider-confirmed resolution", () => {
-  assert.match(dashboard, /"Fund card"/);
-  assert.match(dashboard, /Retry safe failure/);
+test("admin UI gates funding behind crypto wallet confirmation and preserves reconciliation", () => {
+  assert.match(dashboard, /Prepare crypto funding/);
+  assert.match(dashboard, /Prepare crypto & retry/);
+  assert.match(dashboard, /fundingWalletConfirmed/);
+  assert.match(fundRoute, /provider_wallet_confirmation_required/);
   assert.match(dashboard, /Recheck provider state/);
   assert.match(dashboard, /Provider confirms not funded/);
   assert.match(dashboard, /Provider confirms funded/);

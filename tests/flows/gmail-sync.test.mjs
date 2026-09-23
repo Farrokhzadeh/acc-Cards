@@ -6,6 +6,7 @@ const migration = await readFile(new URL("../../db/migrations/0007_gmail_api_int
 const googleClient = await readFile(new URL("../../server/providers/google/client.ts", import.meta.url), "utf8");
 const googleService = await readFile(new URL("../../server/providers/google/service.ts", import.meta.url), "utf8");
 const envExample = await readFile(new URL("../../.env.example", import.meta.url), "utf8");
+const oauthSetupRoute = await readFile(new URL("../../app/api/v1/settings/email-oauth/route.ts", import.meta.url), "utf8");
 const dashboard = await readFile(new URL("../../app/dashboard-app.tsx", import.meta.url), "utf8");
 const backgroundRoute = await readFile(new URL("../../app/api/internal/jobs/gmail-sync/route.ts", import.meta.url), "utf8");
 const envSchema = await readFile(new URL("../../config/env-schema.mjs", import.meta.url), "utf8");
@@ -85,6 +86,12 @@ test("deployment example exposes Google OAuth placeholders only", () => {
   assert.match(envExample, /GOOGLE_OAUTH_CLIENT_SECRET=/);
   assert.match(envExample, /GOOGLE_GMAIL_TIMEOUT_MS=10000/);
   assert.match(envExample, /GMAIL_SYNC_JOB_SECRET=/);
+});
+
+test("admin setup exposes the exact Gmail OAuth callback and configuration state", () => {
+  assert.match(oauthSetupRoute, /email\/gmail\/callback/);
+  assert.match(oauthSetupRoute, /GOOGLE_OAUTH_CLIENT_ID/);
+  assert.match(oauthSetupRoute, /configured/);
 });
 
 
