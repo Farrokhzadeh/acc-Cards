@@ -58,6 +58,21 @@ test("misconfigured force-join checks fail open instead of locking every user ou
   assert.match(bot, /telegram\.force_join\.check_failed/);
 });
 
+test("pending customers get a restricted setup menu and can review their own onboarding data", () => {
+  assert.match(bot, /waitingKeyboard/);
+  assert.match(bot, /setup\.status/);
+  assert.match(bot, /setup\.kyc/);
+  assert.match(bot, /setup\.receipt/);
+  assert.match(bot, /readPrivateSupportAttachment/);
+  assert.match(bot, /protectContent: true/);
+});
+
+test("support remains usable before first-card onboarding completes", () => {
+  assert.match(bot, /resolved\.action === "support\.start"/);
+  assert.match(bot, /if \(await supportMode\(user\.id\)\)/);
+  assert.match(bot, /DELETE FROM telegram_bot_states WHERE user_id=\$1::uuid AND mode='support'/);
+});
+
 test("Telegram card freeze/unfreeze rechecks ownership and keeps no-blind-retry semantics", () => {
   assert.match(cardService, /setKripicardCardFrozenStateForTelegram/);
   assert.match(cardService, /telegram_account_assignments/);
