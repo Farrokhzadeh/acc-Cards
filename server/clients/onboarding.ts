@@ -192,6 +192,91 @@ export async function markOnboardingCardResult(args: {
   );
 }
 
+export async function attachExistingOnboardingCard(args: {
+  userId: string;
+  requestId: string;
+  accountId: string;
+  cardId: string;
+  adminId: string;
+  traceId: string;
+  ip?: string | null;
+}) {
+  return withTransaction(async (db) => {
+    const userResult = await db.query<{ onboarding_card_id: string | null; payment_status: string | null }>(
+      `SELECT onboarding_card_id,payment_status FROM telegram_users WHERE id=$1::uuid FOR UPDATE`,
+      [args.userId],
+    );
+    const user = userResult.rows[0];
+    if (!user) throw new ApiError(404, "client_not_found", "Telegram client not found.");
+    if (!["card_creating", "card_reconciliation", "card_ready"].includes(user.payment_status ?? "")) {
+      throw new ApiError(409, "invalid_state", "Accept the payment and prepare the first-card request before attaching an existing card.");
+    }
+    if (user.onboarding_card_id && user.onboarding_card_id !== args.cardId) {
+      throw new ApiError(409, "card_already_attached", "A different first card is already attached to this customer.");
+    }
+    const requestResult = await db.query<OnboardingRequestRow & { last_issue_operation_id: string | null }>(
+      `SELECT id,status,provider_card_id,selected_account_id,last_issue_operation_id
+         FROM card_requests WHERE id=$1::uuid AND user_id=$2::uuid FOR UPDATE`,
+      [args.requestId,args.userId],
+    );
+    const cardRequest = requestResult.rows[0];
+    if (!cardRequest) throw new ApiError(409, "onboarding_request_missing", "The first-card request is missing.");
+    if (!["approved", "issuing", "issue_failed", "needs_reconciliation", "issued"].includes(cardRequest.status)) {
+      throw new ApiError(409, "invalid_request_state", "This first-card request cannot accept an existing card in its current state.");
+    }
+    if (cardRequest.selected_account_id !== args.accountId) {
+      throw new ApiError(409, "account_mismatch", "The selected card is not in the Kripicard account assigned to this request.");
+    }
+    const cardResult = await db.query<{ id: string; provider_card_id: string; last4: string | null }>(
+      `SELECT id,provider_card_id,last4 FROM cards
+        WHERE id=$1::uuid AND account_id=$2::uuid AND provider_card_id IS NOT NULL AND archived_at IS NULL
+        FOR UPDATE`,
+      [args.cardId,args.accountId],
+    );
+    const card = cardResult.rows[0];
+    if (!card) throw new ApiError(409, "card_not_available", "Sync the account and choose an active provider card from the assigned account.");
+    const otherUser = await db.query<{ id: string }>(
+      `SELECT id FROM telegram_users WHERE onboarding_card_id=$1::uuid AND id<>$2::uuid LIMIT 1`,
+      [card.id,args.userId],
+    );
+    if (otherUser.rows[0]) throw new ApiError(409, "card_already_assigned", "This card is already the first card of another customer.");
+    if (cardRequest.last_issue_operation_id) {
+      await db.query(
+        `UPDATE card_operations
+            SET card_id=$2::uuid,status='succeeded',provider_status='issued_external',provider_ref=$3,
+                provider_response_ref='attached_existing_card',safe_result=safe_result||$4::jsonb,updated_at=now()
+          WHERE id=$1::uuid AND status IN ('created','pending','failed','needs_reconciliation')`,
+        [cardRequest.last_issue_operation_id,card.id,card.provider_card_id,JSON.stringify({ safeToRetry: false, attachedExistingCard: true })],
+      );
+    }
+    await db.query(
+      `UPDATE card_requests
+          SET status='issued',provider_card_id=$2,issued_at=COALESCE(issued_at,now()),updated_at=now()
+        WHERE id=$1::uuid`,
+      [cardRequest.id,card.provider_card_id],
+    );
+    await db.query(
+      `UPDATE telegram_users
+          SET payment_status='card_ready',onboarding_card_id=$2::uuid,updated_at=now()
+        WHERE id=$1::uuid`,
+      [args.userId,card.id],
+    );
+    if (cardRequest.status !== "issued") {
+      await db.query(
+        `INSERT INTO card_request_events(request_id,from_status,to_status,actor_type,admin_id,note,safe_metadata)
+         VALUES($1::uuid,$2,'issued','admin',$3::uuid,'Existing Kripicard attached by administrator',$4::jsonb)`,
+        [cardRequest.id,cardRequest.status,args.adminId,JSON.stringify({ accountId: args.accountId, cardId: card.id, providerCardId: card.provider_card_id })],
+      );
+    }
+    await db.query(
+      `INSERT INTO audit_logs(actor_type,actor_id,action,entity_type,entity_id,metadata_redacted,ip,request_id)
+       VALUES('admin',$1::uuid,'onboarding.existing_card.attached','telegram_user',$2,$3::jsonb,$4::inet,$5)`,
+      [args.adminId,args.userId,JSON.stringify({ cardRequestId: cardRequest.id, accountId: args.accountId, cardId: card.id, providerCardId: card.provider_card_id }),args.ip ?? null,args.traceId],
+    );
+    return { cardId: card.id, cardLast4: card.last4 };
+  });
+}
+
 export async function getOnboardingCardLink(userId: string) {
   const result = await getPool().query<{
     payment_status: string | null;

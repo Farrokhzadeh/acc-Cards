@@ -3,7 +3,7 @@ import { apiRoute, ApiError } from "@/server/http/api";
 import { requireAdmin, requireCsrf, requireRecentReauthentication, auditAdminEvent } from "@/server/auth/service";
 import { requireUuid } from "@/server/http/ids";
 import { getPool } from "@/server/database/pool";
-import { ensureOnboardingCardRequest, getOnboardingCardLink, markOnboardingCardResult } from "@/server/clients/onboarding";
+import { attachExistingOnboardingCard, ensureOnboardingCardRequest, getOnboardingCardLink, markOnboardingCardResult } from "@/server/clients/onboarding";
 import { assertCardCreationAvailable, issueApprovedCardRequest, reconcileCardIssuance } from "@/server/card-requests/issuance";
 import { randomToken } from "@/server/security/crypto";
 import { requestIp } from "@/server/auth/request-meta";
@@ -13,8 +13,9 @@ export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
 const schema = z.object({
-  action: z.enum(["accept", "deny", "create_card", "reconcile_card", "complete"]),
+  action: z.enum(["accept", "deny", "create_card", "attach_existing_card", "reconcile_card", "complete"]),
   accountId: z.string().uuid().optional(),
+  cardId: z.string().uuid().optional(),
   walletFundingConfirmed: z.boolean().optional(),
 });
 
@@ -126,6 +127,30 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
         metadata: { accountId: input.accountId, cardRequestId: onboarding.requestId, cardId: result.cardId ?? null },
       });
       return { ok: true as const, status: "card_ready", ...(await cardSummary(result.cardId)), needsReconciliation: false };
+    }
+
+    if (input.action === "attach_existing_card") {
+      if (!["accepted", "card_creating", "card_reconciliation", "card_ready"].includes(current ?? "")) {
+        throw new ApiError(409, "invalid_state", "Accept the payment before attaching the customer's first card.");
+      }
+      if (!input.accountId || !input.cardId) throw new ApiError(400, "validation_error", "Choose the assigned Kripicard account and an existing card.");
+      const onboarding = await ensureOnboardingCardRequest({
+        userId,
+        accountId: input.accountId,
+        adminId: session.principal.id,
+        requestId,
+        ip: requestIp(request),
+      });
+      const attached = await attachExistingOnboardingCard({
+        userId,
+        requestId: onboarding.requestId,
+        accountId: input.accountId,
+        cardId: input.cardId,
+        adminId: session.principal.id,
+        traceId: requestId,
+        ip: requestIp(request),
+      });
+      return { ok: true as const, status: "card_ready", ...attached, needsReconciliation: false };
     }
 
     if (input.action === "reconcile_card") {
