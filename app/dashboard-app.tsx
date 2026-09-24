@@ -22,6 +22,7 @@ import {
   KeyRound,
   Landmark,
   LayoutDashboard,
+  Link2,
   LogOut,
   Mail,
   MessagesSquare,
