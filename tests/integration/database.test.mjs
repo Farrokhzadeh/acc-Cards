@@ -51,9 +51,8 @@ test("runtime jobs and controls are seeded", async () => {
   }
 });
 
-test("core configurable card and funding defaults exist", async () => {
+test("core configurable card and funding defaults exist without an automatic card-count limit", async () => {
   const expected = [
-    "platform_card_limit",
     "minimum_card_creation_usd_cents",
     "minimum_card_funding_usd_cents",
     "card_request_bins",
