@@ -11,7 +11,7 @@ const schema = z.object({ walletFundingConfirmed: z.boolean() });
 
 export async function POST(request: Request, context: { params: Promise<{ id: string }> }) {
   return apiRoute(request, async ({ requestId }) => {
-    const session = await requireAdmin(request, "card_requests.review");
+    const session = await requireAdmin(request, "card_requests.issue");
     requireCsrf(request, session);
     requireRecentReauthentication(session);
     const { id } = await context.params;
