@@ -47,7 +47,7 @@ import {
   XCircle,
 } from "lucide-react";
 import { toast } from "sonner";
-import { AdminApiError, createAccount, archiveAccount, fetchDashboardSnapshot, reauthenticateAdmin, revealAccountSecrets, updateAccount, verifyAccountConnection, syncAccountCards, fetchAccountCards, type ApiCard, revealLiveCardDetails, syncCardTransactions, fetchCardTransactions, fetchTransactions, fetchTransactionNotificationIssues, reconcileTransactionNotification, setCardFrozenState, refreshCardStatus, connectOutlookMailbox, syncOutlookMailbox, disconnectOutlookMailbox, connectGmailMailbox, syncGmailMailbox, disconnectGmailMailbox, fetchEmailOAuthSetup, type EmailOAuthSetup, fetchAccountEmailMessages, classifyAccountEmail, revealParsedOtp, fetchTrustedEmailRules, createTrustedEmailRule, updateTrustedEmailRule, fetchTelegramBotStatus, configureTelegramWebhook, setTelegramBotToken, clearTelegramBotToken, fetchPaymentCard, updatePaymentCard, fetchFirstCardSettings, updateFirstCardSettings, notifyClient, fetchClientPipeline, type ClientPipelineItem, setClientBanned, fetchClientKyc, type ClientKyc, type ClientPayment, clientReceiptUrl, activateClient, fetchAccountDepositCoins, fetchAccountDepositNetworks, fetchAccountDeposits, createAccountDeposit, refreshAccountDeposit, type AccountDeposit, fetchForceJoinChannels, upsertForceJoinChannel, deleteForceJoinChannel, fetchSupportConversations, updateSupportConversation, retrySupportMessage, fetchClientSupportMessages, sendClientSupportMessage, fetchClientAssignableAccounts, fetchCardRequests, reviewCardRequest, issueCardRequest, reconcileCardRequest, type ApiCardRequest, fetchFundingRequests, reviewFundingRequest, executeFundingRequest, reconcileFundingRequest, resolveFundingRequest, fetchProviderWalletGate, type ProviderWalletGate, fundingReceiptDownloadUrl, fetchFundingSettings, updateFundingSettings, type ApiFundingRequest, type AssignableClientAccount, type LiveCardDetails, type StoredCardTransaction, type StoredEmailMessage, type TelegramBotStatus, fetchProviderReadiness, updateProviderReadinessCheck, type ProviderReadinessSnapshot, type TransactionNotificationIssue, type SupportConversationSummary, fetchOperationalSnapshot, updateOperationalAlert, updateRuntimeControl, type OperationalSnapshot, fetchKycSubmissions, reviewKycSubmission, kycDocumentUrl, type ApiKycSubmission } from "@/lib/admin-api";
+import { AdminApiError, createAccount, archiveAccount, fetchDashboardSnapshot, reauthenticateAdmin, revealAccountSecrets, updateAccount, verifyAccountConnection, syncAccountCards, fetchAccountCards, type ApiCard, revealLiveCardDetails, syncCardTransactions, fetchCardTransactions, fetchTransactions, fetchTransactionNotificationIssues, reconcileTransactionNotification, setCardFrozenState, refreshCardStatus, connectOutlookMailbox, syncOutlookMailbox, disconnectOutlookMailbox, connectGmailMailbox, syncGmailMailbox, disconnectGmailMailbox, fetchEmailOAuthSetup, type EmailOAuthSetup, fetchAccountEmailMessages, classifyAccountEmail, revealParsedOtp, fetchTrustedEmailRules, createTrustedEmailRule, updateTrustedEmailRule, fetchTelegramBotStatus, configureTelegramWebhook, setTelegramBotToken, clearTelegramBotToken, fetchPaymentCard, updatePaymentCard, fetchFirstCardSettings, updateFirstCardSettings, notifyClient, fetchClientPipeline, type ClientPipelineItem, setClientBanned, fetchClientKyc, type ClientKyc, type ClientPayment, clientReceiptUrl, activateClient, fetchAccountDepositCoins, fetchAccountDepositNetworks, fetchAccountDeposits, createAccountDeposit, refreshAccountDeposit, type AccountDeposit, fetchForceJoinChannels, upsertForceJoinChannel, deleteForceJoinChannel, fetchSupportConversations, updateSupportConversation, retrySupportMessage, fetchClientSupportMessages, sendClientSupportMessage, fetchClientAssignableAccounts, fetchCardRequests, reviewCardRequest, issueCardRequest, reconcileCardRequest, attachExistingCardRequest, type ApiCardRequest, fetchFundingRequests, reviewFundingRequest, executeFundingRequest, reconcileFundingRequest, resolveFundingRequest, fetchProviderWalletGate, type ProviderWalletGate, fundingReceiptDownloadUrl, fetchFundingSettings, updateFundingSettings, type ApiFundingRequest, type AssignableClientAccount, type LiveCardDetails, type StoredCardTransaction, type StoredEmailMessage, type TelegramBotStatus, fetchProviderReadiness, updateProviderReadinessCheck, type ProviderReadinessSnapshot, type TransactionNotificationIssue, type SupportConversationSummary, fetchOperationalSnapshot, updateOperationalAlert, updateRuntimeControl, type OperationalSnapshot, fetchKycSubmissions, reviewKycSubmission, kycDocumentUrl, type ApiKycSubmission } from "@/lib/admin-api";
 import { disableAdminMfa, enableAdminMfa, fetchCurrentAdmin, logoutAdmin, setupAdminMfa, type CurrentAdmin } from "@/lib/auth-client";
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -1433,6 +1433,20 @@ export default function DashboardApp() {
     }
   };
 
+  const attachAdditionalCardRequest = async (request: ApiCardRequest, cardId: string) => {
+    if (!backendDataLoaded || cardRequestPendingId) return;
+    setCardRequestPendingId(request.id);
+    try {
+      const result = await attachExistingCardRequest(request.id, cardId);
+      await reloadCardRequests();
+      toast.success(`Existing card •${result.last4 ?? "????"} attached. The request is now issued.`);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not attach the existing card.");
+    } finally {
+      setCardRequestPendingId(null);
+    }
+  };
+
   const advanceRequest = async (request: FundingRequest) => {
     if (request.status !== "pending_review") return;
     if (!backendDataLoaded) {
@@ -1818,6 +1832,7 @@ export default function DashboardApp() {
                 onReviewCardRequest={reviewAdditionalCardRequest}
                 onIssueCardRequest={issueAdditionalCardRequest}
                 onReconcileCardRequest={reconcileAdditionalCardRequest}
+                onAttachCardRequest={attachAdditionalCardRequest}
                 onOpenClient={setActiveClientId}
                 onPaymentDecision={async (clientId, action) => {
                   try {
@@ -2696,6 +2711,7 @@ function RequestsView({
   onReviewCardRequest,
   onIssueCardRequest,
   onReconcileCardRequest,
+  onAttachCardRequest,
   kycPendingCount,
   clients,
   paymentStatusByUser,
@@ -2715,6 +2731,7 @@ function RequestsView({
   onReviewCardRequest: (request: ApiCardRequest, action: "approve" | "reject", accountId?: string, bin?: string) => void | Promise<void>;
   onIssueCardRequest: (request: ApiCardRequest) => void | Promise<void>;
   onReconcileCardRequest: (request: ApiCardRequest) => void | Promise<void>;
+  onAttachCardRequest: (request: ApiCardRequest, cardId: string) => void | Promise<void>;
   kycPendingCount: number;
   clients: Client[];
   paymentStatusByUser: Record<string, string | null>;
@@ -2727,6 +2744,8 @@ function RequestsView({
 }) {
   const [paymentActionId, setPaymentActionId] = useState<string | null>(null);
   const [cardChoices, setCardChoices] = useState<Record<string, { accountId: string; bin: string }>>({});
+  const [attachLoadingId, setAttachLoadingId] = useState<string | null>(null);
+  const [attachExisting, setAttachExisting] = useState<{ request: ApiCardRequest; cards: ApiCard[]; cardId: string } | null>(null);
   const needle = search.trim().toLowerCase();
   const matchingFundingRequests = fundingRequests.filter((request) => !needle || `${request.id} ${clientName(request.clientId)} ${request.cardLast4} ${request.receipt} ${request.receiptType} ${fundingMeta[request.status].label}`.toLowerCase().includes(needle));
   const matchingCardRequests = cardRequests.filter((request) => !needle || `${request.reference} ${request.client.displayName ?? ""} ${request.client.username ?? ""} ${request.email} ${request.status}`.toLowerCase().includes(needle));
@@ -2745,6 +2764,28 @@ function RequestsView({
     bin: request.status === "pending_review" || request.status === "correction_needed"
       ? request.availableBins[0]?.bin ?? ""
       : request.bin,
+  };
+
+  const openExistingCardAttach = async (request: ApiCardRequest) => {
+    if (!request.selectedAccountId) {
+      toast.error("Approve the request with an internal account before attaching an existing card.");
+      return;
+    }
+    setAttachLoadingId(request.id);
+    try {
+      await syncAccountCards(request.selectedAccountId);
+      const result = await fetchAccountCards(request.selectedAccountId);
+      const available = result.items.filter((card) => !["closed", "expired"].includes(card.status));
+      if (!available.length) {
+        toast.info("No active synchronized cards were found in the selected account.");
+        return;
+      }
+      setAttachExisting({ request, cards: available, cardId: available[0]!.id });
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not synchronize existing cards.");
+    } finally {
+      setAttachLoadingId(null);
+    }
   };
 
   return (
@@ -2815,6 +2856,7 @@ function RequestsView({
                             <Button size="sm" disabled={busy || !choice.accountId || !choice.bin} onClick={() => void onReviewCardRequest(request, "approve", choice.accountId, choice.bin)}>Approve</Button>
                           </>}
                           {["approved", "issue_failed"].includes(request.status) && <Button size="sm" disabled={busy} onClick={() => void onIssueCardRequest(request)}>Issue card</Button>}
+                          {["approved", "issuing", "issue_failed", "needs_reconciliation"].includes(request.status) && <Button size="sm" variant="outline" disabled={busy || attachLoadingId === request.id} onClick={() => void openExistingCardAttach(request)}><Link2 className="size-3.5" />Attach existing</Button>}
                           {request.status === "needs_reconciliation" && <Button size="sm" variant="outline" disabled={busy} onClick={() => void onReconcileCardRequest(request)}><RefreshCw className="size-3.5" />Reconcile</Button>}
                           {request.status === "issuing" && <Button size="sm" disabled>Issuing…</Button>}
                           {request.status === "issued" && <Badge variant="outline" className="border-emerald-200 bg-emerald-50 text-emerald-700">Issued</Badge>}
@@ -2865,6 +2907,37 @@ function RequestsView({
         <TabsContent value="kyc"><KycView /></TabsContent>
         <TabsContent value="transactions"><TransactionsView transactions={transactions} clientName={clientName} search={search} issues={issues} onReconcileIssue={onReconcileIssue} /></TabsContent>
       </Tabs>
+      <Dialog open={Boolean(attachExisting)} onOpenChange={(open) => { if (!open) setAttachExisting(null); }}>
+        <DialogContent className="rounded-[24px] border-[#e5e2ee] sm:max-w-[500px]">
+          <DialogHeader>
+            <DialogTitle>Attach an existing card</DialogTitle>
+            <DialogDescription>Use this only when the card was already created directly in Kripicard. This marks the request issued without another create-card call.</DialogDescription>
+          </DialogHeader>
+          {attachExisting && <div className="space-y-4">
+            <div className="rounded-xl border bg-slate-50 p-3 text-sm">
+              <p className="font-semibold">{attachExisting.request.reference}</p>
+              <p className="text-xs text-[#777287]">{attachExisting.request.client.displayName ?? attachExisting.request.client.telegramUserId}</p>
+            </div>
+            <div className="grid gap-2">
+              <Label>Synced card</Label>
+              <Select value={attachExisting.cardId} onValueChange={(cardId) => setAttachExisting((current) => current ? { ...current, cardId } : current)}>
+                <SelectTrigger><SelectValue placeholder="Choose card" /></SelectTrigger>
+                <SelectContent>
+                  {attachExisting.cards.map((card) => <SelectItem key={card.id} value={card.id}>•{card.last4 ?? "????"} · {card.cardholderName ?? "Unnamed"} · {card.status}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setAttachExisting(null)}>Cancel</Button>
+            <Button disabled={!attachExisting?.cardId || cardRequestPendingId === attachExisting?.request.id} onClick={() => {
+              if (!attachExisting) return;
+              const current = attachExisting;
+              void Promise.resolve(onAttachCardRequest(current.request, current.cardId)).then(() => setAttachExisting(null));
+            }}><Check className="size-4" />Attach & complete</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </>
   );
 }
