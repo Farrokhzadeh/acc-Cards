@@ -585,6 +585,41 @@ export async function fetchClientAssignableAccounts(clientId: string, search = "
   return apiJson<{ items: AssignableClientAccount[] }>(`/api/v1/clients/${encodeURIComponent(clientId)}/accounts?${query.toString()}`, { method: "GET" });
 }
 
+export type ApiCustomerPayment = {
+  id: string;
+  reference: string;
+  userId: string;
+  purpose: "first_card" | "additional_card" | "card_funding";
+  cardRequestId: string | null;
+  fundingRequestId: string | null;
+  cardId: string | null;
+  amountUsdCents: string;
+  providerFeeUsdCents: string;
+  serviceFeeUsdCents: string;
+  customerPaysUsdCents: string;
+  rateId: string;
+  rateRialPerUsd: string;
+  customerPaysRial: string;
+  status: "pending_receipt" | "pending_review" | "correction_needed" | "accepted" | "rejected" | "completed" | "cancelled";
+  receiptId: string | null;
+  adminNote: string | null;
+  reviewedBy: string | null;
+  reviewedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export async function reviewCustomerPayment(id: string, input: { action: "accept" | "correction" | "reject"; note?: string | null }) {
+  return apiJson<ApiCustomerPayment>(`/api/v1/customer-payments/${encodeURIComponent(id)}/transition`, {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+export function customerPaymentReceiptUrl(id: string) {
+  return `/api/v1/customer-payments/${encodeURIComponent(id)}/receipt`;
+}
+
 export type ApiCardRequest = {
   id: string;
   reference: string;
@@ -603,6 +638,7 @@ export type ApiCardRequest = {
   client: { id: string; displayName: string | null; username: string | null; telegramUserId: string };
   eligibleAccounts: AssignableClientAccount[];
   availableBins: Array<{ bin: string; requiresDob: boolean }>;
+  payment: ApiCustomerPayment | null;
 };
 
 export type CardIssuanceResult = {
