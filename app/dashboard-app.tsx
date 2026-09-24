@@ -1330,7 +1330,7 @@ export default function DashboardApp() {
     const details = error.details as { blockers?: unknown } | undefined;
     const blockers = Array.isArray(details?.blockers) ? details.blockers.filter((value): value is string => typeof value === "string") : [];
     return blockers.length
-      ? `Provider readiness is blocking this action: ${blockers.join(", ")}. Clear those checks in Settings → Kripicard money readiness.`
+      ? `Provider readiness is blocking this action: ${blockers.join(", ")}. Clear those checks in Operations → Kripicard.`
       : error.message;
   };
 
@@ -2623,39 +2623,86 @@ function InboxView({ clients, activeClient, activeClientId, messages, draft, sea
 }
 
 
+function ProviderReadinessPanel() {
+  const [snapshot, setSnapshot] = useState<ProviderReadinessSnapshot | null>(null);
+  const [loading, setLoading] = useState(false);
+  const reload = async () => {
+    setLoading(true);
+    try { setSnapshot(await fetchProviderReadiness()); }
+    catch (error) { toast.error(error instanceof Error ? error.message : "Could not load provider readiness."); }
+    finally { setLoading(false); }
+  };
+  useEffect(() => {
+    let cancelled = false;
+    fetchProviderReadiness()
+      .then((result) => { if (!cancelled) setSnapshot(result); })
+      .catch((error) => { if (!cancelled) toast.error(error instanceof Error ? error.message : "Could not load provider readiness."); });
+    return () => { cancelled = true; };
+  }, []);
+  const edit = async (check: ProviderReadinessSnapshot["checks"][number]) => {
+    const status = window.prompt("Status: confirmed, partial, unresolved, or not_applicable", check.status);
+    if (!status) return;
+    if (!["confirmed", "partial", "unresolved", "not_applicable"].includes(status)) { toast.error("Invalid readiness status."); return; }
+    const sourceKind = window.prompt("Source: provider_written, live_test, official_public, or none", check.sourceKind === "supplied_pdf" ? "none" : check.sourceKind);
+    if (!sourceKind) return;
+    if (!["provider_written", "live_test", "official_public", "none"].includes(sourceKind)) { toast.error("Invalid source kind."); return; }
+    const sourceReference = window.prompt("Source reference (ticket/email/test reference, optional)", check.sourceReference ?? "") ?? "";
+    const note = window.prompt("Internal note (optional)", check.note ?? "") ?? "";
+    setLoading(true);
+    try {
+      await updateProviderReadinessCheck(check.key, {
+        status: status as "confirmed" | "partial" | "unresolved" | "not_applicable",
+        sourceKind: sourceKind as "provider_written" | "live_test" | "official_public" | "none",
+        sourceReference: sourceReference.trim() || null,
+        note: note.trim() || null,
+      });
+      setSnapshot(await fetchProviderReadiness());
+      toast.success("Provider readiness check updated.");
+    } catch (error) { toast.error(error instanceof Error ? error.message : "Could not update provider readiness."); }
+    finally { setLoading(false); }
+  };
+  const operations = [
+    ["Create card", snapshot?.readyByOperation?.card_create],
+    ["Fund card", snapshot?.readyByOperation?.card_fund],
+    ["Crypto deposit", snapshot?.readyByOperation?.deposit_create],
+  ] as const;
+  return <Card className="rounded-2xl">
+    <CardHeader className="flex-row items-center justify-between gap-3"><div><CardTitle>Kripicard</CardTitle><p className="mt-1 text-sm text-[#9692a3]">Cards spend the provider wallet. Crypto deposits refill that wallet.</p></div><Button variant="outline" size="sm" disabled={loading} onClick={() => void reload()} className="rounded-xl"><RefreshCw className={`size-4 ${loading ? "animate-spin" : ""}`} />Refresh</Button></CardHeader>
+    <CardContent className="space-y-3">
+      <div className="grid gap-3 sm:grid-cols-3">{operations.map(([label, operation]) => <div key={label} className={`rounded-xl border p-3 ${operation?.ready ? "border-emerald-200 bg-emerald-50" : "border-amber-200 bg-amber-50"}`}><p className="text-sm font-semibold">{label}</p><p className={`mt-1 text-xs ${operation?.ready ? "text-emerald-700" : "text-amber-800"}`}>{operation?.ready ? "Ready" : operation ? `Blocked: ${operation.blockers.join(", ")}` : "Checking…"}</p></div>)}</div>
+      <details className="group rounded-xl border"><summary className="flex cursor-pointer list-none items-center justify-between gap-3 p-3 text-sm font-semibold">Contract checks <span className="flex items-center gap-2 text-xs font-normal text-[#9692a3]">{snapshot ? `${snapshot.summary.confirmed}/${snapshot.summary.total} confirmed` : "Loading…"}<ChevronRight className="size-4 transition group-open:rotate-90" /></span></summary><div className="divide-y border-t">{snapshot?.checks.map((check) => { const cleared = check.status === "confirmed" || check.status === "not_applicable"; return <div key={check.key} className="flex items-start gap-3 p-3"><span className={`mt-0.5 grid size-7 shrink-0 place-items-center rounded-lg ${cleared ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700"}`}>{cleared ? <CheckCircle2 className="size-4" /> : <AlertTriangle className="size-4" />}</span><div className="min-w-0 flex-1"><p className="text-sm font-medium">{check.label}</p><p className="mt-0.5 text-xs leading-5 text-slate-500">{check.requirement}</p>{check.note && <p className="mt-1 text-xs text-slate-500">{check.note}</p>}</div><div className="flex shrink-0 items-center gap-2"><Badge variant="outline" className={cleared ? "border-emerald-200 text-emerald-700" : "border-amber-200 text-amber-700"}>{check.status.replace("_", " ")}</Badge>{check.sourceKind !== "supplied_pdf" && <Button size="sm" variant="outline" disabled={loading} onClick={() => void edit(check)}>Edit</Button>}</div></div>; }) ?? <p className="p-3 text-sm text-slate-500">Provider readiness data is unavailable.</p>}</div></details>
+    </CardContent>
+  </Card>;
+}
+
 function OperationsView({ snapshot, onAlertAction, onControlAction }: { snapshot: OperationalSnapshot | null; onAlertAction: (id: string, action: "acknowledge" | "resolve") => void | Promise<void>; onControlAction: (key: OperationalSnapshot["controls"][number]["key"], enabled: boolean) => void | Promise<void> }) {
   if (!snapshot) return <div className="rounded-2xl border border-dashed p-8 text-center text-sm text-[#9692a3]">Loading operational health…</div>;
   const statusClass = snapshot.status === "critical" ? "border-red-200 bg-red-50 text-red-700" : snapshot.status === "warning" ? "border-amber-200 bg-amber-50 text-amber-700" : "border-emerald-200 bg-emerald-50 text-emerald-700";
+  const unhealthyControls = snapshot.controls.filter((control) => control.key === "read_only_mode" ? control.effectiveEnabled : !control.effectiveEnabled);
+  const unhealthyJobs = snapshot.jobs.filter((job) => job.status !== "healthy");
   const metrics = [
-    ["Provider failures", snapshot.metrics.providerFailures],
-    ["Provider timeouts", snapshot.metrics.providerTimeouts],
-    ["Provider sync lag", snapshot.metrics.providerSyncLag],
-    ["Email failures", snapshot.metrics.emailFailures],
-    ["Email sync lag", snapshot.metrics.emailSyncLag],
-    ["Telegram failures", snapshot.metrics.telegramDeliveryFailures],
-    ["Webhook backlog", snapshot.metrics.webhookBacklog],
-    ["OTP failures (24h)", snapshot.metrics.otpFailures24h],
-    ["Stuck operations", snapshot.metrics.stuckOperations],
-    ["Needs reconciliation", snapshot.metrics.reconciliationOperations],
-    ["Secret reveals (15m)", snapshot.metrics.secretReveals15m],
+    ["Provider failures", snapshot.metrics.providerFailures], ["Provider timeouts", snapshot.metrics.providerTimeouts], ["Provider sync lag", snapshot.metrics.providerSyncLag],
+    ["Email failures", snapshot.metrics.emailFailures], ["Email sync lag", snapshot.metrics.emailSyncLag], ["Telegram failures", snapshot.metrics.telegramDeliveryFailures],
+    ["Webhook backlog", snapshot.metrics.webhookBacklog], ["OTP failures (24h)", snapshot.metrics.otpFailures24h], ["Stuck operations", snapshot.metrics.stuckOperations],
+    ["Needs reconciliation", snapshot.metrics.reconciliationOperations], ["Secret reveals (15m)", snapshot.metrics.secretReveals15m],
   ] as const;
+  const attentionCount = snapshot.alerts.length + unhealthyControls.length + unhealthyJobs.length;
   return <div className="space-y-5">
-    <PageIntro title="Operational health" description={`Live diagnostics generated ${new Date(snapshot.generatedAt).toLocaleString()}.`} />
+    <PageIntro title="Operations" description={`Current system health · updated ${new Date(snapshot.generatedAt).toLocaleString()}.`} />
     <div className="grid gap-3 md:grid-cols-3">
-      <Card className="rounded-2xl"><CardHeader><CardTitle className="text-sm">Overall status</CardTitle></CardHeader><CardContent><Badge variant="outline" className={statusClass}>{snapshot.status}</Badge></CardContent></Card>
-      <Card className="rounded-2xl"><CardHeader><CardTitle className="text-sm">Database</CardTitle></CardHeader><CardContent><p className="text-2xl font-semibold">{snapshot.database.latencyMs} ms</p><p className="text-xs text-[#9692a3]">Health probe latency</p></CardContent></Card>
-      <Card className="rounded-2xl"><CardHeader><CardTitle className="text-sm">Active alerts</CardTitle></CardHeader><CardContent><p className="text-2xl font-semibold">{snapshot.alerts.length}</p><p className="text-xs text-[#9692a3]">Open or acknowledged</p></CardContent></Card>
+      <Card className="rounded-2xl"><CardContent className="p-5"><p className="text-xs text-[#9692a3]">System</p><Badge variant="outline" className={`mt-2 ${statusClass}`}>{snapshot.status}</Badge></CardContent></Card>
+      <Card className="rounded-2xl"><CardContent className="p-5"><p className="text-xs text-[#9692a3]">Needs attention</p><p className="mt-1 text-2xl font-semibold">{attentionCount}</p></CardContent></Card>
+      <Card className="rounded-2xl"><CardContent className="p-5"><p className="text-xs text-[#9692a3]">Database response</p><p className="mt-1 text-2xl font-semibold">{snapshot.database.latencyMs} ms</p></CardContent></Card>
     </div>
-    <Card className="rounded-2xl"><CardHeader><CardTitle>Emergency controls</CardTitle><p className="text-sm text-[#9692a3]">Database-backed switches take effect without a restart. Deployment flags remain hard ceilings and cannot be overridden here.</p></CardHeader><CardContent className="grid gap-3 lg:grid-cols-2">{snapshot.controls.map((control) => {
-      const active = control.effectiveEnabled;
-      const readOnly = control.key === "read_only_mode";
-      const healthy = readOnly ? !active : active;
-      return <div key={control.key} className={`rounded-xl border p-4 ${healthy ? "border-emerald-100 bg-emerald-50/40" : "border-red-200 bg-red-50/60"}`}><div className="flex items-start justify-between gap-3"><div><div className="flex flex-wrap items-center gap-2"><p className="text-sm font-semibold">{control.label}</p><Badge variant="outline" className={healthy ? "border-emerald-200 text-emerald-700" : "border-red-200 text-red-700"}>{active ? "enabled" : "disabled"}</Badge>{(!control.deploymentAllowed || control.deploymentForced) && <Badge variant="outline" className="border-slate-300 text-slate-600">environment enforced</Badge>}</div><p className="mt-1 text-xs leading-5 text-[#777287]">{control.description}</p><p className="mt-2 text-[11px] text-[#9692a3]">{control.reason} · {new Date(control.updatedAt).toLocaleString()}</p></div>{snapshot.canManageControls && <Button size="sm" variant="outline" className="shrink-0 rounded-xl" disabled={readOnly && control.deploymentForced} onClick={() => void onControlAction(control.key, !control.runtimeEnabled)}>{control.runtimeEnabled ? "Disable" : "Enable"}</Button>}</div></div>;
-    })}</CardContent></Card>
-    <Card className="rounded-2xl"><CardHeader><CardTitle>Signal summary</CardTitle></CardHeader><CardContent className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">{metrics.map(([label, value]) => <div key={label} className="rounded-xl border p-3"><p className="text-xs text-[#9692a3]">{label}</p><p className={`mt-1 text-xl font-semibold ${value ? "text-amber-700" : ""}`}>{value}</p></div>)}</CardContent></Card>
-    <Card className="rounded-2xl"><CardHeader><CardTitle>Operational alerts</CardTitle></CardHeader><CardContent className="space-y-3">{snapshot.alerts.length === 0 ? <p className="text-sm text-[#9692a3]">No active alerts.</p> : snapshot.alerts.map((alert) => <div key={alert.id} className="flex flex-col gap-3 rounded-xl border p-4 md:flex-row md:items-center md:justify-between"><div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><Badge variant="outline" className={alert.severity === "critical" ? "border-red-200 text-red-700" : "border-amber-200 text-amber-700"}>{alert.severity}</Badge><span className="text-sm font-semibold">{alert.title}</span></div><p className="mt-1 text-xs text-[#9692a3]">{alert.detail} · seen {alert.occurrenceCount}× · {new Date(alert.lastSeenAt).toLocaleString()}</p></div><div className="flex gap-2"><Button size="sm" variant="outline" disabled={alert.status === "acknowledged"} onClick={() => void onAlertAction(alert.id, "acknowledge")}>Acknowledge</Button><Button size="sm" variant="outline" onClick={() => void onAlertAction(alert.id, "resolve")}>Resolve</Button></div></div>)}</CardContent></Card>
-    <Card className="rounded-2xl"><CardHeader><CardTitle>Scheduled workers</CardTitle></CardHeader><CardContent><Table><TableHeader><TableRow><TableHead>Job</TableHead><TableHead>Status</TableHead><TableHead>Failures</TableHead><TableHead>Lag</TableHead><TableHead>Last success</TableHead></TableRow></TableHeader><TableBody>{snapshot.jobs.map((job) => <TableRow key={job.jobKey}><TableCell className="font-medium">{job.jobKey}</TableCell><TableCell><Badge variant="outline" className={job.status === "critical" ? "border-red-200 text-red-700" : job.status === "warning" ? "border-amber-200 text-amber-700" : "border-emerald-200 text-emerald-700"}>{job.status}</Badge></TableCell><TableCell>{job.consecutiveFailures}/{job.maxAttempts}</TableCell><TableCell>{job.lagSeconds}s</TableCell><TableCell>{job.lastSucceededAt ? new Date(job.lastSucceededAt).toLocaleString() : "Never"}</TableCell></TableRow>)}</TableBody></Table></CardContent></Card>
-    <Card className="rounded-2xl"><CardHeader><CardTitle>Recent audit activity</CardTitle></CardHeader><CardContent className="space-y-2">{snapshot.recentAudit.slice(0, 20).map((item) => <div key={item.id} className="flex items-start justify-between gap-4 rounded-xl border p-3"><div><p className="text-sm font-medium">{item.action}</p><p className="text-xs text-[#9692a3]">{item.actorType} · {item.entityType}{item.entityId ? ` · ${item.entityId}` : ""}{item.requestId ? ` · request ${item.requestId}` : ""}</p></div><span className="shrink-0 text-xs text-[#9692a3]">{new Date(item.createdAt).toLocaleString()}</span></div>)}</CardContent></Card>
+    <Card className="rounded-2xl"><CardHeader><CardTitle>Needs attention</CardTitle><p className="text-sm text-[#9692a3]">Only current problems and actions are shown here.</p></CardHeader><CardContent className="space-y-3">
+      {attentionCount === 0 && <div className="flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800"><CheckCircle2 className="size-4" />Everything is operating normally.</div>}
+      {snapshot.alerts.map((alert) => <div key={alert.id} className="flex flex-col gap-3 rounded-xl border p-4 md:flex-row md:items-center md:justify-between"><div><div className="flex items-center gap-2"><Badge variant="outline" className={alert.severity === "critical" ? "border-red-200 text-red-700" : "border-amber-200 text-amber-700"}>{alert.severity}</Badge><p className="text-sm font-semibold">{alert.title}</p></div><p className="mt-1 text-xs text-[#9692a3]">{alert.detail}</p></div><div className="flex gap-2"><Button size="sm" variant="outline" disabled={alert.status === "acknowledged"} onClick={() => void onAlertAction(alert.id, "acknowledge")}>Acknowledge</Button><Button size="sm" variant="outline" onClick={() => void onAlertAction(alert.id, "resolve")}>Resolve</Button></div></div>)}
+      {unhealthyControls.map((control) => <div key={control.key} className="rounded-xl border border-red-200 bg-red-50 p-4"><p className="text-sm font-semibold text-red-800">{control.label}</p><p className="mt-1 text-xs text-red-700">{control.description}</p></div>)}
+      {unhealthyJobs.map((job) => <div key={job.jobKey} className="rounded-xl border border-amber-200 bg-amber-50 p-4"><p className="text-sm font-semibold text-amber-900">Worker: {job.jobKey}</p><p className="mt-1 text-xs text-amber-800">{job.consecutiveFailures} consecutive failures · {job.lagSeconds}s lag</p></div>)}
+    </CardContent></Card>
+    <ProviderReadinessPanel />
+    <details className="group overflow-hidden rounded-2xl border bg-white"><summary className="flex cursor-pointer list-none items-center justify-between p-5 font-semibold">Safety controls <ChevronRight className="size-4 transition group-open:rotate-90" /></summary><div className="grid gap-3 border-t p-5 lg:grid-cols-2">{snapshot.controls.map((control) => { const readOnly = control.key === "read_only_mode"; const healthy = readOnly ? !control.effectiveEnabled : control.effectiveEnabled; return <div key={control.key} className="flex items-start justify-between gap-3 rounded-xl border p-4"><div><div className="flex flex-wrap items-center gap-2"><p className="text-sm font-semibold">{control.label}</p><Badge variant="outline" className={healthy ? "border-emerald-200 text-emerald-700" : "border-red-200 text-red-700"}>{control.effectiveEnabled ? "enabled" : "disabled"}</Badge></div><p className="mt-1 text-xs text-[#777287]">{control.description}</p></div>{snapshot.canManageControls && <Button size="sm" variant="outline" disabled={readOnly && control.deploymentForced} onClick={() => void onControlAction(control.key, !control.runtimeEnabled)}>{control.runtimeEnabled ? "Disable" : "Enable"}</Button>}</div>; })}</div></details>
+    <details className="group overflow-hidden rounded-2xl border bg-white"><summary className="flex cursor-pointer list-none items-center justify-between p-5 font-semibold">Advanced diagnostics <ChevronRight className="size-4 transition group-open:rotate-90" /></summary><div className="space-y-6 border-t p-5"><section><h3 className="text-sm font-semibold">Signals</h3><div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">{metrics.map(([label, value]) => <div key={label} className="rounded-xl border p-3"><p className="text-xs text-[#9692a3]">{label}</p><p className={`mt-1 text-xl font-semibold ${value ? "text-amber-700" : ""}`}>{value}</p></div>)}</div></section><section><h3 className="text-sm font-semibold">Scheduled workers</h3><div className="mt-3 overflow-x-auto"><Table><TableHeader><TableRow><TableHead>Job</TableHead><TableHead>Status</TableHead><TableHead>Failures</TableHead><TableHead>Lag</TableHead><TableHead>Last success</TableHead></TableRow></TableHeader><TableBody>{snapshot.jobs.map((job) => <TableRow key={job.jobKey}><TableCell className="font-medium">{job.jobKey}</TableCell><TableCell><Badge variant="outline">{job.status}</Badge></TableCell><TableCell>{job.consecutiveFailures}/{job.maxAttempts}</TableCell><TableCell>{job.lagSeconds}s</TableCell><TableCell>{job.lastSucceededAt ? new Date(job.lastSucceededAt).toLocaleString() : "Never"}</TableCell></TableRow>)}</TableBody></Table></div></section><section><h3 className="text-sm font-semibold">Recent audit activity</h3><div className="mt-3 space-y-2">{snapshot.recentAudit.slice(0, 20).map((item) => <div key={item.id} className="flex items-start justify-between gap-4 rounded-xl border p-3"><div><p className="text-sm font-medium">{item.action}</p><p className="text-xs text-[#9692a3]">{item.actorType} · {item.entityType}{item.entityId ? ` · ${item.entityId}` : ""}</p></div><span className="shrink-0 text-xs text-[#9692a3]">{new Date(item.createdAt).toLocaleString()}</span></div>)}</div></section></div></details>
   </div>;
 }
 
@@ -2693,51 +2740,10 @@ function SettingsView({ serviceFee, exchangeRate, minimumFunding, botToken, show
     catch (error) { toast.error(error instanceof Error ? error.message : "Could not save first-card settings."); }
     finally { setPayBusy(false); }
   };
-  const [providerReadiness, setProviderReadiness] = useState<ProviderReadinessSnapshot | null>(null);
-  const [providerReadinessLoading, setProviderReadinessLoading] = useState(false);
-
   useEffect(() => {
     const controller = new AbortController();
     fetchCurrentAdmin(controller.signal).then(setSecurityAdmin).catch(() => {});
     return () => controller.abort();
-  }, []);
-
-  const reloadProviderReadiness = async () => {
-    setProviderReadinessLoading(true);
-    try { setProviderReadiness(await fetchProviderReadiness()); }
-    catch (error) { toast.error(error instanceof Error ? error.message : "Could not load provider readiness."); }
-    finally { setProviderReadinessLoading(false); }
-  };
-
-  const editProviderReadiness = async (check: ProviderReadinessSnapshot["checks"][number]) => {
-    const statusRaw = window.prompt("Status: confirmed, partial, unresolved, or not_applicable", check.status);
-    if (!statusRaw) return;
-    if (!["confirmed","partial","unresolved","not_applicable"].includes(statusRaw)) { toast.error("Invalid readiness status."); return; }
-    const sourceRaw = window.prompt("Source: provider_written, live_test, official_public, or none", check.sourceKind === "supplied_pdf" ? "none" : check.sourceKind);
-    if (!sourceRaw) return;
-    if (!["provider_written","live_test","official_public","none"].includes(sourceRaw)) { toast.error("Invalid source kind."); return; }
-    const sourceReference = window.prompt("Source reference (ticket/email/test reference, optional)", check.sourceReference ?? "") ?? "";
-    const note = window.prompt("Internal note (optional)", check.note ?? "") ?? "";
-    setProviderReadinessLoading(true);
-    try {
-      await updateProviderReadinessCheck(check.key, {
-        status: statusRaw as "confirmed" | "partial" | "unresolved" | "not_applicable",
-        sourceKind: sourceRaw as "provider_written" | "live_test" | "official_public" | "none",
-        sourceReference: sourceReference.trim() || null,
-        note: note.trim() || null,
-      });
-      setProviderReadiness(await fetchProviderReadiness());
-      toast.success("Provider readiness check updated.");
-    } catch (error) { toast.error(error instanceof Error ? error.message : "Could not update provider readiness."); }
-    finally { setProviderReadinessLoading(false); }
-  };
-
-  useEffect(() => {
-    let cancelled = false;
-    fetchProviderReadiness()
-      .then((result) => { if (!cancelled) setProviderReadiness(result); })
-      .catch((error) => { if (!cancelled) toast.error(error instanceof Error ? error.message : "Could not load provider readiness."); });
-    return () => { cancelled = true; };
   }, []);
 
   const handleReauthenticate = async () => {
@@ -2793,7 +2799,7 @@ function SettingsView({ serviceFee, exchangeRate, minimumFunding, botToken, show
   const total = exampleAmount + providerFee + ownFee;
   return (
     <>
-      <PageIntro title="Operations settings" description="Configure first-card onboarding, existing-card funding, Telegram, security, email, and provider readiness." />
+      <PageIntro title="Settings" description="Configure pricing, card issuance, Telegram, email, and admin security." />
       <div className="mb-4 flex flex-wrap gap-2">{([["general","General"],["telegram","Telegram"],["email","Email / 3DS"],["security","Security"]] as const).map(([v,l]) => <Button key={v} size="sm" variant={settingsTab===v?"default":"outline"} className="rounded-full" onClick={() => setSettingsTab(v)}>{l}</Button>)}</div>
       <div className="grid gap-5 xl:grid-cols-2">
         <Card className={`surface-card rounded-[24px] xl:col-span-2 ${settingsTab==="security"?"":"hidden"}`}><CardHeader><div className="flex items-center gap-3"><span className="grid size-10 place-items-center rounded-[13px] bg-[#eeecff] text-[#6157e7]"><ShieldCheck className="size-5" /></span><div><CardTitle className="text-[17px] tracking-[-.02em] text-[#2c2940]">Admin security</CardTitle><p className="mt-1 text-sm text-[#8f8b9c]">Server-side session, recent reauthentication, and TOTP multi-factor authentication.</p></div></div></CardHeader><CardContent className="space-y-4"><div className="flex flex-wrap items-center gap-2"><Badge variant="outline" className="rounded-full">{securityAdmin?.email ?? "Loading admin…"}</Badge><Badge variant="outline" className={securityAdmin?.mfaEnabled ? "rounded-full border-emerald-200 bg-emerald-50 text-emerald-700" : "rounded-full border-amber-200 bg-amber-50 text-amber-700"}>{securityAdmin?.mfaEnabled ? "MFA enabled" : "MFA not enabled"}</Badge><Badge variant="outline" className="rounded-full">{securityAdmin?.role ?? "—"}</Badge></div><div className="grid gap-3 md:grid-cols-[1fr_220px_auto]"><Input type="password" value={securityPassword} onChange={(event) => setSecurityPassword(event.target.value)} placeholder="Admin password for reauthentication" /><Input inputMode="numeric" value={securityCode} onChange={(event) => setSecurityCode(event.target.value.replace(/\D/g, "").slice(0, 6))} placeholder="6-digit MFA code (if enabled)" /><Button variant="outline" disabled={securityBusy} onClick={() => void handleReauthenticate()} className="rounded-xl">Reauthenticate</Button></div>{!securityAdmin?.mfaEnabled && !mfaSetup && <div className="space-y-2"><Button disabled={securityBusy} onClick={() => void handleMfaSetup()} className="rounded-xl bg-[#6157e7] text-white hover:bg-[#554bcf]">Set up authenticator MFA</Button><p className="text-xs leading-5 text-[#8f8b9c]">Before setting up MFA, enter your admin password above and click <b>Reauthenticate</b> — the server requires a recent re-authentication for this action.</p></div>}{mfaSetup && <div className="space-y-3 rounded-[16px] border border-[#dedaff] bg-[#f8f7ff] p-4"><p className="text-sm font-semibold">Add this secret to your authenticator app</p><p className="break-all rounded-xl bg-white p-3 font-mono text-sm">{mfaSetup.secret}</p><p className="break-all text-xs text-[#777287]">{mfaSetup.otpauthUri}</p><div className="flex gap-2"><Input inputMode="numeric" value={securityCode} onChange={(event) => setSecurityCode(event.target.value.replace(/\D/g, "").slice(0, 6))} placeholder="Current 6-digit code" /><Button disabled={securityBusy} onClick={() => void handleMfaEnable()} className="rounded-xl bg-[#6157e7] text-white hover:bg-[#554bcf]">Enable MFA</Button></div></div>}{securityAdmin?.mfaEnabled && <div className="flex items-center gap-2"><Button variant="outline" disabled={securityBusy} onClick={() => void handleMfaDisable()} className="rounded-xl border-red-200 text-red-700 hover:bg-red-50">Disable MFA</Button><p className="text-xs text-[#8f8b9c]">Requires recent reauthentication plus the current authenticator code.</p></div>}<p className="text-xs leading-5 text-[#8f8b9c]">Sensitive credential reveal requires a recent reauthentication window. Session and secret events are recorded in the immutable audit log.</p></CardContent></Card>
@@ -2805,14 +2811,6 @@ function SettingsView({ serviceFee, exchangeRate, minimumFunding, botToken, show
 
         <Card className={`surface-card rounded-[24px] xl:col-span-2 ${settingsTab==="email"?"":"hidden"}`}><CardHeader><CardTitle>Email OAuth setup</CardTitle><p className="text-sm text-[#8f8b9c]">Register these exact callback URLs before using Connect on an account.</p></CardHeader><CardContent className="grid gap-4 md:grid-cols-2">{(["outlook","gmail"] as const).map((provider) => { const setup = emailOAuth?.providers[provider]; const label = provider === "outlook" ? "Outlook / Hotmail" : "Gmail"; return <div key={provider} className="rounded-xl border p-4"><div className="flex items-center justify-between gap-2"><p className="font-semibold">{label}</p><Badge variant="outline" className={setup?.configured ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "border-amber-200 bg-amber-50 text-amber-800"}>{setup?.configured ? "Configured" : "Missing credentials"}</Badge></div><p className="mt-3 text-xs font-medium text-[#777287]">Authorized redirect URI</p><code className="mt-1 block break-all rounded-lg bg-slate-50 p-2 text-xs">{setup?.callbackUrl ?? "Loading…"}</code><ol className="mt-3 list-decimal space-y-1 pl-5 text-xs leading-5 text-[#777287]"><li>Create an OAuth web application in the provider console.</li><li>Add the exact redirect URI shown above.</li><li>Set the client ID and secret in the deployment environment, then restart.</li><li>Open Accounts, choose the matching mailbox provider, and click Connect.</li></ol><p className="mt-3 text-xs text-[#9692a3]">{provider === "outlook" ? "Environment: MICROSOFT_OAUTH_CLIENT_ID and MICROSOFT_OAUTH_CLIENT_SECRET" : "Environment: GOOGLE_OAUTH_CLIENT_ID and GOOGLE_OAUTH_CLIENT_SECRET"}</p></div>; })}</CardContent></Card>
         <EmailRulesCard hidden={settingsTab !== "email"} />
-                <Card className={`surface-card rounded-[24px] ${settingsTab==="email"?"":"hidden"}`}><CardHeader><div className="flex items-center gap-3"><span className="grid size-10 place-items-center rounded-xl bg-amber-100 text-amber-800"><KeyRound className="size-5" /></span><div><CardTitle className="text-base">3DS code delivery</CardTitle><p className="mt-1 text-sm text-slate-500">Protect the mailbox while giving clients only their code.</p></div></div></CardHeader><CardContent className="space-y-4"><Alert className="border-amber-200 bg-amber-50"><AlertTriangle className="text-amber-700" /><AlertTitle className="text-amber-950">3DS comes from the connected mailbox, not the Kripicard API</AlertTitle><AlertDescription className="text-amber-900/70">Trusted Outlook/Gmail verification messages are classified, short-lived OTPs are encrypted, and unknown templates are quarantined. Add issuer sender/template rules only after validating real messages.</AlertDescription></Alert><div className="space-y-3"><RoutingStep icon={Mail} title="Use a dedicated external mailbox" detail="Create or choose a mailbox from Outlook/Hotmail or Gmail and associate it with the Kripicard account." /><RoutingStep icon={ShieldCheck} title="Extract only the one-time code" detail="Read the mailbox through Microsoft Graph or the Gmail API, then parse only trusted verification messages." /><RoutingStep icon={Send} title="Relay to the assigned Telegram user" detail="Expire the code after delivery and keep a minimal audit event, not the message content." /></div><div className="rounded-xl border border-dashed p-3 text-sm text-slate-500"><strong>AccAbad email policy:</strong> use only Outlook/Hotmail or Gmail mailboxes. Connect them with OAuth using Microsoft Graph or the Gmail API. Do not depend on a custom AccAbad mail domain and do not store mailbox passwords for inbox access.</div><div className="overflow-hidden rounded-xl border text-sm"><div className="grid grid-cols-[1.1fr_1fr_1.4fr] bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-500"><span>Provider</span><span>Inbox access</span><span>AccAbad approach</span></div>{[["Outlook / Hotmail","API","Microsoft Graph OAuth"],["Gmail","API","Gmail API OAuth"]].map(([provider, access, approach]) => <div key={provider} className="grid grid-cols-[1.1fr_1fr_1.4fr] border-t px-3 py-2.5"><span className="font-medium text-slate-700">{provider}</span><span className="text-slate-500">{access}</span><span className="text-slate-500">{approach}</span></div>)}</div></CardContent></Card>
-
-        <Card className="surface-card rounded-[24px]"><CardHeader><div className="flex items-center justify-between gap-3"><div className="flex items-center gap-3"><span className={`grid size-10 place-items-center rounded-xl ${providerReadiness?.readyForMoneyWrites ? "bg-emerald-100 text-emerald-800" : "bg-amber-100 text-amber-800"}`}><ShieldCheck className="size-5" /></span><div><CardTitle className="text-base">Kripicard money readiness</CardTitle><p className="mt-1 text-sm text-slate-500">Provider contract gate for deposits, card creation, and card funding. Card creation and card funding are evaluated independently from deposit behavior.</p></div></div><Button variant="outline" size="sm" disabled={providerReadinessLoading} onClick={() => void reloadProviderReadiness()} className="rounded-xl"><RefreshCw className={`size-4 ${providerReadinessLoading ? "animate-spin" : ""}`} />Refresh</Button></div></CardHeader><CardContent className="space-y-4">
-          <Alert className={providerReadiness?.readyForMoneyWrites ? "border-emerald-200 bg-emerald-50" : "border-amber-200 bg-amber-50"}><AlertTriangle className={providerReadiness?.readyForMoneyWrites ? "text-emerald-700" : "text-amber-700"} /><AlertTitle>{providerReadiness?.readyByOperation?.card_create?.ready && providerReadiness?.readyByOperation?.card_fund?.ready ? "Card create + funding contracts cleared" : providerReadiness?.readyForMoneyWrites ? "Provider contract checks cleared" : "Some live money operations remain blocked"}</AlertTitle><AlertDescription>{providerReadiness ? `Card creation: ${providerReadiness.readyByOperation?.card_create?.ready ? "ready" : `blocked by ${(providerReadiness.readyByOperation?.card_create?.blockers ?? []).join(", ")}`}. Card funding: ${providerReadiness.readyByOperation?.card_fund?.ready ? "ready" : `blocked by ${(providerReadiness.readyByOperation?.card_fund?.blockers ?? []).join(", ")}`}. Deposit creation remains independently gated. ${providerReadiness.summary.blockers} broader provider question${providerReadiness.summary.blockers === 1 ? "" : "s"} remain. The supplied contract is wallet-based.` : "Loading provider readiness checks…"}</AlertDescription></Alert>
-          {providerReadiness && <div className="flex flex-wrap gap-2 text-xs"><Badge variant="outline">Base: {providerReadiness.providerBaseUrl}</Badge><Badge variant="outline">Model: account wallet</Badge><Badge variant="outline">Confirmed: {providerReadiness.summary.confirmed}/{providerReadiness.summary.total}</Badge><Badge variant="outline" className="border-amber-200 text-amber-700">Blockers: {providerReadiness.summary.blockers}</Badge></div>}
-          <div className="divide-y rounded-xl border">{providerReadiness?.checks.map((check) => { const cleared = check.status === "confirmed" || check.status === "not_applicable"; return <div key={check.key} className="p-3"><div className="flex items-start gap-3"><span className={`mt-0.5 grid size-7 shrink-0 place-items-center rounded-lg ${cleared ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700"}`}>{cleared ? <CheckCircle2 className="size-4" /> : <AlertTriangle className="size-4" />}</span><div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-2"><p className="text-sm font-medium">{check.label}</p>{check.blocksLiveMoney && <Badge variant="outline" className="border-red-200 text-red-700">blocks live money</Badge>}</div><p className="mt-0.5 text-xs leading-5 text-slate-500">{check.requirement}</p>{check.note && <p className="mt-1 text-xs leading-5 text-slate-500">{check.note}</p>}{check.sourceReference && <p className="mt-1 text-[11px] text-slate-400">Evidence: {check.sourceReference}</p>}</div><div className="flex shrink-0 items-center gap-2"><Badge variant="outline" className={cleared ? "border-emerald-200 text-emerald-700" : check.status === "partial" ? "border-amber-200 text-amber-700" : "border-slate-200 text-slate-600"}>{check.status.replace("_", " ")}</Badge>{check.sourceKind !== "supplied_pdf" && <Button size="sm" variant="outline" disabled={providerReadinessLoading} onClick={() => void editProviderReadiness(check)} className="rounded-xl">Edit</Button>}</div></div></div>; }) ?? <div className="p-4 text-sm text-slate-500">Provider readiness data is unavailable.</div>}</div>
-          <p className="text-xs leading-5 text-slate-500">Use Edit on unresolved checks to record provider-written confirmation or controlled test evidence. Public marketing material can add context but should not clear a blocking provider-contract check by itself.</p>
-        </CardContent></Card>
       </div>
     </>
   );
@@ -2855,10 +2853,6 @@ function EmailRulesCard({ hidden }: { hidden: boolean }) {
     <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5"><Input value={draft.label} onChange={(e)=>setDraft((d)=>({...d,label:e.target.value}))} placeholder="Rule label" /><Input value={draft.senderMatch} onChange={(e)=>setDraft((d)=>({...d,senderMatch:e.target.value}))} placeholder="issuer@example.com or @domain.com" /><Input value={draft.subjectContains} onChange={(e)=>setDraft((d)=>({...d,subjectContains:e.target.value}))} placeholder="Subject contains (optional)" /><Select value={draft.category} onValueChange={(value)=>setDraft((d)=>({...d,category:value as typeof d.category}))}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="otp_3ds">3DS OTP</SelectItem><SelectItem value="security">Security</SelectItem><SelectItem value="verification">Verification</SelectItem></SelectContent></Select><Button disabled={busy} onClick={() => void add()} className="rounded-xl bg-[#6157e7] text-white hover:bg-[#554bcf]"><Plus className="size-4" />Add rule</Button></div>
     <div className="space-y-2">{rules.map((rule)=><div key={rule.id} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border p-3"><div><p className="text-sm font-semibold">{rule.label}</p><p className="text-xs text-[#8f8b9c]">{rule.sender_match}{rule.subject_contains ? ` · subject: ${rule.subject_contains}` : ""} · {rule.category} · {rule.otp_expiry_minutes} min</p></div><Button size="sm" variant="outline" disabled={busy} onClick={() => void toggle(rule.id,!rule.enabled)} className="rounded-xl">{rule.enabled ? "Disable" : "Enable"}</Button></div>)}{rules.length===0 && <p className="rounded-xl border border-dashed p-4 text-sm text-[#8f8b9c]">No trusted rules yet. Add a validated issuer sender/template before relying on OTP delivery.</p>}</div>
   </CardContent></Card>;
-}
-
-function RoutingStep({ icon: Icon, title, detail }: { icon: typeof Mail; title: string; detail: string }) {
-  return <div className="flex gap-3"><span className="grid size-9 shrink-0 place-items-center rounded-xl bg-slate-100 text-slate-600"><Icon className="size-4" /></span><div><p className="text-sm font-medium">{title}</p><p className="mt-0.5 text-sm leading-5 text-slate-500">{detail}</p></div></div>;
 }
 
 function OverviewV2({ clients, kycByUser, paymentByUser, paymentStatusByUser, fundingRequests, telegramStatus, onViewChange, onOpenClient }: { clients: Client[]; kycByUser: Record<string, "approved" | "pending" | "rejected">; paymentByUser: Record<string, boolean>; paymentStatusByUser: Record<string, string | null>; fundingRequests: FundingRequest[]; telegramStatus: TelegramBotStatus | null; onViewChange: (v: View) => void; onOpenClient: (id: string) => void }) {
@@ -3032,7 +3026,7 @@ function ClientPaymentSection({ clientId }: { clientId: string | null }) {
         const details = error.details as { blockers?: unknown } | undefined;
         const blockers = Array.isArray(details?.blockers) ? details.blockers.filter((value): value is string => typeof value === "string") : [];
         toast.error(blockers.length
-          ? `Card creation is blocked by provider readiness: ${blockers.join(", ")}. Review Settings → Kripicard money readiness.`
+          ? `Card creation is blocked by provider readiness: ${blockers.join(", ")}. Review Operations → Kripicard.`
           : error.message);
         return;
       }
