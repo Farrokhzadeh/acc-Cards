@@ -67,7 +67,7 @@ export async function getProviderReadiness() {
   const requiredByOperation = {
     card_create: ["wallet_flow", "card_minimum_documented", "production_rate_limits", "live_bin_catalogue", "purchase_202_contract"],
     card_fund: ["wallet_flow", "card_minimum_documented", "production_rate_limits", "production_fee_schedule", "purchase_202_contract"],
-    deposit_create: ["wallet_flow", "deposit_order_id_idempotency", "deposit_instruction_fields", "deposit_status_model", "production_rate_limits", "deposit_underpayment_behavior", "deposit_overpayment_behavior", "deposit_late_payment_behavior"],
+    deposit_create: ["wallet_flow", "deposit_order_id_idempotency", "deposit_instruction_fields", "deposit_status_model", "production_rate_limits"],
   } as const;
   const readyByOperation = Object.fromEntries(Object.entries(requiredByOperation).map(([operation, keys]) => {
     const operationBlockers = keys.filter((key) => {

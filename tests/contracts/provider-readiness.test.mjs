@@ -11,6 +11,8 @@ const patchRoute = await readFile(new URL("../../app/api/v1/provider-readiness/[
 const dashboard = await readFile(new URL("../../app/dashboard-app.tsx", import.meta.url), "utf8");
 const contract = await readFile(new URL("../../docs/KRIPICARD-PROVIDER-CONTRACT.md", import.meta.url), "utf8");
 const questionnaire = await readFile(new URL("../../docs/PROVIDER-READINESS-QUESTIONS.md", import.meta.url), "utf8");
+const depositService = await readFile(new URL("../../server/providers/kripicard/deposits.ts", import.meta.url), "utf8");
+const depositMigration = await readFile(new URL("../../db/migrations/0029_kripicard_crypto_deposits.sql", import.meta.url), "utf8");
 
 const coins = JSON.parse(await readFile(new URL("../fixtures/kripicard/deposit-coins.json", import.meta.url), "utf8"));
 const networks = JSON.parse(await readFile(new URL("../fixtures/kripicard/deposit-networks.json", import.meta.url), "utf8"));
@@ -58,14 +60,20 @@ test("future money writes have a reusable database readiness assertion", () => {
   assert.match(readiness, /card_fund/);
 });
 
-test("deposit discovery/status stay read-only while later Phase 15 may add guarded card creation", () => {
+test("crypto deposits use one-shot provider writes with idempotent order IDs and durable status", () => {
   assert.match(client, /depositCoins\(\)/);
   assert.match(client, /depositNetworks/);
   assert.match(client, /depositStatus/);
   assert.match(client, /\/api\/external\/deposits\/coins/);
   assert.match(client, /\/api\/external\/deposits\/networks/);
   assert.match(client, /\/api\/external\/deposits\/status/);
-  assert.doesNotMatch(client, /createDeposit\s*\(/);
+  assert.match(client, /createDeposit\s*\(/);
+  assert.match(client, /\/api\/external\/deposits\/create/);
+  assert.match(depositService, /assertProviderMoneyReadiness\("deposit_create"\)/);
+  assert.match(depositService, /randomUUID/);
+  assert.match(depositService, /credited_applied/);
+  assert.match(depositMigration, /order_id text NOT NULL UNIQUE/);
+  assert.match(depositMigration, /UNIQUE\(account_id, provider_deposit_id\)/);
 });
 
 test("deposit documentation fixtures preserve exact payment instruction and terminal-status fields", () => {
@@ -92,7 +100,7 @@ test("Operations shows the database-backed provider readiness gate", () => {
 
 test("provider contract and questionnaire explicitly preserve wallet model and unresolved edge cases", () => {
   assert.match(contract, /Crypto deposit → Kripicard account wallet → create card \/ fund card/);
-  assert.match(contract, /`createDeposit` remains unavailable/);
+  assert.match(contract, /unique `order_id`/);
   assert.match(contract, /Card funding — Phase 16/);
   assert.match(questionnaire, /underpayment/i);
   assert.match(questionnaire, /overpayment/i);

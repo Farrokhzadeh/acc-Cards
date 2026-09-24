@@ -315,6 +315,13 @@ async function persistCompleted(args: {
         `UPDATE kripi_accounts SET provider_capabilities=provider_capabilities||'{"fundCard":true}'::jsonb,updated_at=now() WHERE id=$1::uuid`,
         [args.account.id],
       );
+      if (args.providerResponse) {
+        await db.query(
+          `UPDATE kripi_accounts SET account_balance_usd_cents=GREATEST(0,COALESCE(account_balance_usd_cents,0)-$2::bigint),account_balance_as_of=now(),updated_at=now()
+            WHERE id=$1::uuid AND account_balance_source='derived'`,
+          [args.account.id, cents(args.providerResponse.data.total_debited)],
+        );
+      }
       await event(db, { requestId: args.row.id, fromStatus: args.reconciled ? "needs_reconciliation" : "funding", toStatus: "completed", adminId: args.session.principal.id, metadata: { operationId: args.operationId, providerCardId: args.card.provider_card_id, reconciled: args.reconciled, resolutionReference: args.resolutionReference ?? null } });
       await notify(db, args.row.id, "completed");
       await audit(db, { adminId: args.session.principal.id, action: "funding_request.completed", requestId: args.row.id, traceId: args.traceId, ip: requestIp(args.request), metadata: { operationId: args.operationId, providerCardId: args.card.provider_card_id, amountUsdCents: amount.toString(), expectedProviderFeeUsdCents: expectedFee.toString(), actualProviderFeeUsdCents: actualFee?.toString() ?? null, reconciled: args.reconciled, resolutionReference: args.resolutionReference ?? null } });

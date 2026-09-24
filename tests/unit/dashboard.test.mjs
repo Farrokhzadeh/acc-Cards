@@ -25,3 +25,17 @@ test("KYC list supports pagination and reviewed decisions are read-only", () => 
   assert.match(dashboard, /Load more submissions/);
   assert.match(dashboard, /selected\.status === "pending"/);
 });
+
+test("transaction summaries come from stored transactions", () => {
+  assert.match(dashboard, /successfulVolume = matchingTransactions/);
+  assert.match(dashboard, /declinedVolume = matchingTransactions/);
+  assert.doesNotMatch(dashboard, /formatUsd\(338\.99\)/);
+  assert.doesNotMatch(dashboard, /formatUsd\(9\.99\)/);
+});
+
+test("connected inbox input is optional and falls back to the login email", () => {
+  assert.match(dashboard, /accountForm\.mailbox\.trim\(\) \|\| accountForm\.owner\.trim\(\)/);
+  assert.match(dashboard, /Connected inbox address/);
+  assert.match(dashboard, /optional/);
+  assert.match(dashboard, /Each account stores its own encrypted OAuth refresh token/);
+});

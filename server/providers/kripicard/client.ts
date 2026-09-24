@@ -10,6 +10,7 @@ import {
   kripicardTransactionsResponseSchema,
   kripicardDepositCoinsResponseSchema,
   kripicardDepositNetworksResponseSchema,
+  kripicardDepositCreateResponseSchema,
   kripicardDepositStatusResponseSchema,
 } from "@/server/providers/kripicard/schemas";
 import type { ZodTypeAny, output } from "zod";
@@ -70,6 +71,14 @@ export class KripicardClient {
 
   depositStatus(input: { id: string }) {
     return this.read("/api/external/deposits/status", { id: input.id }, kripicardDepositStatusResponseSchema);
+  }
+
+  createDeposit(input: { amount: number; currency: string; network: string; orderId: string }) {
+    return this.write(
+      "/api/external/deposits/create",
+      { amount: input.amount, currency: input.currency, network: input.network, order_id: input.orderId },
+      kripicardDepositCreateResponseSchema,
+    );
   }
 
   createCard(input: {
