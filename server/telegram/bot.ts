@@ -10,7 +10,8 @@ import { cancelTelegramCardRequest, createTelegramCardRequest, getCardRequestPol
 import { attachTelegramReceipt } from "@/server/funding/receipts";
 import { createFirstCardPayment } from "@/server/payments/service";
 import { attachTelegramCustomerPaymentReceipt } from "@/server/payments/receipts";
-import { deletePrivateSupportAttachment, readPrivateSupportAttachment, storePrivateSupportAttachment } from "@/server/support/storage";
+import { deletePrivateSupportAttachment, storePrivateSupportAttachment } from "@/server/support/storage";
+import { readPrivateReceipt } from "@/server/receipts/storage";
 import { createKycSubmission, getKycStatusForUser } from "@/server/kyc/service";
 import { KYC, kycConfirmSummary, pick, MENU, COMMON, PAYMENT, FLOW } from "@/server/kyc/messages";
 import { getPaymentCard } from "@/server/settings/payment-card";
@@ -307,7 +308,7 @@ async function sendPaymentReceipt(client: TelegramClient, user: BotUser, chatId:
     return;
   }
   try {
-    const bytes = await readPrivateSupportAttachment(progress.payment_receipt_object_key);
+    const bytes = await readPrivateReceipt(progress.payment_receipt_object_key);
     const mimeType = progress.payment_receipt_mime || "application/octet-stream";
     const ext = mimeType === "application/pdf" ? "pdf" : mimeType === "image/png" ? "png" : mimeType === "image/webp" ? "webp" : "jpg";
     await client.sendDocument({
