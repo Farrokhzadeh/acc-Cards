@@ -2686,28 +2686,150 @@ function ClientsView({ clients, cards, onOpen, onToggleBan, accountName, kycStat
   );
 }
 
-function RequestsView({ fundingRequests, clientName, search, onOpenRequest, kycPendingCount, clients, paymentStatusByUser, paymentPipelineByUser, onOpenClient, onPaymentDecision, transactions, issues, onReconcileIssue }: { fundingRequests: FundingRequest[]; clientName: (id: string | null) => string; search: string; onOpenRequest: (id: string) => void; kycPendingCount: number; clients: Client[]; paymentStatusByUser: Record<string, string | null>; paymentPipelineByUser: Record<string, ClientPipelineItem>; onOpenClient: (id: string) => void; onPaymentDecision: (clientId: string, action: "accept" | "deny") => void | Promise<void>; transactions: Transaction[]; issues: TransactionNotificationIssue[]; onReconcileIssue: (id: string, action: "acknowledge" | "retry") => void | Promise<void> }) {
+function RequestsView({
+  fundingRequests,
+  cardRequests,
+  cardRequestPendingId,
+  clientName,
+  search,
+  onOpenRequest,
+  onReviewCardRequest,
+  onIssueCardRequest,
+  onReconcileCardRequest,
+  kycPendingCount,
+  clients,
+  paymentStatusByUser,
+  paymentPipelineByUser,
+  onOpenClient,
+  onPaymentDecision,
+  transactions,
+  issues,
+  onReconcileIssue,
+}: {
+  fundingRequests: FundingRequest[];
+  cardRequests: ApiCardRequest[];
+  cardRequestPendingId: string | null;
+  clientName: (id: string | null) => string;
+  search: string;
+  onOpenRequest: (id: string) => void;
+  onReviewCardRequest: (request: ApiCardRequest, action: "approve" | "reject", accountId?: string, bin?: string) => void | Promise<void>;
+  onIssueCardRequest: (request: ApiCardRequest) => void | Promise<void>;
+  onReconcileCardRequest: (request: ApiCardRequest) => void | Promise<void>;
+  kycPendingCount: number;
+  clients: Client[];
+  paymentStatusByUser: Record<string, string | null>;
+  paymentPipelineByUser: Record<string, ClientPipelineItem>;
+  onOpenClient: (id: string) => void;
+  onPaymentDecision: (clientId: string, action: "accept" | "deny") => void | Promise<void>;
+  transactions: Transaction[];
+  issues: TransactionNotificationIssue[];
+  onReconcileIssue: (id: string, action: "acknowledge" | "retry") => void | Promise<void>;
+}) {
   const [paymentActionId, setPaymentActionId] = useState<string | null>(null);
+  const [cardChoices, setCardChoices] = useState<Record<string, { accountId: string; bin: string }>>({});
   const needle = search.trim().toLowerCase();
   const matchingFundingRequests = fundingRequests.filter((request) => !needle || `${request.id} ${clientName(request.clientId)} ${request.cardLast4} ${request.receipt} ${request.receiptType} ${fundingMeta[request.status].label}`.toLowerCase().includes(needle));
+  const matchingCardRequests = cardRequests.filter((request) => !needle || `${request.reference} ${request.client.displayName ?? ""} ${request.client.username ?? ""} ${request.email} ${request.status}`.toLowerCase().includes(needle));
   const onboardingClients = clients.filter((client) => {
     const status = paymentStatusByUser[client.id];
     return status && status !== "complete" && status !== "denied" && (!needle || `${client.name} ${client.username} ${client.telegramId} ${status}`.toLowerCase().includes(needle));
   });
   const fundingPaging = usePaginatedItems(matchingFundingRequests);
+  const cardPaging = usePaginatedItems(matchingCardRequests);
   const onboardingPaging = usePaginatedItems(onboardingClients);
-  const defaultTab = matchingFundingRequests.length ? "funding" : onboardingClients.length ? "onboarding" : kycPendingCount ? "kyc" : "funding";
+  const openCardCount = cardRequests.filter((item) => !["issued", "rejected", "cancelled"].includes(item.status)).length;
+  const defaultTab = openCardCount ? "cards" : matchingFundingRequests.length ? "funding" : onboardingClients.length ? "onboarding" : kycPendingCount ? "kyc" : "cards";
+
+  const cardChoice = (request: ApiCardRequest) => cardChoices[request.id] ?? {
+    accountId: request.selectedAccountId ?? request.eligibleAccounts.find((account) => account.selected)?.id ?? "",
+    bin: request.status === "pending_review" || request.status === "correction_needed"
+      ? request.availableBins[0]?.bin ?? ""
+      : request.bin,
+  };
 
   return (
     <>
-      <PageIntro title="Request center" description="Review existing-card add-funds requests, KYC, and transaction notification issues. First-card onboarding is handled from the client record." />
+      <PageIntro title="Request center" description="Review new-card requests, existing-card funding, first-card onboarding, KYC, and transaction notification issues." />
       <Tabs defaultValue={defaultTab}>
         <TabsList className="mb-4 h-11 rounded-[14px] border border-[#e7e5ef] bg-white p-1 shadow-[0_4px_18px_rgba(26,24,48,.04)]">
+          <TabsTrigger className="rounded-[10px] px-4 data-[state=active]:bg-[#eeecff] data-[state=active]:text-[#5146ca]" value="cards">New cards <Badge className="ml-1.5 rounded-full bg-[#6157e7] text-white">{openCardCount}</Badge></TabsTrigger>
           <TabsTrigger className="rounded-[10px] px-4 data-[state=active]:bg-[#eeecff] data-[state=active]:text-[#5146ca]" value="funding">Funding <Badge className="ml-1.5 rounded-full bg-[#6157e7] text-white">{fundingRequests.filter((item) => !["completed", "rejected", "cancelled"].includes(item.status)).length}</Badge></TabsTrigger>
           <TabsTrigger className="rounded-[10px] px-4 data-[state=active]:bg-[#eeecff] data-[state=active]:text-[#5146ca]" value="onboarding">First cards <Badge className="ml-1.5 rounded-full bg-[#6157e7] text-white">{onboardingClients.length}</Badge></TabsTrigger>
           <TabsTrigger className="rounded-[10px] px-4 data-[state=active]:bg-[#eeecff] data-[state=active]:text-[#5146ca]" value="kyc">KYC <Badge className="ml-1.5 rounded-full bg-[#6157e7] text-white">{kycPendingCount}</Badge></TabsTrigger>
           <TabsTrigger className="rounded-[10px] px-4 data-[state=active]:bg-[#eeecff] data-[state=active]:text-[#5146ca]" value="transactions">Transactions <Badge variant="outline" className="ml-1.5 rounded-full">{transactions.length}</Badge></TabsTrigger>
         </TabsList>
+
+        <TabsContent value="cards">
+          <Card className="data-table overflow-hidden surface-card rounded-[24px]">
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow className="bg-[#faf9fc]">
+                    <TableHead className="pl-6">Request</TableHead>
+                    <TableHead>Customer</TableHead>
+                    <TableHead>Amount / email</TableHead>
+                    <TableHead>Internal account</TableHead>
+                    <TableHead>BIN</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead className="text-right">Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {cardPaging.pageItems.map((request) => {
+                    const choice = cardChoice(request);
+                    const reviewable = ["pending_review", "correction_needed"].includes(request.status);
+                    const busy = cardRequestPendingId === request.id;
+                    return <TableRow key={request.id}>
+                      <TableCell className="pl-6"><span className="font-semibold text-[#353146]">{request.reference}</span><span className="mt-0.5 block text-xs text-[#9692a3]">{new Date(request.createdAt).toLocaleString()}</span></TableCell>
+                      <TableCell><span className="font-semibold">{request.client.displayName ?? request.client.username ?? request.client.telegramUserId}</span><span className="block text-xs text-[#9d99aa]">{request.client.username ? `@${request.client.username.replace(/^@/, "")}` : request.client.telegramUserId}</span></TableCell>
+                      <TableCell><span className="font-semibold">{formatUsd(Number(request.initialAmountUsdCents) / 100)}</span><span className="block text-xs text-[#9d99aa]">{request.email}</span></TableCell>
+                      <TableCell>
+                        <Select
+                          disabled={!reviewable || busy}
+                          value={choice.accountId}
+                          onValueChange={(accountId) => setCardChoices((current) => ({ ...current, [request.id]: { ...choice, accountId } }))}
+                        >
+                          <SelectTrigger className="min-w-48"><SelectValue placeholder="Choose account" /></SelectTrigger>
+                          <SelectContent>
+                            {request.eligibleAccounts.map((account) => <SelectItem key={account.id} value={account.id}>{account.label}{account.selected ? " · current" : " · free"}</SelectItem>)}
+                          </SelectContent>
+                        </Select>
+                      </TableCell>
+                      <TableCell>
+                        <Select
+                          disabled={!reviewable || busy}
+                          value={choice.bin}
+                          onValueChange={(bin) => setCardChoices((current) => ({ ...current, [request.id]: { ...choice, bin } }))}
+                        >
+                          <SelectTrigger className="min-w-36"><SelectValue placeholder="Choose BIN" /></SelectTrigger>
+                          <SelectContent>
+                            {request.availableBins.map((item) => <SelectItem key={item.bin} value={item.bin}>{item.bin}{item.requiresDob ? " · DOB" : ""}</SelectItem>)}
+                          </SelectContent>
+                        </Select>
+                      </TableCell>
+                      <TableCell><Badge variant="outline" className="rounded-full">{request.status.replaceAll("_", " ")}</Badge></TableCell>
+                      <TableCell>
+                        <div className="flex justify-end gap-2">
+                          {reviewable && <>
+                            <Button size="sm" variant="outline" className="border-red-200 text-red-700" disabled={busy} onClick={() => void onReviewCardRequest(request, "reject")}>Reject</Button>
+                            <Button size="sm" disabled={busy || !choice.accountId || !choice.bin} onClick={() => void onReviewCardRequest(request, "approve", choice.accountId, choice.bin)}>Approve</Button>
+                          </>}
+                          {["approved", "issue_failed"].includes(request.status) && <Button size="sm" disabled={busy} onClick={() => void onIssueCardRequest(request)}>Issue card</Button>}
+                          {request.status === "needs_reconciliation" && <Button size="sm" variant="outline" disabled={busy} onClick={() => void onReconcileCardRequest(request)}><RefreshCw className="size-3.5" />Reconcile</Button>}
+                          {request.status === "issuing" && <Button size="sm" disabled>Issuing…</Button>}
+                          {request.status === "issued" && <Badge variant="outline" className="border-emerald-200 bg-emerald-50 text-emerald-700">Issued</Badge>}
+                        </div>
+                      </TableCell>
+                    </TableRow>;
+                  })}
+                </TableBody>
+              </Table>
+            </div>
+            {matchingCardRequests.length === 0 && <div className="border-t p-8 text-center text-sm text-[#9692a3]">No additional-card requests match this view.</div>}
+            <ListPagination page={cardPaging.page} pageSize={cardPaging.pageSize} totalItems={cardPaging.totalItems} totalPages={cardPaging.totalPages} onPageChange={cardPaging.setPage} />
+          </Card>
+        </TabsContent>
+
         <TabsContent value="funding">
           <Card className="data-table overflow-hidden surface-card rounded-[24px]">
             <div className="overflow-x-auto"><Table><TableHeader><TableRow className="bg-[#faf9fc]"><TableHead className="pl-6">Request</TableHead><TableHead>Client</TableHead><TableHead>Card</TableHead><TableHead>Receipt</TableHead><TableHead>Client pays</TableHead><TableHead>Status</TableHead><TableHead /></TableRow></TableHeader><TableBody>{fundingPaging.pageItems.map((request) => <TableRow key={request.id} className="cursor-pointer" onClick={() => onOpenRequest(request.id)}><TableCell className="pl-6 font-semibold text-[#353146]">{request.id}<span className="mt-0.5 block text-xs font-normal text-[#9692a3]">{request.submitted}</span></TableCell><TableCell>{clientName(request.clientId)}</TableCell><TableCell><span className="font-semibold">{formatUsd(request.amount)}</span><span className="block text-xs text-[#9d99aa]">to •{request.cardLast4}</span></TableCell><TableCell><span className="inline-flex items-center gap-2 text-sm"><ReceiptIcon type={request.receiptType} />{request.receiptType.toUpperCase()}</span></TableCell><TableCell className="font-medium">{formatRial(request.rialTotal)}</TableCell><TableCell><StatusBadge status={request.status} /></TableCell><TableCell><span className="grid size-8 place-items-center rounded-lg bg-[#f4f2fa]"><ChevronRight className="size-4 text-[#777287]" /></span></TableCell></TableRow>)}</TableBody></Table></div>
@@ -2715,6 +2837,7 @@ function RequestsView({ fundingRequests, clientName, search, onOpenRequest, kycP
             <ListPagination page={fundingPaging.page} pageSize={fundingPaging.pageSize} totalItems={fundingPaging.totalItems} totalPages={fundingPaging.totalPages} onPageChange={fundingPaging.setPage} />
           </Card>
         </TabsContent>
+
         <TabsContent value="onboarding">
           <Card className="data-table overflow-hidden surface-card rounded-[24px]">
             <div className="overflow-x-auto">
