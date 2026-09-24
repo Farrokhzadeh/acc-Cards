@@ -8,10 +8,9 @@ import { getLiveKripicardCardDetailsForTelegram, listStoredCardTransactions, set
 import { cancelTelegramFundingRequest, createTelegramFundingRequest, getFundingPolicy, getTelegramFundingRequest, previewFundingQuote } from "@/server/funding/service";
 import { cancelTelegramCardRequest, createTelegramCardRequest, getCardRequestPolicy, getTelegramCardRequest } from "@/server/card-requests/service";
 import { attachTelegramReceipt } from "@/server/funding/receipts";
-import { createFirstCardPayment } from "@/server/payments/service";
-import { attachTelegramCustomerPaymentReceipt } from "@/server/payments/receipts";
+import { createFirstCardPayment, getCustomerPaymentHistoryDetail, getPaymentForFundingRequest, listCustomerPaymentsForUser } from "@/server/payments/service";
+import { attachTelegramCustomerPaymentReceipt, getCustomerPaymentReceiptForTelegram } from "@/server/payments/receipts";
 import { deletePrivateSupportAttachment, storePrivateSupportAttachment } from "@/server/support/storage";
-import { readPrivateReceipt } from "@/server/receipts/storage";
 import { createKycSubmission, getKycStatusForUser } from "@/server/kyc/service";
 import { KYC, kycConfirmSummary, pick, MENU, COMMON, PAYMENT, FLOW } from "@/server/kyc/messages";
 import { getPaymentCard } from "@/server/settings/payment-card";
@@ -218,9 +217,14 @@ async function firstCardProgress(userId: string) {
     payment_receipt_object_key: string | null;
     payment_receipt_mime: string | null;
     payment_receipt_at: Date | null;
+    first_card_payment_id: string | null;
+    payment_receipt_id: string | null;
   }>(
-    `SELECT payment_status,payment_amount_usd_cents,payment_receipt_object_key,payment_receipt_mime,payment_receipt_at
-       FROM telegram_users WHERE id=$1::uuid`,
+    `SELECT u.payment_status,u.payment_amount_usd_cents,u.payment_receipt_object_key,u.payment_receipt_mime,u.payment_receipt_at,
+              u.first_card_payment_id,cp.receipt_id AS payment_receipt_id
+       FROM telegram_users u
+       LEFT JOIN customer_payments cp ON cp.id=u.first_card_payment_id
+      WHERE u.id=$1::uuid`,
     [userId],
   );
   return result.rows[0] ?? {
@@ -229,6 +233,8 @@ async function firstCardProgress(userId: string) {
     payment_receipt_object_key: null,
     payment_receipt_mime: null,
     payment_receipt_at: null,
+    first_card_payment_id: null,
+    payment_receipt_id: null,
   };
 }
 
@@ -303,19 +309,18 @@ async function sendKycInfo(client: TelegramClient, user: BotUser, chatId: number
 
 async function sendPaymentReceipt(client: TelegramClient, user: BotUser, chatId: number) {
   const progress = await firstCardProgress(user.id);
-  if (!progress.payment_receipt_object_key) {
+  if (!progress.first_card_payment_id || !progress.payment_receipt_id) {
     await client.sendMessage({ chatId, text: pick(FLOW.noPaymentReceipt, user.lang), replyMarkup: await waitingKeyboard(user, false) });
     return;
   }
   try {
-    const bytes = await readPrivateReceipt(progress.payment_receipt_object_key);
-    const mimeType = progress.payment_receipt_mime || "application/octet-stream";
-    const ext = mimeType === "application/pdf" ? "pdf" : mimeType === "image/png" ? "png" : mimeType === "image/webp" ? "webp" : "jpg";
+    const receipt = await getCustomerPaymentReceiptForTelegram(progress.first_card_payment_id, user.id);
+    const ext = receipt.mimeType === "application/pdf" ? "pdf" : receipt.mimeType === "image/png" ? "png" : receipt.mimeType === "image/webp" ? "webp" : "jpg";
     await client.sendDocument({
       chatId,
-      bytes,
+      bytes: receipt.bytes,
       filename: `first-card-payment-receipt.${ext}`,
-      mimeType,
+      mimeType: receipt.mimeType,
       caption: user.lang === "fa" ? "🧾 رسید پرداخت اولین کارت شما" : "🧾 Your first-card payment receipt",
       protectContent: true,
     });
