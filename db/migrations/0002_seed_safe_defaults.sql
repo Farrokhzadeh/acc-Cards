@@ -18,7 +18,6 @@ INSERT INTO permissions (key, description) VALUES
 ON CONFLICT (key) DO NOTHING;
 
 INSERT INTO settings (key, typed_value) VALUES
-  ('platform_card_limit', '3'::jsonb),
   ('minimum_card_funding_usd_cents', '2000'::jsonb),
   ('minimum_card_creation_usd_cents', '2000'::jsonb),
   ('live_provider_writes_enabled', 'false'::jsonb),
