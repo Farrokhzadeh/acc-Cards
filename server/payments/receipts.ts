@@ -126,6 +126,35 @@ export async function attachTelegramCustomerPaymentReceipt(input: {
   }
 }
 
+export async function getCustomerPaymentReceiptForTelegram(paymentId: string, userId: string) {
+  const result = await getPool().query<{
+    object_key: string;
+    original_filename: string | null;
+    detected_mime_type: string | null;
+    mime_type: string;
+    scan_status: string;
+  }>(
+    `SELECT r.object_key,r.original_filename,r.detected_mime_type,r.mime_type,r.scan_status
+       FROM customer_payments cp
+       JOIN receipts r ON r.id=cp.receipt_id
+      WHERE cp.id=$1::uuid
+        AND cp.user_id=$2::uuid
+      LIMIT 1`,
+    [paymentId, userId],
+  );
+  const receipt = result.rows[0];
+  if (!receipt) throw new ApiError(404, "receipt_not_found", "No receipt is attached to this payment.");
+  if (!["clean","rejected"].includes(receipt.scan_status)) {
+    throw new ApiError(409, "receipt_unavailable", "This receipt is not available yet.");
+  }
+  return {
+    bytes: await readPrivateReceipt(receipt.object_key),
+    filename: receipt.original_filename || `payment-receipt-${paymentId}`,
+    mimeType: receipt.detected_mime_type || receipt.mime_type,
+    scanStatus: receipt.scan_status,
+  };
+}
+
 export async function getCustomerPaymentReceiptForAdmin(paymentId: string) {
   const result = await getPool().query<{
     object_key: string;

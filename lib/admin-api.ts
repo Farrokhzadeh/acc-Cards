@@ -614,6 +614,22 @@ export type ApiCustomerPayment = {
   updatedAt: string;
 };
 
+export type ApiCustomerPaymentHistory = ApiCustomerPayment & {
+  requestReference: string | null;
+  requestStatus: string | null;
+  cardLast4: string | null;
+  receipt: {
+    id: string;
+    mimeType: string | null;
+    scanStatus: string | null;
+    createdAt: string | null;
+  } | null;
+};
+
+export async function fetchClientPayments(clientId: string) {
+  return apiJson<{ items: ApiCustomerPaymentHistory[] }>(`/api/v1/clients/${encodeURIComponent(clientId)}/payments`, { method: "GET" });
+}
+
 export async function reviewCustomerPayment(id: string, input: { action: "accept" | "correction" | "reject"; note?: string | null }) {
   return apiJson<ApiCustomerPayment>(`/api/v1/customer-payments/${encodeURIComponent(id)}/transition`, {
     method: "POST",

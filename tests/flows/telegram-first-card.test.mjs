@@ -66,7 +66,7 @@ test("pending customers get a restricted setup menu and can review their own onb
   assert.match(bot, /setup\.status/);
   assert.match(bot, /setup\.kyc/);
   assert.match(bot, /setup\.receipt/);
-  assert.match(bot, /readPrivateReceipt/);
+  assert.match(bot, /getCustomerPaymentReceiptForTelegram/);
   assert.match(bot, /protectContent: true/);
 });
 
@@ -136,7 +136,8 @@ test("first-card receipts use the shared payment ledger and private receipt stor
   assert.match(paymentReceipts, /withTransaction/);
   assert.match(paymentReceipts, /deletePrivateReceipt/);
   assert.match(bot, /attachTelegramCustomerPaymentReceipt/);
-  assert.match(bot, /readPrivateReceipt/);
+  assert.match(bot, /getCustomerPaymentReceiptForTelegram/);
+  assert.match(paymentReceipts, /getCustomerPaymentReceiptForTelegram/);
   assert.doesNotMatch(bot, /setPaymentReceiptPending/);
 });
 

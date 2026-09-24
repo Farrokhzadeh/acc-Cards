@@ -57,7 +57,7 @@ export const KYC = {
 
 export const MENU = {
   cards: m("💳 My cards", "💳 کارت‌های من"),
-  requests: m("📄 My requests", "📄 درخواست‌های من"),
+  requests: m("💰 Payments & requests", "💰 پرداخت‌ها و درخواست‌ها"),
   addFunds: m("➕ Add funds", "➕ افزایش موجودی"),
   requestCard: m("🆕 Request card", "🆕 درخواست کارت"),
   verify: m("🪪 Verify identity", "🪪 احراز هویت"),
@@ -118,10 +118,10 @@ export const FLOW = {
   ),
   cardsHeader: m("<b>Your cards</b>\nTap a card to see details, balance, and transactions.", "<b>کارت‌های شما</b>\nبرای جزئیات، موجودی و تراکنش‌ها روی یک کارت بزنید."),
   emptyRequests: m(
-    "<b>My requests</b>\nNo requests yet. When you request a card or top up, you can track every step here.",
-    "<b>درخواست‌های من</b>\nهنوز درخواستی ندارید. وقتی کارت درخواست دهید یا موجودی اضافه کنید، همه مراحل اینجا پیگیری می‌شود.",
+    "<b>Payments & requests</b>\nNo payment history yet. First-card payments, new-card purchases, and card funding will appear here.",
+    "<b>پرداخت‌ها و درخواست‌ها</b>\nهنوز سابقه پرداختی ندارید. پرداخت اولین کارت، کارت جدید و افزایش موجودی اینجا نمایش داده می‌شود.",
   ),
-  requestsHeader: m("<b>My requests</b>\nTap a request to see its status and timeline.", "<b>درخواست‌های من</b>\nبرای وضعیت و زمان‌بندی روی یک درخواست بزنید."),
+  requestsHeader: m("<b>Payments & requests</b>\nTap an item to see the exact amount, locked rate, receipt, and status.", "<b>پرداخت‌ها و درخواست‌ها</b>\nبرای مبلغ دقیق، نرخ ثبت‌شده، رسید و وضعیت روی هر مورد بزنید."),
   emptyTransactions: m("No transactions yet. Once you use your card, its activity appears here.", "هنوز تراکنشی نیست. پس از استفاده از کارت، فعالیت‌ها اینجا نمایش می‌گیرد."),
   waitPayment: m("⏳ Payment received. Our team is reviewing it — please wait. We'll message you here as soon as your card is ready.", "⏳ پرداخت دریافت شد. تیم ما در حال بررسی است — لطفاً صبر کنید. به محض آماده شدن کارت، اینجا پیام می‌دهیم."),
   waitingActivation: m("⏳ Receipt received. An administrator will verify the payment and prepare your first card with the approved amount. We'll notify you when the card is ready.", "⏳ رسید دریافت شد. مدیر پرداخت را بررسی می‌کند و اولین کارت شما را با مبلغ تأییدشده آماده می‌کند. وقتی کارت آماده شد به شما اطلاع می‌دهیم."),
