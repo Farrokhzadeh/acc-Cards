@@ -80,6 +80,13 @@ test("issuance is feature-gated, rechecks capacity and account ownership, and sn
   assert.match(issuance, /result = await client\.createCard/);
 });
 
+test("card issuance and external attachment both require an accepted customer payment", () => {
+  assert.match(issuance, /assertAcceptedPaymentForCardRequest/);
+  assert.match(issuance, /markCardRequestPaymentCompleted/);
+  const checks = issuance.match(/assertAcceptedPaymentForCardRequest\(db, row\.id\)/g) ?? [];
+  assert.ok(checks.length >= 2, "expected payment gate for provider issuance and existing-card attachment");
+});
+
 test("ambiguous provider outcomes are reconciled with cards/list and never cause an automatic second createcard", () => {
   const createCalls = (issuance.match(/client\.createCard\(/g) ?? []).length;
   assert.equal(createCalls, 1);
