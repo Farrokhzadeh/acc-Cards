@@ -55,6 +55,58 @@ function serialize(row: PaymentRow) {
   };
 }
 
+type PaymentHistoryRow = PaymentRow & {
+  card_request_reference: string | null;
+  card_request_status: string | null;
+  funding_request_reference: string | null;
+  funding_request_status: string | null;
+  card_last4: string | null;
+  receipt_mime_type: string | null;
+  receipt_scan_status: string | null;
+  receipt_created_at: Date | null;
+};
+
+function serializeHistory(row: PaymentHistoryRow) {
+  return {
+    ...serialize(row),
+    requestReference: row.card_request_reference ?? row.funding_request_reference,
+    requestStatus: row.card_request_status ?? row.funding_request_status,
+    cardLast4: row.card_last4,
+    receipt: row.receipt_id ? {
+      id: row.receipt_id,
+      mimeType: row.receipt_mime_type,
+      scanStatus: row.receipt_scan_status,
+      createdAt: row.receipt_created_at?.toISOString() ?? null,
+    } : null,
+  };
+}
+
+const PAYMENT_HISTORY_SELECT = `
+  SELECT cp.*,
+         cr.reference AS card_request_reference,
+         cr.status AS card_request_status,
+         fr.reference AS funding_request_reference,
+         fr.status AS funding_request_status,
+         COALESCE(direct_card.last4, funding_card.last4, request_card.last4, first_card.last4) AS card_last4,
+         r.detected_mime_type AS receipt_mime_type,
+         r.scan_status AS receipt_scan_status,
+         r.created_at AS receipt_created_at
+    FROM customer_payments cp
+    LEFT JOIN card_requests cr ON cr.id=cp.card_request_id
+    LEFT JOIN funding_requests fr ON fr.id=cp.funding_request_id
+    LEFT JOIN cards direct_card ON direct_card.id=cp.card_id
+    LEFT JOIN cards funding_card ON funding_card.id=fr.card_id
+    LEFT JOIN cards request_card
+      ON request_card.account_id=cr.selected_account_id
+     AND request_card.provider_card_id=cr.provider_card_id
+     AND request_card.archived_at IS NULL
+    LEFT JOIN telegram_users tu ON tu.id=cp.user_id
+    LEFT JOIN cards first_card
+      ON cp.purpose='first_card'
+     AND first_card.id=tu.onboarding_card_id
+    LEFT JOIN receipts r ON r.id=cp.receipt_id
+`;
+
 function rialFor(cents: bigint, rialPerUsd: bigint) {
   return (cents * rialPerUsd + 50n) / 100n;
 }
@@ -208,6 +260,42 @@ export async function createFirstCardPayment(userId: string, amountUsdCents: num
     );
     return payment;
   });
+}
+
+export async function listCustomerPaymentsForUser(userId: string, limit = 30) {
+  const safeLimit = Math.max(1, Math.min(100, Math.trunc(limit)));
+  const result = await getPool().query<PaymentHistoryRow>(
+    `${PAYMENT_HISTORY_SELECT}
+      WHERE cp.user_id=$1::uuid
+      ORDER BY cp.created_at DESC,cp.id DESC
+      LIMIT $2`,
+    [userId, safeLimit],
+  );
+  return result.rows.map(serializeHistory);
+}
+
+export async function getCustomerPaymentHistoryDetail(paymentId: string, userId: string) {
+  const result = await getPool().query<PaymentHistoryRow>(
+    `${PAYMENT_HISTORY_SELECT}
+      WHERE cp.id=$1::uuid AND cp.user_id=$2::uuid
+      LIMIT 1`,
+    [paymentId, userId],
+  );
+  const row = result.rows[0];
+  if (!row) throw new ApiError(404, "payment_not_found", "Payment record not found.");
+  return serializeHistory(row);
+}
+
+export async function listCustomerPaymentsForAdmin(userId: string, limit = 100) {
+  const safeLimit = Math.max(1, Math.min(200, Math.trunc(limit)));
+  const result = await getPool().query<PaymentHistoryRow>(
+    `${PAYMENT_HISTORY_SELECT}
+      WHERE cp.user_id=$1::uuid
+      ORDER BY cp.created_at DESC,cp.id DESC
+      LIMIT $2`,
+    [userId, safeLimit],
+  );
+  return result.rows.map(serializeHistory);
 }
 
 export async function getCustomerPayment(paymentId: string, userId?: string | null) {
