@@ -2934,7 +2934,11 @@ function RequestsView({
                   const pending = status === "pending";
                   return <TableRow key={client.id} className="cursor-pointer" onClick={() => onOpenClient(client.id)}>
                     <TableCell className="pl-6"><span className="font-semibold text-[#353146]">{client.name}</span><span className="block text-xs text-[#9d99aa]">{client.username} · {client.telegramId}</span></TableCell>
-                    <TableCell className="font-semibold">{pipeline?.amountUsdCents ? formatUsd(Number(pipeline.amountUsdCents) / 100) : "—"}</TableCell>
+                    <TableCell>
+                      <span className="font-semibold">{pipeline?.amountUsdCents ? formatUsd(Number(pipeline.amountUsdCents) / 100) : "—"}</span>
+                      {pipeline?.customerPaysRial && <span className="block text-xs text-[#777287]">{BigInt(pipeline.customerPaysRial).toLocaleString("en-US")} IRR</span>}
+                      {pipeline?.rateRialPerUsd && <span className="block text-xs text-[#9d99aa]">@ {BigInt(pipeline.rateRialPerUsd).toLocaleString("en-US")} IRR/USD</span>}
+                    </TableCell>
                     <TableCell>{pipeline?.hasReceipt ? <a href={clientReceiptUrl(client.id)} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 font-semibold text-[#6157e7] hover:underline" onClick={(event) => event.stopPropagation()}><ReceiptText className="size-4" />View receipt</a> : <Badge variant="outline" className="border-red-200 bg-red-50 text-red-700">Missing</Badge>}</TableCell>
                     <TableCell>{pipeline?.receiptAt ? new Date(pipeline.receiptAt).toLocaleString() : client.joined}</TableCell>
                     <TableCell><Badge variant="outline" className={pending ? "border-amber-200 bg-amber-50 text-amber-800" : status === "accepted" ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "border-slate-200 bg-slate-50 text-slate-700"}>{status.replaceAll("_", " ")}</Badge></TableCell>
