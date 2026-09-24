@@ -32,3 +32,13 @@ test("admin console exposes an operations view", () => {
   assert.match(source, /OperationsView/);
   assert.match(source, /fetchOperationalSnapshot/);
 });
+
+test("operations view prioritizes current problems and collapses diagnostics", () => {
+  const source = read("app/dashboard-app.tsx");
+  assert.match(source, /Only current problems and actions are shown here/);
+  assert.match(source, /Safety controls/);
+  assert.match(source, /Advanced diagnostics/);
+  assert.doesNotMatch(source, /Signal summary/);
+  assert.doesNotMatch(source, /Kripicard money readiness/);
+  assert.doesNotMatch(source, /3DS code delivery/);
+});
