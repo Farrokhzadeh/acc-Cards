@@ -6,6 +6,7 @@ import { randomToken, sha256Hex } from "@/server/security/crypto";
 import { TelegramClient, type TelegramInlineKeyboard } from "@/server/providers/telegram/client";
 import { getLiveKripicardCardDetailsForTelegram, listStoredCardTransactions, setKripicardCardFrozenStateForTelegram } from "@/server/providers/kripicard/service";
 import { cancelTelegramFundingRequest, createTelegramFundingRequest, getFundingPolicy, getTelegramFundingRequest, previewFundingQuote } from "@/server/funding/service";
+import { cancelTelegramCardRequest, createTelegramCardRequest, getCardRequestPolicy, getTelegramCardRequest } from "@/server/card-requests/service";
 import { attachTelegramReceipt } from "@/server/funding/receipts";
 import { deletePrivateSupportAttachment, readPrivateSupportAttachment, storePrivateSupportAttachment } from "@/server/support/storage";
 import { createKycSubmission, getKycStatusForUser } from "@/server/kyc/service";
@@ -513,12 +514,13 @@ async function mainKeyboard(userId: string, lang: string | null): Promise<Telegr
   const L = (msg: { en: string; fa: string }) => pick(msg, lang);
   const pairs = await Promise.all([
     [L(MENU.cards), "menu.cards"],
+    [L(MENU.requestCard), "menu.request_card"],
     [L(MENU.addFunds), "menu.add_funds"],
     [L(MENU.requests), "menu.requests"],
     [L(MENU.support), "support.start"],
     [L(MENU.language), "menu.lang"],
   ].map(async ([text, action]) => ({ text, callback_data: await createCallbackToken({ userId, action }) })));
-  return { inline_keyboard: [[pairs[0], pairs[1]], [pairs[2], pairs[3]], [pairs[4]]] };
+  return { inline_keyboard: [[pairs[0], pairs[1]], [pairs[2], pairs[3]], [pairs[4], pairs[5]]] };
 }
 
 async function sendLangPicker(client: TelegramClient, user: BotUser, chatId: number) {
@@ -701,15 +703,33 @@ async function sendTransactions(client: TelegramClient, user: BotUser, chatId: n
 }
 
 async function sendRequests(client: TelegramClient, user: BotUser, chatId: number) {
-  const funding = await getPool().query<{ id: string; reference: string; status: string; submitted_at: Date }>(
-    `SELECT id,reference,status,submitted_at FROM funding_requests WHERE user_id=$1::uuid ORDER BY submitted_at DESC LIMIT 10`,
-    [user.id],
-  );
+  const [funding, cards] = await Promise.all([
+    getPool().query<{ id: string; reference: string; status: string; submitted_at: Date }>(
+      `SELECT id,reference,status,submitted_at FROM funding_requests WHERE user_id=$1::uuid ORDER BY submitted_at DESC LIMIT 10`,
+      [user.id],
+    ),
+    getPool().query<{ id: string; reference: string; status: string; created_at: Date }>(
+      `SELECT id,reference,status,created_at FROM card_requests WHERE user_id=$1::uuid ORDER BY created_at DESC LIMIT 10`,
+      [user.id],
+    ),
+  ]);
+  const combined = [
+    ...funding.rows.map((request) => ({ ...request, kind: "funding" as const, at: request.submitted_at })),
+    ...cards.rows.map((request) => ({ ...request, kind: "card" as const, at: request.created_at })),
+  ].sort((a, b) => b.at.getTime() - a.at.getTime()).slice(0, 15);
+
   const rows: TelegramInlineKeyboard["inline_keyboard"] = [];
-  for (const request of funding.rows) {
-    rows.push([{ text: `${request.reference} · ${request.status}`, callback_data: await createCallbackToken({ userId: user.id, action: "fundreq.detail", entityId: request.id }) }]);
+  for (const request of combined) {
+    rows.push([{
+      text: `${request.kind === "card" ? "💳" : "➕"} ${request.reference} · ${request.status}`,
+      callback_data: await createCallbackToken({
+        userId: user.id,
+        action: request.kind === "card" ? "cardreq.detail" : "fundreq.detail",
+        entityId: request.id,
+      }),
+    }]);
   }
-  const text = funding.rows.length ? pick(FLOW.requestsHeader, user.lang) : pick(FLOW.emptyRequests, user.lang);
+  const text = combined.length ? pick(FLOW.requestsHeader, user.lang) : pick(FLOW.emptyRequests, user.lang);
   rows.push([{ text: pick(MENU.back, user.lang), callback_data: await createCallbackToken({ userId: user.id, action: "menu.home" }) }]);
   await client.sendMessage({ chatId, text, replyMarkup: { inline_keyboard: rows } });
 }
@@ -796,6 +816,79 @@ function parseDobToGregorian(value: string): string | null {
 
 function formatRialValue(value: string) {
   try { return `${BigInt(value).toLocaleString("en-US")} rial`; } catch { return `${escapeHtml(value)} rial`; }
+}
+
+async function beginCardRequest(client: TelegramClient, user: BotUser, chatId: number) {
+  const policy = await getCardRequestPolicy();
+  await setBotState(user.id, "card_request_amount", {}, 20);
+  const text = user.lang === "fa"
+    ? `<b>🆕 درخواست کارت جدید</b>\nمبلغ اولیه‌ای که می‌خواهید روی کارت جدید باشد را به دلار وارد کنید. حداقل: <b>${formatUsdCents(String(policy.minimumUsdCents))}</b>.\n\nانتخاب نوع صدور کارت توسط تیم ما انجام می‌شود.`
+    : `<b>🆕 Request a new card</b>\nEnter the initial USD amount you want on the new card. Minimum: <b>${formatUsdCents(String(policy.minimumUsdCents))}</b>.\n\nOur team will handle the card setup after reviewing your request.`;
+  await client.sendMessage({ chatId, text });
+}
+
+async function handleCardRequestText(client: TelegramClient, user: BotUser, chatId: number, text: string) {
+  const state = await getBotState(user.id);
+  if (!state || !state.mode.startsWith("card_request_")) return false;
+  const draft: CardRequestDraftPayload = { ...(state.payload ?? {}) };
+  const value = text.trim();
+
+  if (state.mode === "card_request_amount") {
+    const cents = dollarsToCents(value);
+    const policy = await getCardRequestPolicy();
+    if (cents == null || cents < policy.minimumUsdCents) {
+      await client.sendMessage({ chatId, text: `Enter a valid USD amount of at least <b>${formatUsdCents(String(policy.minimumUsdCents))}</b>.` });
+      return true;
+    }
+    draft.amountUsdCents = cents;
+    await setBotState(user.id, "card_request_email", draft, 20);
+    await client.sendMessage({ chatId, text: user.lang === "fa" ? "ایمیل موردنظر برای کارت را وارد کنید:" : "Enter the email address to use for the new card:" });
+    return true;
+  }
+
+  if (state.mode === "card_request_email") {
+    const parsed = z.string().trim().email().max(320).safeParse(value);
+    if (!parsed.success) {
+      await client.sendMessage({ chatId, text: user.lang === "fa" ? "یک ایمیل معتبر وارد کنید." : "Enter a valid email address." });
+      return true;
+    }
+    draft.email = parsed.data;
+    await setBotState(user.id, "card_request_confirm", draft, 20);
+    const submit = await createCallbackToken({ userId: user.id, action: "cardreq.submit", singleUse: true, ttlMinutes: 20 });
+    const cancel = await createCallbackToken({ userId: user.id, action: "cardreq.cancel_draft", singleUse: true, ttlMinutes: 20 });
+    await client.sendMessage({
+      chatId,
+      text: user.lang === "fa"
+        ? `<b>بررسی درخواست کارت</b>\nمبلغ اولیه: <b>${formatUsdCents(String(draft.amountUsdCents))}</b>\nایمیل: <code>${escapeHtml(draft.email)}</code>\n\nپس از ثبت، مدیر درخواست را بررسی می‌کند.`
+        : `<b>Review card request</b>\nInitial amount: <b>${formatUsdCents(String(draft.amountUsdCents))}</b>\nEmail: <code>${escapeHtml(draft.email)}</code>\n\nAfter submission, an administrator will review the request.`,
+      replyMarkup: { inline_keyboard: [[{ text: "✅ Submit", callback_data: submit }], [{ text: "Cancel", callback_data: cancel }]] },
+    });
+    return true;
+  }
+
+  if (state.mode === "card_request_confirm") {
+    await client.sendMessage({ chatId, text: "Use the Submit button above, or send /cancel." });
+    return true;
+  }
+  return false;
+}
+
+async function sendCardRequestDetail(client: TelegramClient, user: BotUser, chatId: number, requestId: string) {
+  const detail = await getTelegramCardRequest(user.id, requestId);
+  const request = detail.request;
+  const timeline = detail.events.map((event) =>
+    `• ${escapeHtml(event.status)} · ${escapeHtml(new Date(event.createdAt).toISOString().replace("T", " ").slice(0, 16))} UTC${event.note ? ` · ${escapeHtml(event.note)}` : ""}`
+  ).join("\n");
+  const rows: TelegramInlineKeyboard["inline_keyboard"] = [];
+  if (["pending_review", "correction_needed"].includes(request.status)) {
+    rows.push([{ text: "Cancel request", callback_data: await createCallbackToken({ userId: user.id, action: "cardreq.cancel_existing", entityId: request.id, singleUse: true, ttlMinutes: 10 }) }]);
+  }
+  rows.push([{ text: "← My requests", callback_data: await createCallbackToken({ userId: user.id, action: "menu.requests" }) }]);
+  await client.sendMessage({
+    chatId,
+    text: `<b>${escapeHtml(request.reference)}</b>\nType: <b>New card</b>\nStatus: <b>${escapeHtml(request.status)}</b>\nInitial amount: <b>${formatUsdCents(request.initialAmountUsdCents)}</b>\nEmail: <code>${escapeHtml(request.email)}</code>${request.adminNote ? `\nAdmin note: ${escapeHtml(request.adminNote)}` : ""}\n\n<b>Timeline</b>\n${timeline || "No timeline events."}`,
+    replyMarkup: { inline_keyboard: rows },
+  });
 }
 
 async function beginFundingRequest(client: TelegramClient, user: BotUser, chatId: number) {
@@ -1054,13 +1147,10 @@ async function handleCallback(client: TelegramClient, callback: z.infer<typeof c
     await client.sendMessage({ chatId, text: pick(PAYMENT.receiptRequired, user.lang) });
     return;
   }
-  if (resolved.action === "menu.request_card" || resolved.action.startsWith("cardreq.") || resolved.action.startsWith("request.")) {
-    await client.sendMessage({ chatId, text: "Additional card requests are not available. Your first card is created as part of onboarding." });
-    return;
-  }
   const gated =
     resolved.action === "menu.cards" || resolved.action === "menu.requests" ||
-    resolved.action === "menu.add_funds" || resolved.action.startsWith("card.") ||
+    resolved.action === "menu.add_funds" || resolved.action === "menu.request_card" ||
+    resolved.action.startsWith("card.") || resolved.action.startsWith("cardreq.") ||
     resolved.action.startsWith("fundreq.");
   if (gated && (await getPaymentStatus(user.id)) !== "complete") { await routeHome(client, user, chatId); return; }
   if (resolved.action === "menu.kyc" || resolved.action === "kyc.submit" || resolved.action === "kyc.cancel") {
@@ -1104,6 +1194,37 @@ async function handleCallback(client: TelegramClient, callback: z.infer<typeof c
       break;
     }
       case "menu.requests": await sendRequests(client, user, chatId); break;
+      case "menu.request_card": await beginCardRequest(client, user, chatId); break;
+      case "cardreq.submit": {
+        const state = await getBotState(user.id);
+        if (!state || state.mode !== "card_request_confirm" || !state.payload.amountUsdCents || !state.payload.email) {
+          throw new ApiError(409, "draft_expired", "This card request draft expired. Start again.");
+        }
+        const created = await createTelegramCardRequest(user.id, {
+          amountUsdCents: state.payload.amountUsdCents,
+          email: state.payload.email,
+        });
+        await getPool().query(`DELETE FROM telegram_bot_states WHERE user_id=$1::uuid`, [user.id]);
+        const detail = await createCallbackToken({ userId: user.id, action: "cardreq.detail", entityId: created.request.id });
+        await client.sendMessage({
+          chatId,
+          text: `Card request <b>${escapeHtml(created.request.reference)}</b> was submitted. You can track it from My requests.`,
+          replyMarkup: { inline_keyboard: [[{ text: "View request", callback_data: detail }]] },
+        });
+        break;
+      }
+      case "cardreq.cancel_draft":
+        await getPool().query(`DELETE FROM telegram_bot_states WHERE user_id=$1::uuid`, [user.id]);
+        await sendMainMenu(client, user, chatId);
+        break;
+      case "cardreq.detail": if (resolved.entity_id) await sendCardRequestDetail(client, user, chatId, resolved.entity_id); break;
+      case "cardreq.cancel_existing": {
+        if (!resolved.entity_id) break;
+        await cancelTelegramCardRequest(user.id, resolved.entity_id);
+        await client.sendMessage({ chatId, text: "Card request cancelled." });
+        await sendRequests(client, user, chatId);
+        break;
+      }
       case "menu.add_funds": await beginFundingRequest(client, user, chatId); break;
       case "fundreq.card": {
         if (!resolved.entity_id) break;
@@ -1442,6 +1563,7 @@ async function handleMessage(client: TelegramClient, message: z.infer<typeof mes
   }
 
   if (!(await assertBotAccess(client, user, chatId))) return;
+  if (text && await handleCardRequestText(client,user,chatId,text)) return;
   if (await handleFundingReceiptMedia(client,user,chatId,message)) return;
   if (text && await handleFundingRequestText(client,user,chatId,text)) return;
   await sendMainMenu(client, user, chatId);

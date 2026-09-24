@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { getPool, withTransaction, type DatabaseQueryable } from "@/server/database/pool";
 import { ApiError } from "@/server/http/api";
+import { assignAccountInTransaction, listAssignableAccounts } from "@/server/clients/assignments";
 
 const OPEN_STATUSES = ["pending_review", "approved", "correction_needed", "issuing", "issue_failed", "needs_reconciliation"] as const;
 const REVIEWABLE_STATUSES = ["pending_review", "correction_needed"] as const;
@@ -34,12 +35,23 @@ type RequestRow = {
 };
 
 export const telegramDraftSchema = z.object({
-  bin: z.string().regex(/^\d{6}$/),
   amountUsdCents: z.number().int().positive(),
-  nameOnCard: z.string().trim().min(2).max(100),
   email: z.string().trim().email().max(320),
-  dateOfBirth: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable(),
 });
+
+async function latestApprovedKyc(db: DatabaseQueryable, userId: string) {
+  const result = await db.query<{ full_name: string; date_of_birth: string | Date | null }>(
+    `SELECT full_name,date_of_birth
+       FROM kyc_submissions
+      WHERE telegram_user_id=$1::uuid AND status='approved'
+      ORDER BY reviewed_at DESC NULLS LAST, submitted_at DESC, id DESC
+      LIMIT 1`,
+    [userId],
+  );
+  const row = result.rows[0];
+  if (!row) throw new ApiError(403, "kyc_required", "Identity verification must be approved before requesting another card.");
+  return row;
+}
 
 async function setting<T>(db: DatabaseQueryable, key: string, fallback: T): Promise<T> {
   const result = await db.query<{ typed_value: T }>(`SELECT typed_value FROM settings WHERE key=$1`, [key]);
@@ -151,44 +163,35 @@ export async function createTelegramCardRequest(userId: string, draftInput: z.in
   const draft = telegramDraftSchema.parse(draftInput);
   return withTransaction(async (db) => {
     await lockUserRequestCapacity(db, userId);
-    const bins = await getCardRequestBins(db);
-    const chosenBin = bins.find((item) => item.bin === draft.bin);
-    if (!chosenBin) throw new ApiError(400, "unsupported_bin", "That BIN is not currently enabled for card requests.");
-    if (chosenBin.requiresDob && !draft.dateOfBirth) throw new ApiError(400, "date_of_birth_required", "Date of birth is required for that BIN.");
-    if (!chosenBin.requiresDob && draft.dateOfBirth) draft.dateOfBirth = null;
-
-    const capacity = await capacitySnapshot(db, userId);
-    if (capacity.assigned_accounts < 1) throw new ApiError(403, "account_assignment_required", "An assigned Kripicard account is required before requesting a card.");
+    const [profile, bins, capacity] = await Promise.all([
+      latestApprovedKyc(db, userId),
+      getCardRequestBins(db),
+      capacitySnapshot(db, userId),
+    ]);
+    const placeholderBin = bins[0]?.bin;
+    if (!placeholderBin) throw new ApiError(409, "card_bin_unconfigured", "Card issuance is not configured yet. Contact support.");
     if (draft.amountUsdCents < capacity.minimumUsdCents) {
-      throw new ApiError(400, "amount_below_minimum", `The minimum initial card amount is $${(capacity.minimumUsdCents / 100).toFixed(2)}.`);
+      throw new ApiError(400, "amount_below_minimum", `The minimum initial card amount is ${(capacity.minimumUsdCents / 100).toFixed(2)}.`);
     }
     const result = await db.query<RequestRow>(
       `INSERT INTO card_requests(reference,user_id,bin,initial_amount_usd_cents,name_on_card,email,date_of_birth,status)
        VALUES ('CR-' || nextval('card_request_reference_seq')::text,$1::uuid,$2,$3,$4,$5,$6::date,'pending_review')
        RETURNING *`,
-      [userId, draft.bin, draft.amountUsdCents, draft.nameOnCard, draft.email, draft.dateOfBirth],
+      [userId, placeholderBin, draft.amountUsdCents, profile.full_name, draft.email, normalizeDob(profile.date_of_birth)],
     );
     const row = result.rows[0]!;
     await insertEvent(db, { requestId: row.id, toStatus: row.status, actorType: "telegram_user", telegramUserId: userId, metadata: { reference: row.reference } });
     await db.query(
       `INSERT INTO audit_logs(actor_type,actor_id,action,entity_type,entity_id,metadata_redacted)
        VALUES ('telegram_user',$1::uuid,'card_request.submitted','card_request',$2,$3::jsonb)`,
-      [userId, row.id, JSON.stringify({ reference: row.reference, bin: row.bin, initialAmountUsdCents: String(row.initial_amount_usd_cents) })],
+      [userId, row.id, JSON.stringify({ reference: row.reference, initialAmountUsdCents: String(row.initial_amount_usd_cents) })],
     );
     return { request: serialize(row), capacity: { ...capacity, usedSlots: capacity.usedSlots + 1 } };
   });
 }
 
-async function eligibleAccounts(db: DatabaseQueryable, userId: string) {
-  const result = await db.query<{ id: string; label: string; login_email: string; status: string }>(
-    `SELECT a.id,a.label,a.login_email,a.status
-       FROM telegram_account_assignments taa
-       JOIN kripi_accounts a ON a.id=taa.account_id
-      WHERE taa.telegram_user_id=$1::uuid AND a.archived_at IS NULL AND a.status <> 'disabled'
-      ORDER BY a.label ASC,a.id ASC`,
-    [userId],
-  );
-  return result.rows.map((row) => ({ id: row.id, label: row.label, loginEmail: row.login_email, status: row.status }));
+async function eligibleAccounts(_db: DatabaseQueryable, userId: string) {
+  return listAssignableAccounts(userId, "", 100);
 }
 
 export async function listCardRequests(args: { search?: string; status?: string | null; limit?: number; cursor?: string | null }) {
@@ -213,10 +216,12 @@ export async function listCardRequests(args: { search?: string; status?: string 
     values,
   );
   const rows = result.rows.slice(0, limit);
+  const availableBins = await getCardRequestBins();
   const items = await Promise.all(rows.map(async (row) => ({
     ...serialize(row),
     client: { id: row.user_id, displayName: row.display_name, username: row.username, telegramUserId: String(row.telegram_user_id) },
     eligibleAccounts: await eligibleAccounts(getPool(), row.user_id),
+    availableBins,
   })));
   const last = rows.at(-1);
   return {
@@ -240,6 +245,7 @@ export async function getCardRequestDetail(requestId: string) {
     ...serialize(row),
     client: { id: row.user_id, displayName: row.display_name, username: row.username, telegramUserId: String(row.telegram_user_id) },
     eligibleAccounts: await eligibleAccounts(getPool(), row.user_id),
+    availableBins: await getCardRequestBins(),
     events: events.rows.map((event) => ({ id: event.id, fromStatus: event.from_status, toStatus: event.to_status, actorType: event.actor_type, note: event.note, metadata: event.safe_metadata, createdAt: event.created_at.toISOString() })),
   };
 }
@@ -248,6 +254,7 @@ export async function reviewCardRequest(args: {
   requestId: string;
   action: "approve" | "reject";
   selectedAccountId?: string | null;
+  selectedBin?: string | null;
   note?: string | null;
   adminId: string;
   requestIdHeader: string;
@@ -264,15 +271,21 @@ export async function reviewCardRequest(args: {
     let selectedAccountId: string | null = row.selected_account_id;
     if (args.action === "approve") {
       if (![...REVIEWABLE_STATUSES].some((status) => status === row.status)) throw new ApiError(409, "already_approved", "This request is already approved.");
-      if (!args.selectedAccountId) throw new ApiError(400, "account_required", "Select one of the client's currently assigned Kripicard accounts.");
-      const ownership = await db.query<{ id: string }>(
-        `SELECT a.id FROM telegram_account_assignments taa JOIN kripi_accounts a ON a.id=taa.account_id
-          WHERE taa.telegram_user_id=$1::uuid AND a.id=$2::uuid AND a.archived_at IS NULL AND a.status <> 'disabled' FOR UPDATE OF taa,a`,
-        [row.user_id, args.selectedAccountId],
-      );
-      if (!ownership.rows[0]) throw new ApiError(409, "account_not_assigned", "That account is no longer assigned to this client. Refresh the request.");
-      await capacitySnapshot(db, row.user_id, row.id);
+      if (!args.selectedAccountId) throw new ApiError(400, "account_required", "Select the internal Kripicard account that should issue this card.");
+      if (!args.selectedBin) throw new ApiError(400, "bin_required", "Select the card BIN for this request.");
+      const bins = await getCardRequestBins(db);
+      const selectedBin = bins.find((item) => item.bin === args.selectedBin);
+      if (!selectedBin) throw new ApiError(400, "unsupported_bin", "That BIN is not enabled for card issuance.");
+      if (selectedBin.requiresDob && !row.date_of_birth) throw new ApiError(409, "date_of_birth_required", "The selected BIN requires a date of birth, but this customer's approved KYC does not contain one.");
+      await assignAccountInTransaction(db, {
+        clientId: row.user_id,
+        accountId: args.selectedAccountId,
+        adminId: args.adminId,
+        requestId: args.requestIdHeader,
+        ip: args.ip,
+      });
       selectedAccountId = args.selectedAccountId;
+      row.bin = selectedBin.bin;
       nextStatus = "approved";
     } else {
       if (row.status === "issued") throw new ApiError(409, "invalid_state", "An issued request cannot be rejected.");
@@ -280,15 +293,15 @@ export async function reviewCardRequest(args: {
     }
 
     const updated = await db.query<RequestRow>(
-      `UPDATE card_requests SET status=$2,selected_account_id=$3::uuid,admin_note=$4,reviewed_by=$5::uuid,updated_at=now()
+      `UPDATE card_requests SET status=$2,selected_account_id=$3::uuid,admin_note=$4,reviewed_by=$5::uuid,bin=$6,updated_at=now()
         WHERE id=$1::uuid RETURNING *`,
-      [row.id, nextStatus, selectedAccountId, args.note?.trim().slice(0, 1000) || null, args.adminId],
+      [row.id, nextStatus, selectedAccountId, args.note?.trim().slice(0, 1000) || null, args.adminId, row.bin],
     );
-    await insertEvent(db, { requestId: row.id, fromStatus: row.status, toStatus: nextStatus, actorType: "admin", adminId: args.adminId, note: args.note ?? null, metadata: { selectedAccountId } });
+    await insertEvent(db, { requestId: row.id, fromStatus: row.status, toStatus: nextStatus, actorType: "admin", adminId: args.adminId, note: args.note ?? null, metadata: { selectedAccountId, selectedBin: row.bin } });
     await db.query(
       `INSERT INTO audit_logs(actor_type,actor_id,action,entity_type,entity_id,metadata_redacted,ip,request_id)
        VALUES ('admin',$1::uuid,$2,'card_request',$3,$4::jsonb,$5::inet,$6)`,
-      [args.adminId, `card_request.${args.action}`, row.id, JSON.stringify({ reference: row.reference, fromStatus: row.status, toStatus: nextStatus, selectedAccountId }), args.ip ?? null, args.requestIdHeader],
+      [args.adminId, `card_request.${args.action}`, row.id, JSON.stringify({ reference: row.reference, fromStatus: row.status, toStatus: nextStatus, selectedAccountId, selectedBin: row.bin }), args.ip ?? null, args.requestIdHeader],
     );
     await queueStatusNotification(db, row.id, nextStatus);
     return serialize(updated.rows[0]!);

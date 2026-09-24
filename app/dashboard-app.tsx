@@ -47,7 +47,7 @@ import {
   XCircle,
 } from "lucide-react";
 import { toast } from "sonner";
-import { AdminApiError, createAccount, archiveAccount, fetchDashboardSnapshot, reauthenticateAdmin, revealAccountSecrets, updateAccount, verifyAccountConnection, syncAccountCards, fetchAccountCards, type ApiCard, revealLiveCardDetails, syncCardTransactions, fetchCardTransactions, fetchTransactions, fetchTransactionNotificationIssues, reconcileTransactionNotification, setCardFrozenState, refreshCardStatus, connectOutlookMailbox, syncOutlookMailbox, disconnectOutlookMailbox, connectGmailMailbox, syncGmailMailbox, disconnectGmailMailbox, fetchEmailOAuthSetup, type EmailOAuthSetup, fetchAccountEmailMessages, classifyAccountEmail, revealParsedOtp, fetchTrustedEmailRules, createTrustedEmailRule, updateTrustedEmailRule, fetchTelegramBotStatus, configureTelegramWebhook, setTelegramBotToken, clearTelegramBotToken, fetchPaymentCard, updatePaymentCard, fetchFirstCardSettings, updateFirstCardSettings, notifyClient, fetchClientPipeline, type ClientPipelineItem, setClientBanned, fetchClientKyc, type ClientKyc, type ClientPayment, clientReceiptUrl, activateClient, fetchAccountDepositCoins, fetchAccountDepositNetworks, fetchAccountDeposits, createAccountDeposit, refreshAccountDeposit, type AccountDeposit, fetchForceJoinChannels, upsertForceJoinChannel, deleteForceJoinChannel, fetchSupportConversations, updateSupportConversation, retrySupportMessage, fetchClientSupportMessages, sendClientSupportMessage, fetchClientAssignableAccounts, fetchFundingRequests, reviewFundingRequest, executeFundingRequest, reconcileFundingRequest, resolveFundingRequest, fetchProviderWalletGate, type ProviderWalletGate, fundingReceiptDownloadUrl, fetchFundingSettings, updateFundingSettings, type ApiFundingRequest, type AssignableClientAccount, type LiveCardDetails, type StoredCardTransaction, type StoredEmailMessage, type TelegramBotStatus, fetchProviderReadiness, updateProviderReadinessCheck, type ProviderReadinessSnapshot, type TransactionNotificationIssue, type SupportConversationSummary, fetchOperationalSnapshot, updateOperationalAlert, updateRuntimeControl, type OperationalSnapshot, fetchKycSubmissions, reviewKycSubmission, kycDocumentUrl, type ApiKycSubmission } from "@/lib/admin-api";
+import { AdminApiError, createAccount, archiveAccount, fetchDashboardSnapshot, reauthenticateAdmin, revealAccountSecrets, updateAccount, verifyAccountConnection, syncAccountCards, fetchAccountCards, type ApiCard, revealLiveCardDetails, syncCardTransactions, fetchCardTransactions, fetchTransactions, fetchTransactionNotificationIssues, reconcileTransactionNotification, setCardFrozenState, refreshCardStatus, connectOutlookMailbox, syncOutlookMailbox, disconnectOutlookMailbox, connectGmailMailbox, syncGmailMailbox, disconnectGmailMailbox, fetchEmailOAuthSetup, type EmailOAuthSetup, fetchAccountEmailMessages, classifyAccountEmail, revealParsedOtp, fetchTrustedEmailRules, createTrustedEmailRule, updateTrustedEmailRule, fetchTelegramBotStatus, configureTelegramWebhook, setTelegramBotToken, clearTelegramBotToken, fetchPaymentCard, updatePaymentCard, fetchFirstCardSettings, updateFirstCardSettings, notifyClient, fetchClientPipeline, type ClientPipelineItem, setClientBanned, fetchClientKyc, type ClientKyc, type ClientPayment, clientReceiptUrl, activateClient, fetchAccountDepositCoins, fetchAccountDepositNetworks, fetchAccountDeposits, createAccountDeposit, refreshAccountDeposit, type AccountDeposit, fetchForceJoinChannels, upsertForceJoinChannel, deleteForceJoinChannel, fetchSupportConversations, updateSupportConversation, retrySupportMessage, fetchClientSupportMessages, sendClientSupportMessage, fetchClientAssignableAccounts, fetchCardRequests, reviewCardRequest, issueCardRequest, reconcileCardRequest, type ApiCardRequest, fetchFundingRequests, reviewFundingRequest, executeFundingRequest, reconcileFundingRequest, resolveFundingRequest, fetchProviderWalletGate, type ProviderWalletGate, fundingReceiptDownloadUrl, fetchFundingSettings, updateFundingSettings, type ApiFundingRequest, type AssignableClientAccount, type LiveCardDetails, type StoredCardTransaction, type StoredEmailMessage, type TelegramBotStatus, fetchProviderReadiness, updateProviderReadinessCheck, type ProviderReadinessSnapshot, type TransactionNotificationIssue, type SupportConversationSummary, fetchOperationalSnapshot, updateOperationalAlert, updateRuntimeControl, type OperationalSnapshot, fetchKycSubmissions, reviewKycSubmission, kycDocumentUrl, type ApiKycSubmission } from "@/lib/admin-api";
 import { disableAdminMfa, enableAdminMfa, fetchCurrentAdmin, logoutAdmin, setupAdminMfa, type CurrentAdmin } from "@/lib/auth-client";
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -442,6 +442,7 @@ export default function DashboardApp() {
   const [cards, setCards] = useState<ClientCard[]>([]);
   const [accountEmails, setAccountEmails] = useState<AccountEmail[]>([]);
   const [fundingRequests, setFundingRequests] = useState<FundingRequest[]>([]);
+  const [cardRequests, setCardRequests] = useState<ApiCardRequest[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [transactionNotificationIssues, setTransactionNotificationIssues] = useState<TransactionNotificationIssue[]>([]);
   const [messages, setMessages] = useState<Record<string, Message[]>>({});
@@ -464,6 +465,7 @@ export default function DashboardApp() {
   const [activeCardTransactions, setActiveCardTransactions] = useState<StoredCardTransaction[]>([]);
   const [cardStatePendingId, setCardStatePendingId] = useState<string | null>(null);
   const [fundingExecutionPendingId, setFundingExecutionPendingId] = useState<string | null>(null);
+  const [cardRequestPendingId, setCardRequestPendingId] = useState<string | null>(null);
   const [fundingReauth, setFundingReauth] = useState<{ title: string; description: string } | null>(null);
   const fundingReauthRetryRef = useRef<(() => Promise<void>) | null>(null);
   const [fundingReauthPassword, setFundingReauthPassword] = useState("");
@@ -572,6 +574,7 @@ export default function DashboardApp() {
         setClients(nextClients);
         setAccountEmails([]);
         setFundingRequests([]);
+        setCardRequests([]);
         setTransactions([]);
         setMessages({});
         setActiveChatId(nextClients[0]?.id ?? "");
@@ -605,12 +608,17 @@ export default function DashboardApp() {
     if (!backendDataLoaded || (view !== "overview" && view !== "requests")) return;
     let cancelled = false;
     const timer = window.setTimeout(() => {
-      fetchFundingRequests({ search: view === "requests" ? search : undefined, limit: 100 })
-        .then((fundingResult) => {
-          if (!cancelled) setFundingRequests(fundingResult.items.map(mapApiFundingRequest));
+      Promise.all([
+        fetchFundingRequests({ search: view === "requests" ? search : undefined, limit: 100 }),
+        fetchCardRequests({ search: view === "requests" ? search : undefined, limit: 100 }),
+      ])
+        .then(([fundingResult, cardResult]) => {
+          if (cancelled) return;
+          setFundingRequests(fundingResult.items.map(mapApiFundingRequest));
+          setCardRequests(cardResult.items);
         })
         .catch((error) => {
-          if (!cancelled) toast.error(error instanceof Error ? error.message : "Could not load funding requests.");
+          if (!cancelled) toast.error(error instanceof Error ? error.message : "Could not load requests.");
         });
     }, 180);
     return () => { cancelled = true; window.clearTimeout(timer); };
@@ -1304,6 +1312,11 @@ export default function DashboardApp() {
     setFundingRequests(result.items.map(mapApiFundingRequest));
   };
 
+  const reloadCardRequests = async () => {
+    const result = await fetchCardRequests({ search, limit: 100 });
+    setCardRequests(result.items);
+  };
+
   const queueFundingReauthentication = (title: string, description: string, retry: () => Promise<void>) => {
     fundingReauthRetryRef.current = retry;
     setFundingReauth({ title, description });
@@ -1337,6 +1350,87 @@ export default function DashboardApp() {
     return blockers.length
       ? `Provider readiness is blocking this action: ${blockers.join(", ")}. Clear those checks in Operations → Kripicard.`
       : error.message;
+  };
+
+  const reviewAdditionalCardRequest = async (request: ApiCardRequest, action: "approve" | "reject", accountId?: string, bin?: string) => {
+    if (!backendDataLoaded || cardRequestPendingId) return;
+    if (action === "approve" && (!accountId || !bin)) {
+      toast.error("Choose the internal Kripicard account and BIN before approving.");
+      return;
+    }
+    const note = action === "reject" ? (window.prompt("Optional rejection note for the customer:") ?? "") : "";
+    setCardRequestPendingId(request.id);
+    try {
+      await reviewCardRequest(request.id, {
+        action,
+        selectedAccountId: accountId ?? null,
+        selectedBin: bin ?? null,
+        note: note.trim() || null,
+      });
+      await reloadCardRequests();
+      toast.success(action === "approve" ? "Card request approved. The selected account is now assigned internally and ready for issuance." : "Card request rejected.");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Card request review failed.");
+    } finally {
+      setCardRequestPendingId(null);
+    }
+  };
+
+  const issueAdditionalCardRequest = async (request: ApiCardRequest, options: { confirmed?: boolean; allowReauthPrompt?: boolean } = {}) => {
+    if (!backendDataLoaded || cardRequestPendingId) return;
+    const confirmed = options.confirmed === true || window.confirm("Confirm that the selected Kripicard wallet has enough crypto funding for this card creation.");
+    if (!confirmed) return;
+    setCardRequestPendingId(request.id);
+    try {
+      const result = await issueCardRequest(request.id, true);
+      await reloadCardRequests();
+      if (result.status === "issued") toast.success("Card created and linked to the customer.");
+      else toast.warning("Card creation outcome is uncertain. Use Reconcile; do not create another card.");
+    } catch (error) {
+      try { await reloadCardRequests(); } catch {}
+      if (options.allowReauthPrompt !== false && error instanceof AdminApiError && error.code === "reauthentication_required") {
+        queueFundingReauthentication(
+          "Confirm live card creation",
+          "Creating this card changes provider money state. Re-enter your admin credentials, then AccAbad will retry this exact issuance action.",
+          () => issueAdditionalCardRequest(request, { confirmed: true, allowReauthPrompt: false }),
+        );
+      } else if (error instanceof AdminApiError && error.code === "mfa_required") {
+        toast.error("Enable MFA in Settings → Security before performing live card creation.");
+      } else if (error instanceof AdminApiError && error.code === "feature_disabled") {
+        toast.error("Card creation is installed but disabled. Enable the live-provider and card-creation deployment gates.");
+      } else if (error instanceof AdminApiError && error.code === "runtime_kill_switch") {
+        toast.error("Card creation is disabled by an emergency runtime control.");
+      } else if (error instanceof AdminApiError && providerGateMessage(error)) {
+        toast.error(providerGateMessage(error)!);
+      } else {
+        toast.error(error instanceof Error ? error.message : "Card creation failed.");
+      }
+    } finally {
+      setCardRequestPendingId(null);
+    }
+  };
+
+  const reconcileAdditionalCardRequest = async (request: ApiCardRequest, allowReauthPrompt = true) => {
+    if (!backendDataLoaded || cardRequestPendingId) return;
+    setCardRequestPendingId(request.id);
+    try {
+      const result = await reconcileCardRequest(request.id);
+      await reloadCardRequests();
+      if (result.status === "issued") toast.success("Card issuance reconciled and completed.");
+      else toast.warning("No unique matching card was found yet. Keep this request in reconciliation.");
+    } catch (error) {
+      if (allowReauthPrompt && error instanceof AdminApiError && error.code === "reauthentication_required") {
+        queueFundingReauthentication(
+          "Reconcile card creation",
+          "Reconciliation reads the provider state for a money-sensitive card creation. Re-enter your admin credentials to continue.",
+          () => reconcileAdditionalCardRequest(request, false),
+        );
+      } else {
+        toast.error(error instanceof Error ? error.message : "Card issuance reconciliation failed.");
+      }
+    } finally {
+      setCardRequestPendingId(null);
+    }
   };
 
   const advanceRequest = async (request: FundingRequest) => {
@@ -1709,6 +1803,8 @@ export default function DashboardApp() {
             {view === "requests" && (
               <RequestsView
                 fundingRequests={fundingRequests}
+                cardRequests={cardRequests}
+                cardRequestPendingId={cardRequestPendingId}
                 clientName={clientName}
                 search={search}
                 kycPendingCount={kycPendingCount}
@@ -1719,6 +1815,9 @@ export default function DashboardApp() {
                 issues={transactionNotificationIssues}
                 onReconcileIssue={reconcileNotificationIssue}
                 onOpenRequest={setActiveRequestId}
+                onReviewCardRequest={reviewAdditionalCardRequest}
+                onIssueCardRequest={issueAdditionalCardRequest}
+                onReconcileCardRequest={reconcileAdditionalCardRequest}
                 onOpenClient={setActiveClientId}
                 onPaymentDecision={async (clientId, action) => {
                   try {
@@ -2587,28 +2686,150 @@ function ClientsView({ clients, cards, onOpen, onToggleBan, accountName, kycStat
   );
 }
 
-function RequestsView({ fundingRequests, clientName, search, onOpenRequest, kycPendingCount, clients, paymentStatusByUser, paymentPipelineByUser, onOpenClient, onPaymentDecision, transactions, issues, onReconcileIssue }: { fundingRequests: FundingRequest[]; clientName: (id: string | null) => string; search: string; onOpenRequest: (id: string) => void; kycPendingCount: number; clients: Client[]; paymentStatusByUser: Record<string, string | null>; paymentPipelineByUser: Record<string, ClientPipelineItem>; onOpenClient: (id: string) => void; onPaymentDecision: (clientId: string, action: "accept" | "deny") => void | Promise<void>; transactions: Transaction[]; issues: TransactionNotificationIssue[]; onReconcileIssue: (id: string, action: "acknowledge" | "retry") => void | Promise<void> }) {
+function RequestsView({
+  fundingRequests,
+  cardRequests,
+  cardRequestPendingId,
+  clientName,
+  search,
+  onOpenRequest,
+  onReviewCardRequest,
+  onIssueCardRequest,
+  onReconcileCardRequest,
+  kycPendingCount,
+  clients,
+  paymentStatusByUser,
+  paymentPipelineByUser,
+  onOpenClient,
+  onPaymentDecision,
+  transactions,
+  issues,
+  onReconcileIssue,
+}: {
+  fundingRequests: FundingRequest[];
+  cardRequests: ApiCardRequest[];
+  cardRequestPendingId: string | null;
+  clientName: (id: string | null) => string;
+  search: string;
+  onOpenRequest: (id: string) => void;
+  onReviewCardRequest: (request: ApiCardRequest, action: "approve" | "reject", accountId?: string, bin?: string) => void | Promise<void>;
+  onIssueCardRequest: (request: ApiCardRequest) => void | Promise<void>;
+  onReconcileCardRequest: (request: ApiCardRequest) => void | Promise<void>;
+  kycPendingCount: number;
+  clients: Client[];
+  paymentStatusByUser: Record<string, string | null>;
+  paymentPipelineByUser: Record<string, ClientPipelineItem>;
+  onOpenClient: (id: string) => void;
+  onPaymentDecision: (clientId: string, action: "accept" | "deny") => void | Promise<void>;
+  transactions: Transaction[];
+  issues: TransactionNotificationIssue[];
+  onReconcileIssue: (id: string, action: "acknowledge" | "retry") => void | Promise<void>;
+}) {
   const [paymentActionId, setPaymentActionId] = useState<string | null>(null);
+  const [cardChoices, setCardChoices] = useState<Record<string, { accountId: string; bin: string }>>({});
   const needle = search.trim().toLowerCase();
   const matchingFundingRequests = fundingRequests.filter((request) => !needle || `${request.id} ${clientName(request.clientId)} ${request.cardLast4} ${request.receipt} ${request.receiptType} ${fundingMeta[request.status].label}`.toLowerCase().includes(needle));
+  const matchingCardRequests = cardRequests.filter((request) => !needle || `${request.reference} ${request.client.displayName ?? ""} ${request.client.username ?? ""} ${request.email} ${request.status}`.toLowerCase().includes(needle));
   const onboardingClients = clients.filter((client) => {
     const status = paymentStatusByUser[client.id];
     return status && status !== "complete" && status !== "denied" && (!needle || `${client.name} ${client.username} ${client.telegramId} ${status}`.toLowerCase().includes(needle));
   });
   const fundingPaging = usePaginatedItems(matchingFundingRequests);
+  const cardPaging = usePaginatedItems(matchingCardRequests);
   const onboardingPaging = usePaginatedItems(onboardingClients);
-  const defaultTab = matchingFundingRequests.length ? "funding" : onboardingClients.length ? "onboarding" : kycPendingCount ? "kyc" : "funding";
+  const openCardCount = cardRequests.filter((item) => !["issued", "rejected", "cancelled"].includes(item.status)).length;
+  const defaultTab = openCardCount ? "cards" : matchingFundingRequests.length ? "funding" : onboardingClients.length ? "onboarding" : kycPendingCount ? "kyc" : "cards";
+
+  const cardChoice = (request: ApiCardRequest) => cardChoices[request.id] ?? {
+    accountId: request.selectedAccountId ?? request.eligibleAccounts.find((account) => account.selected)?.id ?? "",
+    bin: request.status === "pending_review" || request.status === "correction_needed"
+      ? request.availableBins[0]?.bin ?? ""
+      : request.bin,
+  };
 
   return (
     <>
-      <PageIntro title="Request center" description="Review existing-card add-funds requests, KYC, and transaction notification issues. First-card onboarding is handled from the client record." />
+      <PageIntro title="Request center" description="Review new-card requests, existing-card funding, first-card onboarding, KYC, and transaction notification issues." />
       <Tabs defaultValue={defaultTab}>
         <TabsList className="mb-4 h-11 rounded-[14px] border border-[#e7e5ef] bg-white p-1 shadow-[0_4px_18px_rgba(26,24,48,.04)]">
+          <TabsTrigger className="rounded-[10px] px-4 data-[state=active]:bg-[#eeecff] data-[state=active]:text-[#5146ca]" value="cards">New cards <Badge className="ml-1.5 rounded-full bg-[#6157e7] text-white">{openCardCount}</Badge></TabsTrigger>
           <TabsTrigger className="rounded-[10px] px-4 data-[state=active]:bg-[#eeecff] data-[state=active]:text-[#5146ca]" value="funding">Funding <Badge className="ml-1.5 rounded-full bg-[#6157e7] text-white">{fundingRequests.filter((item) => !["completed", "rejected", "cancelled"].includes(item.status)).length}</Badge></TabsTrigger>
           <TabsTrigger className="rounded-[10px] px-4 data-[state=active]:bg-[#eeecff] data-[state=active]:text-[#5146ca]" value="onboarding">First cards <Badge className="ml-1.5 rounded-full bg-[#6157e7] text-white">{onboardingClients.length}</Badge></TabsTrigger>
           <TabsTrigger className="rounded-[10px] px-4 data-[state=active]:bg-[#eeecff] data-[state=active]:text-[#5146ca]" value="kyc">KYC <Badge className="ml-1.5 rounded-full bg-[#6157e7] text-white">{kycPendingCount}</Badge></TabsTrigger>
           <TabsTrigger className="rounded-[10px] px-4 data-[state=active]:bg-[#eeecff] data-[state=active]:text-[#5146ca]" value="transactions">Transactions <Badge variant="outline" className="ml-1.5 rounded-full">{transactions.length}</Badge></TabsTrigger>
         </TabsList>
+
+        <TabsContent value="cards">
+          <Card className="data-table overflow-hidden surface-card rounded-[24px]">
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow className="bg-[#faf9fc]">
+                    <TableHead className="pl-6">Request</TableHead>
+                    <TableHead>Customer</TableHead>
+                    <TableHead>Amount / email</TableHead>
+                    <TableHead>Internal account</TableHead>
+                    <TableHead>BIN</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead className="text-right">Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {cardPaging.pageItems.map((request) => {
+                    const choice = cardChoice(request);
+                    const reviewable = ["pending_review", "correction_needed"].includes(request.status);
+                    const busy = cardRequestPendingId === request.id;
+                    return <TableRow key={request.id}>
+                      <TableCell className="pl-6"><span className="font-semibold text-[#353146]">{request.reference}</span><span className="mt-0.5 block text-xs text-[#9692a3]">{new Date(request.createdAt).toLocaleString()}</span></TableCell>
+                      <TableCell><span className="font-semibold">{request.client.displayName ?? request.client.username ?? request.client.telegramUserId}</span><span className="block text-xs text-[#9d99aa]">{request.client.username ? `@${request.client.username.replace(/^@/, "")}` : request.client.telegramUserId}</span></TableCell>
+                      <TableCell><span className="font-semibold">{formatUsd(Number(request.initialAmountUsdCents) / 100)}</span><span className="block text-xs text-[#9d99aa]">{request.email}</span></TableCell>
+                      <TableCell>
+                        <Select
+                          disabled={!reviewable || busy}
+                          value={choice.accountId}
+                          onValueChange={(accountId) => setCardChoices((current) => ({ ...current, [request.id]: { ...choice, accountId } }))}
+                        >
+                          <SelectTrigger className="min-w-48"><SelectValue placeholder="Choose account" /></SelectTrigger>
+                          <SelectContent>
+                            {request.eligibleAccounts.map((account) => <SelectItem key={account.id} value={account.id}>{account.label}{account.selected ? " · current" : " · free"}</SelectItem>)}
+                          </SelectContent>
+                        </Select>
+                      </TableCell>
+                      <TableCell>
+                        <Select
+                          disabled={!reviewable || busy}
+                          value={choice.bin}
+                          onValueChange={(bin) => setCardChoices((current) => ({ ...current, [request.id]: { ...choice, bin } }))}
+                        >
+                          <SelectTrigger className="min-w-36"><SelectValue placeholder="Choose BIN" /></SelectTrigger>
+                          <SelectContent>
+                            {request.availableBins.map((item) => <SelectItem key={item.bin} value={item.bin}>{item.bin}{item.requiresDob ? " · DOB" : ""}</SelectItem>)}
+                          </SelectContent>
+                        </Select>
+                      </TableCell>
+                      <TableCell><Badge variant="outline" className="rounded-full">{request.status.replaceAll("_", " ")}</Badge></TableCell>
+                      <TableCell>
+                        <div className="flex justify-end gap-2">
+                          {reviewable && <>
+                            <Button size="sm" variant="outline" className="border-red-200 text-red-700" disabled={busy} onClick={() => void onReviewCardRequest(request, "reject")}>Reject</Button>
+                            <Button size="sm" disabled={busy || !choice.accountId || !choice.bin} onClick={() => void onReviewCardRequest(request, "approve", choice.accountId, choice.bin)}>Approve</Button>
+                          </>}
+                          {["approved", "issue_failed"].includes(request.status) && <Button size="sm" disabled={busy} onClick={() => void onIssueCardRequest(request)}>Issue card</Button>}
+                          {request.status === "needs_reconciliation" && <Button size="sm" variant="outline" disabled={busy} onClick={() => void onReconcileCardRequest(request)}><RefreshCw className="size-3.5" />Reconcile</Button>}
+                          {request.status === "issuing" && <Button size="sm" disabled>Issuing…</Button>}
+                          {request.status === "issued" && <Badge variant="outline" className="border-emerald-200 bg-emerald-50 text-emerald-700">Issued</Badge>}
+                        </div>
+                      </TableCell>
+                    </TableRow>;
+                  })}
+                </TableBody>
+              </Table>
+            </div>
+            {matchingCardRequests.length === 0 && <div className="border-t p-8 text-center text-sm text-[#9692a3]">No additional-card requests match this view.</div>}
+            <ListPagination page={cardPaging.page} pageSize={cardPaging.pageSize} totalItems={cardPaging.totalItems} totalPages={cardPaging.totalPages} onPageChange={cardPaging.setPage} />
+          </Card>
+        </TabsContent>
+
         <TabsContent value="funding">
           <Card className="data-table overflow-hidden surface-card rounded-[24px]">
             <div className="overflow-x-auto"><Table><TableHeader><TableRow className="bg-[#faf9fc]"><TableHead className="pl-6">Request</TableHead><TableHead>Client</TableHead><TableHead>Card</TableHead><TableHead>Receipt</TableHead><TableHead>Client pays</TableHead><TableHead>Status</TableHead><TableHead /></TableRow></TableHeader><TableBody>{fundingPaging.pageItems.map((request) => <TableRow key={request.id} className="cursor-pointer" onClick={() => onOpenRequest(request.id)}><TableCell className="pl-6 font-semibold text-[#353146]">{request.id}<span className="mt-0.5 block text-xs font-normal text-[#9692a3]">{request.submitted}</span></TableCell><TableCell>{clientName(request.clientId)}</TableCell><TableCell><span className="font-semibold">{formatUsd(request.amount)}</span><span className="block text-xs text-[#9d99aa]">to •{request.cardLast4}</span></TableCell><TableCell><span className="inline-flex items-center gap-2 text-sm"><ReceiptIcon type={request.receiptType} />{request.receiptType.toUpperCase()}</span></TableCell><TableCell className="font-medium">{formatRial(request.rialTotal)}</TableCell><TableCell><StatusBadge status={request.status} /></TableCell><TableCell><span className="grid size-8 place-items-center rounded-lg bg-[#f4f2fa]"><ChevronRight className="size-4 text-[#777287]" /></span></TableCell></TableRow>)}</TableBody></Table></div>
@@ -2616,6 +2837,7 @@ function RequestsView({ fundingRequests, clientName, search, onOpenRequest, kycP
             <ListPagination page={fundingPaging.page} pageSize={fundingPaging.pageSize} totalItems={fundingPaging.totalItems} totalPages={fundingPaging.totalPages} onPageChange={fundingPaging.setPage} />
           </Card>
         </TabsContent>
+
         <TabsContent value="onboarding">
           <Card className="data-table overflow-hidden surface-card rounded-[24px]">
             <div className="overflow-x-auto">

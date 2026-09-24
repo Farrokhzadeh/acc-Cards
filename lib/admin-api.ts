@@ -585,6 +585,66 @@ export async function fetchClientAssignableAccounts(clientId: string, search = "
   return apiJson<{ items: AssignableClientAccount[] }>(`/api/v1/clients/${encodeURIComponent(clientId)}/accounts?${query.toString()}`, { method: "GET" });
 }
 
+export type ApiCardRequest = {
+  id: string;
+  reference: string;
+  userId: string;
+  selectedAccountId: string | null;
+  bin: string;
+  initialAmountUsdCents: string;
+  nameOnCard: string;
+  email: string;
+  dateOfBirth: string | null;
+  status: "pending_review" | "approved" | "correction_needed" | "issuing" | "issue_failed" | "needs_reconciliation" | "issued" | "rejected" | "cancelled";
+  adminNote: string | null;
+  providerCardId: string | null;
+  createdAt: string;
+  updatedAt: string;
+  client: { id: string; displayName: string | null; username: string | null; telegramUserId: string };
+  eligibleAccounts: AssignableClientAccount[];
+  availableBins: Array<{ bin: string; requiresDob: boolean }>;
+};
+
+export type CardIssuanceResult = {
+  requestId: string;
+  operationId: string;
+  status: "issued" | "needs_reconciliation";
+  cardId?: string | null;
+  providerCardId?: string | null;
+  reconciled: boolean;
+  needsReconciliation: boolean;
+  providerOutcome?: string;
+};
+
+export async function fetchCardRequests(input: { search?: string; status?: string; limit?: number; cursor?: string } = {}) {
+  const query = new URLSearchParams({ limit: String(input.limit ?? 100) });
+  if (input.search?.trim()) query.set("search", input.search.trim());
+  if (input.status?.trim()) query.set("status", input.status.trim());
+  if (input.cursor) query.set("cursor", input.cursor);
+  return apiJson<{ items: ApiCardRequest[]; nextCursor: string | null }>(`/api/v1/card-requests?${query.toString()}`, { method: "GET" });
+}
+
+export async function reviewCardRequest(id: string, input: { action: "approve" | "reject"; selectedAccountId?: string | null; selectedBin?: string | null; note?: string | null }) {
+  return apiJson<ApiCardRequest>(`/api/v1/card-requests/${encodeURIComponent(id)}/transition`, {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+export async function issueCardRequest(id: string, walletFundingConfirmed: boolean) {
+  return apiJson<CardIssuanceResult>(`/api/v1/card-requests/${encodeURIComponent(id)}/issue`, {
+    method: "POST",
+    body: JSON.stringify({ walletFundingConfirmed }),
+  });
+}
+
+export async function reconcileCardRequest(id: string) {
+  return apiJson<CardIssuanceResult>(`/api/v1/card-requests/${encodeURIComponent(id)}/reconcile`, {
+    method: "POST",
+    body: "{}",
+  });
+}
+
 export type ApiFundingRequest = {
   id: string;
   reference: string;

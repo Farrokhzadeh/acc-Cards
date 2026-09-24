@@ -89,11 +89,18 @@ test("ambiguous provider outcomes are reconciled with cards/list and never cause
   assert.match(issuance, /persistence_error_after_provider_write/);
 });
 
-test("standalone issuance routes are closed and onboarding keeps RBAC, CSRF, and recent reauthentication", () => {
-  assert.match(issueRoute, /card_request_flow_disabled/);
-  assert.match(reconcileRoute, /card_request_flow_disabled/);
+test("additional-card issuance routes are guarded while first-card onboarding keeps its own protections", () => {
+  assert.match(issueRoute, /card_requests\.issue/);
+  assert.match(reconcileRoute, /card_requests\.issue/);
   assert.match(issueRoute, /requireCsrf/);
   assert.match(reconcileRoute, /requireCsrf/);
+  assert.match(issueRoute, /requireRecentReauthentication\(session\)/);
+  assert.match(reconcileRoute, /requireRecentReauthentication\(session\)/);
+  assert.match(issueRoute, /walletFundingConfirmed/);
+  assert.match(issueRoute, /issueApprovedCardRequest/);
+  assert.match(reconcileRoute, /reconcileCardIssuance/);
+  assert.doesNotMatch(issueRoute, /card_request_flow_disabled/);
+  assert.doesNotMatch(reconcileRoute, /card_request_flow_disabled/);
   assert.match(activateRoute, /requireAdmin\(request, "clients\.assign"\)/);
   assert.match(activateRoute, /requireCsrf\(request, session\)/);
   assert.match(activateRoute, /requireRecentReauthentication\(session\)/);
