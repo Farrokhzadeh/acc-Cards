@@ -32,13 +32,10 @@ test("documented BINs and DOB-required BINs are configured without inventing a d
   assert.match(migration, /246001.*requiresDob.*true/);
 });
 
-test("request creation serializes capacity checks and counts current cards plus open requests", () => {
+test("request creation stays serialized without enforcing an automatic card-count limit", () => {
   assert.match(service, /pg_advisory_xact_lock/);
   assert.match(service, /FOR UPDATE/);
-  assert.match(service, /active_cards/);
-  assert.match(service, /open_requests/);
-  assert.match(service, /usedSlots/);
-  assert.match(service, /card_limit_reached/);
+  assert.doesNotMatch(service, /platform_card_limit|platformLimit|card_limit_reached/);
 });
 
 test("request submission requires an assigned account and respects configured minimum", () => {
