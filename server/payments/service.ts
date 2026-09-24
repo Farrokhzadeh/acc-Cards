@@ -230,6 +230,35 @@ export async function getPaymentForFundingRequest(fundingRequestId: string) {
   return result.rows[0] ? serialize(result.rows[0]) : null;
 }
 
+export async function assertAcceptedFirstCardPayment(db: DatabaseQueryable, userId: string) {
+  const result = await db.query<PaymentRow>(
+    `SELECT cp.*
+       FROM telegram_users tu
+       JOIN customer_payments cp ON cp.id=tu.first_card_payment_id
+      WHERE tu.id=$1::uuid
+      FOR UPDATE OF cp`,
+    [userId],
+  );
+  const payment = result.rows[0];
+  if (!payment) throw new ApiError(409, "payment_required", "The first-card payment record is missing.");
+  if (payment.status !== "accepted" && payment.status !== "completed") {
+    throw new ApiError(409, "payment_not_approved", "Approve the customer's first-card receipt before performing the card operation.");
+  }
+  return serialize(payment);
+}
+
+export async function markFirstCardPaymentCompleted(db: DatabaseQueryable, userId: string) {
+  await db.query(
+    `UPDATE customer_payments cp
+        SET status='completed',updated_at=now()
+       FROM telegram_users tu
+      WHERE tu.id=$1::uuid
+        AND cp.id=tu.first_card_payment_id
+        AND cp.status='accepted'`,
+    [userId],
+  );
+}
+
 export async function assertAcceptedPaymentForCardRequest(db: DatabaseQueryable, cardRequestId: string) {
   const result = await db.query<PaymentRow>(
     `SELECT * FROM customer_payments WHERE card_request_id=$1::uuid FOR UPDATE`,
