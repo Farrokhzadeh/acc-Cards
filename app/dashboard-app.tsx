@@ -2942,7 +2942,7 @@ function RequestsView({
                       {pipeline?.customerPaysRial && <span className="block text-xs text-[#777287]">{BigInt(pipeline.customerPaysRial).toLocaleString("en-US")} IRR</span>}
                       {pipeline?.rateRialPerUsd && <span className="block text-xs text-[#9d99aa]">@ {BigInt(pipeline.rateRialPerUsd).toLocaleString("en-US")} IRR/USD</span>}
                     </TableCell>
-                    <TableCell>{pipeline?.hasReceipt ? <a href={clientReceiptUrl(client.id)} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 font-semibold text-[#6157e7] hover:underline" onClick={(event) => event.stopPropagation()}><ReceiptText className="size-4" />View receipt</a> : <Badge variant="outline" className="border-red-200 bg-red-50 text-red-700">Missing</Badge>}</TableCell>
+                    <TableCell>{pipeline?.hasReceipt ? <button type="button" className="inline-flex items-center gap-1.5 font-semibold text-[#6157e7] hover:underline" onClick={(event) => { event.stopPropagation(); openAdminAttachment({ url: clientReceiptUrl(client.id), title: `First-card receipt · ${client.name}`, filename: `${pipeline.paymentReference ?? client.id}-receipt`, mimeType: pipeline.receiptMime }); }}><ReceiptText className="size-4" />View receipt</button> : <Badge variant="outline" className="border-red-200 bg-red-50 text-red-700">Missing</Badge>}</TableCell>
                     <TableCell>{pipeline?.receiptAt ? new Date(pipeline.receiptAt).toLocaleString() : client.joined}</TableCell>
                     <TableCell><Badge variant="outline" className={pending ? "border-amber-200 bg-amber-50 text-amber-800" : status === "accepted" ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "border-slate-200 bg-slate-50 text-slate-700"}>{status.replaceAll("_", " ")}</Badge></TableCell>
                     <TableCell><div className="flex justify-end gap-2">{pending ? <><Button size="sm" variant="outline" className="border-red-200 text-red-700" disabled={paymentActionId === client.id} onClick={(event) => { event.stopPropagation(); setPaymentActionId(client.id); void Promise.resolve(onPaymentDecision(client.id, "deny")).finally(() => setPaymentActionId(null)); }}>Deny</Button><Button size="sm" disabled={paymentActionId === client.id || !pipeline?.hasReceipt} onClick={(event) => { event.stopPropagation(); setPaymentActionId(client.id); void Promise.resolve(onPaymentDecision(client.id, "accept")).finally(() => setPaymentActionId(null)); }}>Accept</Button></> : <Button size="sm" variant="ghost" onClick={(event) => { event.stopPropagation(); onOpenClient(client.id); }}>Open</Button>}</div></TableCell>
@@ -3403,7 +3403,7 @@ function ClientKycSection({ clientId }: { clientId: string | null }) {
       <div className="flex flex-wrap items-center gap-2">
         <p className="text-xs font-bold uppercase tracking-[.14em] text-[#8179e8]">KYC</p>
         <Badge variant="outline" className={`rounded-full ${badge}`}>{kyc.status}</Badge>
-        {kyc.hasDocument && <a href={kycDocumentUrl(kyc.id)} target="_blank" rel="noreferrer" className="text-xs font-semibold text-[#6157e7] underline-offset-2 hover:underline">View ID document</a>}
+        {kyc.hasDocument && <button type="button" onClick={() => openAdminAttachment({ url: kycDocumentUrl(kyc.id), title: `KYC document · ${kyc.fullName}`, filename: "kyc-document", mimeType: kyc.documentMimeType })} className="text-xs font-semibold text-[#6157e7] underline-offset-2 hover:underline">View ID document</button>}
       </div>
       <div className="mt-2 grid gap-x-6 gap-y-1 text-xs text-[#55516b] sm:grid-cols-2">
         <p><span className="text-[#9692a3]">Name:</span> {kyc.fullName}</p>
@@ -3461,7 +3461,7 @@ function ClientFinancialHistorySection({ clientId }: { clientId: string | null }
               <p>Locked rate: {BigInt(payment.rateRialPerUsd).toLocaleString("en-US")} IRR/USD</p>
               {(BigInt(payment.providerFeeUsdCents) > 0n || BigInt(payment.serviceFeeUsdCents) > 0n) && <p className="sm:col-span-2">Fees: provider {formatUsd(Number(payment.providerFeeUsdCents) / 100)} · service {formatUsd(Number(payment.serviceFeeUsdCents) / 100)}</p>}
               {payment.requestStatus && <p>Request status: {payment.requestStatus.replaceAll("_", " ")}</p>}
-              {payment.receipt && <p><a href={customerPaymentReceiptUrl(payment.id)} target="_blank" rel="noreferrer" className="font-semibold text-[#6157e7] hover:underline">View receipt</a> · {payment.receipt.scanStatus ?? "stored"}</p>}
+              {payment.receipt && <p><button type="button" onClick={() => openAdminAttachment({ url: customerPaymentReceiptUrl(payment.id), title: `Payment receipt · ${payment.requestReference ?? payment.reference}`, filename: `${payment.reference}-receipt`, mimeType: payment.receipt?.mimeType })} className="font-semibold text-[#6157e7] hover:underline">View receipt</button> · {payment.receipt.scanStatus ?? "stored"}</p>}
             </div>
             {payment.adminNote && <p className="mt-2 text-xs text-[#777287]">Admin note: {payment.adminNote}</p>}
           </div>
@@ -3634,7 +3634,7 @@ function ClientPaymentSection({ clientId }: { clientId: string | null }) {
         {payment.amountUsdCents && <Badge variant="outline" className="rounded-full border-emerald-200 bg-emerald-50 text-emerald-700">{formatUsd(Number(payment.amountUsdCents) / 100)} first-card balance</Badge>}
         {payment.onboardingCardLast4 && <Badge variant="outline" className="rounded-full border-indigo-200 bg-white text-indigo-700">Card •{payment.onboardingCardLast4}</Badge>}
         {payment.hasReceipt
-          ? <a href={clientReceiptUrl(clientId)} target="_blank" rel="noreferrer" className="text-xs font-semibold text-[#6157e7] underline-offset-2 hover:underline">View receipt</a>
+          ? <button type="button" onClick={() => openAdminAttachment({ url: clientReceiptUrl(clientId), title: "First-card payment receipt", filename: "first-card-payment-receipt", mimeType: payment.receiptMime })} className="text-xs font-semibold text-[#6157e7] underline-offset-2 hover:underline">View receipt</button>
           : <span className="text-xs font-semibold text-red-600">Receipt required</span>}
       </div>
 
