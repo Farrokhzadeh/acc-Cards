@@ -125,6 +125,18 @@ test("first-card onboarding exposes guarded Create/Reconcile actions and interac
   assert.match(activateRoute, /reconcileCardIssuance/);
 });
 
+test("admins can attach a synchronized provider card to an onboarding request", () => {
+  assert.match(activateRoute, /input\.action === "attach_existing_card"/);
+  assert.match(activateRoute, /attachExistingOnboardingCard/);
+  assert.match(onboarding, /onboarding\.existing_card\.attached/);
+  assert.match(onboarding, /Existing Kripicard attached by administrator/);
+  assert.match(onboarding, /onboarding_card_id=\$2::uuid/);
+  assert.match(onboarding, /payment_status='card_ready'/);
+  assert.match(onboarding, /card_already_assigned/);
+  assert.match(dashboard, /Sync existing cards/);
+  assert.match(dashboard, /Attach to request/);
+});
+
 test("first-card onboarding turns provider gates into actionable admin guidance", () => {
   assert.match(dashboard, /feature_disabled/);
   assert.match(dashboard, /runtime_kill_switch/);
@@ -149,6 +161,10 @@ test("first-card configuration validates BINs early and does not retroactively a
   assert.match(onboarding, /payment_amount_usd_cents/);
   assert.doesNotMatch(onboarding, /amount_below_minimum/);
   assert.doesNotMatch(onboarding, /minCents/);
+  assert.doesNotMatch(dashboard, /htmlFor="onboarding-bin"/);
+  assert.match(dashboard, /Customers never choose a BIN/);
+  assert.match(dashboard, /Minimum existing-card top-up/);
+  assert.match(dashboard, /Minimum first-card purchase/);
 });
 
 test("first-card creation requires an explicit crypto wallet confirmation", () => {
