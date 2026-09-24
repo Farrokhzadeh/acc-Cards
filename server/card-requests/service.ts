@@ -2,6 +2,7 @@ import { z } from "zod";
 import { getPool, withTransaction, type DatabaseQueryable } from "@/server/database/pool";
 import { ApiError } from "@/server/http/api";
 import { assignAccountInTransaction, listAssignableAccounts } from "@/server/clients/assignments";
+import { assertAcceptedPaymentForCardRequest, createCustomerPaymentInTransaction, getPaymentForCardRequest } from "@/server/payments/service";
 
 const OPEN_STATUSES = ["pending_review", "approved", "correction_needed", "issuing", "issue_failed", "needs_reconciliation"] as const;
 const REVIEWABLE_STATUSES = ["pending_review", "correction_needed"] as const;
@@ -180,13 +181,19 @@ export async function createTelegramCardRequest(userId: string, draftInput: z.in
       [userId, placeholderBin, draft.amountUsdCents, profile.full_name, draft.email, normalizeDob(profile.date_of_birth)],
     );
     const row = result.rows[0]!;
-    await insertEvent(db, { requestId: row.id, toStatus: row.status, actorType: "telegram_user", telegramUserId: userId, metadata: { reference: row.reference } });
+    const payment = await createCustomerPaymentInTransaction(db, {
+      userId,
+      purpose: "additional_card",
+      cardRequestId: row.id,
+      amountUsdCents: row.initial_amount_usd_cents,
+    });
+    await insertEvent(db, { requestId: row.id, toStatus: row.status, actorType: "telegram_user", telegramUserId: userId, metadata: { reference: row.reference, paymentId: payment.id } });
     await db.query(
       `INSERT INTO audit_logs(actor_type,actor_id,action,entity_type,entity_id,metadata_redacted)
        VALUES ('telegram_user',$1::uuid,'card_request.submitted','card_request',$2,$3::jsonb)`,
       [userId, row.id, JSON.stringify({ reference: row.reference, initialAmountUsdCents: String(row.initial_amount_usd_cents) })],
     );
-    return { request: serialize(row), capacity: { ...capacity, usedSlots: capacity.usedSlots + 1 } };
+    return { request: serialize(row), payment, capacity: { ...capacity, usedSlots: capacity.usedSlots + 1 } };
   });
 }
 
@@ -222,6 +229,7 @@ export async function listCardRequests(args: { search?: string; status?: string 
     client: { id: row.user_id, displayName: row.display_name, username: row.username, telegramUserId: String(row.telegram_user_id) },
     eligibleAccounts: await eligibleAccounts(getPool(), row.user_id),
     availableBins,
+    payment: await getPaymentForCardRequest(row.id),
   })));
   const last = rows.at(-1);
   return {
@@ -246,6 +254,7 @@ export async function getCardRequestDetail(requestId: string) {
     client: { id: row.user_id, displayName: row.display_name, username: row.username, telegramUserId: String(row.telegram_user_id) },
     eligibleAccounts: await eligibleAccounts(getPool(), row.user_id),
     availableBins: await getCardRequestBins(),
+    payment: await getPaymentForCardRequest(row.id),
     events: events.rows.map((event) => ({ id: event.id, fromStatus: event.from_status, toStatus: event.to_status, actorType: event.actor_type, note: event.note, metadata: event.safe_metadata, createdAt: event.created_at.toISOString() })),
   };
 }
@@ -271,6 +280,7 @@ export async function reviewCardRequest(args: {
     let selectedAccountId: string | null = row.selected_account_id;
     if (args.action === "approve") {
       if (![...REVIEWABLE_STATUSES].some((status) => status === row.status)) throw new ApiError(409, "already_approved", "This request is already approved.");
+      await assertAcceptedPaymentForCardRequest(db, row.id);
       if (!args.selectedAccountId) throw new ApiError(400, "account_required", "Select the internal Kripicard account that should issue this card.");
       if (!args.selectedBin) throw new ApiError(400, "bin_required", "Select the card BIN for this request.");
       const bins = await getCardRequestBins(db);
@@ -315,6 +325,11 @@ export async function cancelTelegramCardRequest(userId: string, requestId: strin
     const row = result.rows[0];
     if (!row) throw new ApiError(404, "not_found", "Card request not found.");
     if (!["pending_review", "correction_needed"].includes(row.status)) throw new ApiError(409, "invalid_state", "This request can no longer be cancelled from Telegram.");
+    const payment = await db.query<{ status: string }>(`SELECT status FROM customer_payments WHERE card_request_id=$1::uuid FOR UPDATE`, [row.id]);
+    if (payment.rows[0]?.status === "accepted" || payment.rows[0]?.status === "completed") {
+      throw new ApiError(409, "payment_already_accepted", "This payment was already accepted. Contact support before cancelling the card request.");
+    }
+    await db.query(`UPDATE customer_payments SET status='cancelled',updated_at=now() WHERE card_request_id=$1::uuid AND status NOT IN ('completed','accepted')`, [row.id]);
     const updated = await db.query<RequestRow>(`UPDATE card_requests SET status='cancelled',updated_at=now() WHERE id=$1::uuid RETURNING *`, [row.id]);
     await insertEvent(db, { requestId: row.id, fromStatus: row.status, toStatus: "cancelled", actorType: "telegram_user", telegramUserId: userId });
     await db.query(`INSERT INTO audit_logs(actor_type,actor_id,action,entity_type,entity_id,metadata_redacted) VALUES ('telegram_user',$1::uuid,'card_request.cancelled','card_request',$2,$3::jsonb)`, [userId,row.id,JSON.stringify({reference:row.reference})]);
@@ -327,5 +342,5 @@ export async function getTelegramCardRequest(userId: string, requestId: string) 
   const row = result.rows[0];
   if (!row) throw new ApiError(404,"not_found","Card request not found.");
   const events = await getPool().query<{to_status:string;note:string|null;created_at:Date}>(`SELECT to_status,note,created_at FROM card_request_events WHERE request_id=$1::uuid ORDER BY created_at ASC,id ASC`,[requestId]);
-  return { request: serialize(row), events: events.rows.map((e)=>({status:e.to_status,note:e.note,createdAt:e.created_at.toISOString()})) };
+  return { request: serialize(row), payment: await getPaymentForCardRequest(row.id), events: events.rows.map((e)=>({status:e.to_status,note:e.note,createdAt:e.created_at.toISOString()})) };
 }
