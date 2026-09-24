@@ -90,8 +90,8 @@ test("ambiguous provider outcomes are reconciled with cards/list and never cause
 });
 
 test("additional-card issuance routes are guarded while first-card onboarding keeps its own protections", () => {
-  assert.match(issueRoute, /card_requests\.review/);
-  assert.match(reconcileRoute, /card_requests\.review/);
+  assert.match(issueRoute, /card_requests\.issue/);
+  assert.match(reconcileRoute, /card_requests\.issue/);
   assert.match(issueRoute, /requireCsrf/);
   assert.match(reconcileRoute, /requireCsrf/);
   assert.match(issueRoute, /requireRecentReauthentication\(session\)/);
