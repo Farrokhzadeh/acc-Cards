@@ -15,6 +15,8 @@ const receiptRoute = await readFile(new URL("../../app/api/v1/funding-requests/[
 const settingsRoute = await readFile(new URL("../../app/api/v1/funding-settings/route.ts", import.meta.url), "utf8");
 const outbox = await readFile(new URL("../../server/telegram/outbox.ts", import.meta.url), "utf8");
 const dashboard = await readFile(new URL("../../app/dashboard-app.tsx", import.meta.url), "utf8");
+const payments = await readFile(new URL("../../server/payments/service.ts", import.meta.url), "utf8");
+const paymentMigration = await readFile(new URL("../../db/migrations/0030_customer_payments.sql", import.meta.url), "utf8");
 
 
 test("Phase 13 adds funding quote snapshots and receipt workflow states", () => {
@@ -34,6 +36,15 @@ test("funding quote uses immutable exchange-rate and fee snapshots with integer 
   assert.match(service, /feeFor/);
   assert.match(service, /rialFor/);
   assert.doesNotMatch(service, /parseFloat/);
+});
+
+test("funding requests also populate the unified customer payment ledger", () => {
+  assert.match(paymentMigration, /card_funding/);
+  assert.match(service, /createCustomerPaymentInTransaction/);
+  assert.match(service, /purpose: "card_funding"/);
+  assert.match(service, /syncFundingPaymentStatus/);
+  assert.match(receipts, /payment_id/);
+  assert.match(payments, /funding_request_id/);
 });
 
 test("Telegram funding flow selects current owned card, snapshots quote, and requests receipt", () => {
