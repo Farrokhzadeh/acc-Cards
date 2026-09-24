@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ArrowLeft,
   Ban,
@@ -91,7 +91,7 @@ export default function ClientWorkspacePage({ clientId }: { clientId: string }) 
   const [supportBusy, setSupportBusy] = useState(false);
   const [actionBusy, setActionBusy] = useState(false);
 
-  const loadWorkspace = async () => {
+  const loadWorkspace = useCallback(async () => {
     setLoading(true);
     setFatalError(null);
     try {
@@ -133,11 +133,11 @@ export default function ClientWorkspacePage({ clientId }: { clientId: string }) 
       setMessagesError(messageResult.reason instanceof Error ? messageResult.reason.message : "Support history is unavailable.");
     }
     setLoading(false);
-  };
+  }, [clientId]);
 
   useEffect(() => {
     void loadWorkspace();
-  }, [clientId]);
+  }, [loadWorkspace]);
 
   const financialActivity = useMemo(() => {
     const paymentItems = payments.map((payment) => ({
@@ -243,7 +243,7 @@ export default function ClientWorkspacePage({ clientId }: { clientId: string }) 
       <Toaster />
       <header className="sticky top-0 z-20 border-b border-[#e9e7ef] bg-[#f7f7fb]/90 backdrop-blur-xl">
         <div className="mx-auto flex max-w-[1500px] items-center gap-4 px-4 py-4 md:px-8">
-          <Link href="/#clients"><Button variant="outline" size="sm" className="rounded-xl"><ArrowLeft className="size-4" />Clients</Button></Link>
+          <Button asChild variant="outline" size="sm" className="rounded-xl"><Link href="/#clients"><ArrowLeft className="size-4" />Clients</Link></Button>
           <Avatar className="size-11"><AvatarFallback className="bg-[#eeecff] font-bold text-[#5b50d6]">{initials(clientName)}</AvatarFallback></Avatar>
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-2">
