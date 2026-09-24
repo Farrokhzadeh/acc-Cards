@@ -185,7 +185,7 @@ export async function createFirstCardPayment(userId: string, amountUsdCents: num
     if (row.first_card_payment_id) {
       const old = await db.query<PaymentRow>(`SELECT * FROM customer_payments WHERE id=$1::uuid FOR UPDATE`, [row.first_card_payment_id]);
       const previous = old.rows[0];
-      if (previous && ["pending_receipt","correction_needed","rejected"].includes(previous.status)) {
+      if (previous && ["pending_receipt","correction_needed"].includes(previous.status)) {
         await db.query(`UPDATE customer_payments SET status='cancelled',updated_at=now() WHERE id=$1::uuid`, [previous.id]);
       }
     }
