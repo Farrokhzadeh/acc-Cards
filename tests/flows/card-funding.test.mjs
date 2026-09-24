@@ -34,11 +34,11 @@ test("fundcard schema matches the documented response", () => {
   assert.match(schemas, /total_debited/);
 });
 
-test("provider client exposes one-shot fundCard and still does not expose deposit creation", () => {
+test("provider client exposes one-shot fundCard and guarded deposit creation", () => {
   assert.match(client, /fundCard\(input:/);
   assert.match(client, /\/api\/external\/cards\/fundcard/);
   assert.match(client, /return this\.write/);
-  assert.doesNotMatch(client, /createDeposit\s*\(/);
+  assert.match(client, /createDeposit\s*\(/);
 });
 
 test("funding execution is feature gated and requires operation-specific readiness", () => {

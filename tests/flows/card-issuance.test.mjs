@@ -42,11 +42,11 @@ test("the documented Overview contract updates rate limits, BINs, and HTTP 202 r
   }
 });
 
-test("createcard is the only new money-changing provider client method", () => {
+test("provider client exposes one-shot card and deposit money writes", () => {
   assert.match(client, /createCard\(input:/);
   assert.match(client, /\/api\/external\/cards\/createcard/);
   assert.match(client, /return this\.write/);
-  assert.doesNotMatch(client, /createDeposit\s*\(/);
+  assert.match(client, /createDeposit\s*\(/);
 });
 
 test("create-card success schema matches the supplied provider fields", () => {

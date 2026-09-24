@@ -397,8 +397,18 @@ export async function notifyClient(id: string) {
   return apiJson<{ ok: true }>(`/api/v1/clients/${encodeURIComponent(id)}/notify`, { method: "POST", body: "{}" });
 }
 
+export type ClientPipelineItem = {
+  id: string;
+  declared: boolean;
+  status: string | null;
+  hasReceipt: boolean;
+  receiptMime: string | null;
+  receiptAt: string | null;
+  amountUsdCents: string | null;
+};
+
 export async function fetchClientPipeline() {
-  return apiJson<{ items: Array<{ id: string; declared: boolean; status: string | null }> }>("/api/v1/clients/pipeline", { method: "GET" });
+  return apiJson<{ items: ClientPipelineItem[] }>("/api/v1/clients/pipeline", { method: "GET" });
 }
 
 export async function setClientBanned(id: string, banned: boolean) {
@@ -433,6 +443,44 @@ export async function fetchClientKyc(id: string) {
 
 export function clientReceiptUrl(id: string) {
   return `/api/v1/clients/${encodeURIComponent(id)}/receipt`;
+}
+
+export type AccountDeposit = {
+  id: string;
+  accountId: string;
+  providerDepositId: string;
+  orderId: string;
+  status: "pending" | "completed" | "failed";
+  amountUsdCents: string;
+  feeUsdCents: string;
+  expectedCreditUsdCents: string;
+  creditedUsdCents: string | null;
+  currency: string;
+  network: string;
+  payAddress: string;
+  payAmount: string;
+  expiresAt: string;
+  createdAt: string;
+};
+
+export async function fetchAccountDepositCoins(accountId: string) {
+  return apiJson<{ coins: Array<{ symbol: string; name: string; networks_count: number }> }>(`/api/v1/accounts/${encodeURIComponent(accountId)}/deposits/options`, { method: "GET" });
+}
+
+export async function fetchAccountDepositNetworks(accountId: string, currency: string) {
+  return apiJson<{ networks: Array<{ network: string; name: string; min_amount: number }> }>(`/api/v1/accounts/${encodeURIComponent(accountId)}/deposits/options?currency=${encodeURIComponent(currency)}`, { method: "GET" });
+}
+
+export async function fetchAccountDeposits(accountId: string) {
+  return apiJson<{ items: AccountDeposit[] }>(`/api/v1/accounts/${encodeURIComponent(accountId)}/deposits`, { method: "GET" });
+}
+
+export async function createAccountDeposit(accountId: string, input: { amountUsd: number; currency: string; network: string }) {
+  return apiJson<AccountDeposit>(`/api/v1/accounts/${encodeURIComponent(accountId)}/deposits`, { method: "POST", body: JSON.stringify(input) });
+}
+
+export async function refreshAccountDeposit(accountId: string, depositId: string) {
+  return apiJson<AccountDeposit>(`/api/v1/accounts/${encodeURIComponent(accountId)}/deposits/${encodeURIComponent(depositId)}`, { method: "POST", body: "{}" });
 }
 
 export async function activateClient(id: string, input: { action: "accept" | "deny" | "create_card" | "reconcile_card" | "complete"; accountId?: string; walletFundingConfirmed?: boolean }) {

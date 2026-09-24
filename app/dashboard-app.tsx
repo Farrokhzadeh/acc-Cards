@@ -47,7 +47,7 @@ import {
   XCircle,
 } from "lucide-react";
 import { toast } from "sonner";
-import { AdminApiError, createAccount, archiveAccount, fetchDashboardSnapshot, reauthenticateAdmin, revealAccountSecrets, updateAccount, verifyAccountConnection, syncAccountCards, revealLiveCardDetails, syncCardTransactions, fetchCardTransactions, fetchTransactions, fetchTransactionNotificationIssues, reconcileTransactionNotification, setCardFrozenState, refreshCardStatus, connectOutlookMailbox, syncOutlookMailbox, disconnectOutlookMailbox, connectGmailMailbox, syncGmailMailbox, disconnectGmailMailbox, fetchEmailOAuthSetup, type EmailOAuthSetup, fetchAccountEmailMessages, classifyAccountEmail, revealParsedOtp, fetchTrustedEmailRules, createTrustedEmailRule, updateTrustedEmailRule, fetchTelegramBotStatus, configureTelegramWebhook, setTelegramBotToken, clearTelegramBotToken, fetchPaymentCard, updatePaymentCard, fetchFirstCardSettings, updateFirstCardSettings, notifyClient, fetchClientPipeline, setClientBanned, fetchClientKyc, type ClientKyc, type ClientPayment, clientReceiptUrl, activateClient, fetchForceJoinChannels, upsertForceJoinChannel, deleteForceJoinChannel, fetchSupportConversations, updateSupportConversation, retrySupportMessage, fetchClientSupportMessages, sendClientSupportMessage, fetchClientAssignableAccounts, fetchFundingRequests, reviewFundingRequest, executeFundingRequest, reconcileFundingRequest, resolveFundingRequest, fetchProviderWalletGate, type ProviderWalletGate, fundingReceiptDownloadUrl, fetchFundingSettings, updateFundingSettings, type ApiFundingRequest, type AssignableClientAccount, type LiveCardDetails, type StoredCardTransaction, type StoredEmailMessage, type TelegramBotStatus, fetchProviderReadiness, updateProviderReadinessCheck, type ProviderReadinessSnapshot, type TransactionNotificationIssue, type SupportConversationSummary, fetchOperationalSnapshot, updateOperationalAlert, updateRuntimeControl, type OperationalSnapshot, fetchKycSubmissions, reviewKycSubmission, kycDocumentUrl, type ApiKycSubmission } from "@/lib/admin-api";
+import { AdminApiError, createAccount, archiveAccount, fetchDashboardSnapshot, reauthenticateAdmin, revealAccountSecrets, updateAccount, verifyAccountConnection, syncAccountCards, revealLiveCardDetails, syncCardTransactions, fetchCardTransactions, fetchTransactions, fetchTransactionNotificationIssues, reconcileTransactionNotification, setCardFrozenState, refreshCardStatus, connectOutlookMailbox, syncOutlookMailbox, disconnectOutlookMailbox, connectGmailMailbox, syncGmailMailbox, disconnectGmailMailbox, fetchEmailOAuthSetup, type EmailOAuthSetup, fetchAccountEmailMessages, classifyAccountEmail, revealParsedOtp, fetchTrustedEmailRules, createTrustedEmailRule, updateTrustedEmailRule, fetchTelegramBotStatus, configureTelegramWebhook, setTelegramBotToken, clearTelegramBotToken, fetchPaymentCard, updatePaymentCard, fetchFirstCardSettings, updateFirstCardSettings, notifyClient, fetchClientPipeline, type ClientPipelineItem, setClientBanned, fetchClientKyc, type ClientKyc, type ClientPayment, clientReceiptUrl, activateClient, fetchAccountDepositCoins, fetchAccountDepositNetworks, fetchAccountDeposits, createAccountDeposit, refreshAccountDeposit, type AccountDeposit, fetchForceJoinChannels, upsertForceJoinChannel, deleteForceJoinChannel, fetchSupportConversations, updateSupportConversation, retrySupportMessage, fetchClientSupportMessages, sendClientSupportMessage, fetchClientAssignableAccounts, fetchFundingRequests, reviewFundingRequest, executeFundingRequest, reconcileFundingRequest, resolveFundingRequest, fetchProviderWalletGate, type ProviderWalletGate, fundingReceiptDownloadUrl, fetchFundingSettings, updateFundingSettings, type ApiFundingRequest, type AssignableClientAccount, type LiveCardDetails, type StoredCardTransaction, type StoredEmailMessage, type TelegramBotStatus, fetchProviderReadiness, updateProviderReadinessCheck, type ProviderReadinessSnapshot, type TransactionNotificationIssue, type SupportConversationSummary, fetchOperationalSnapshot, updateOperationalAlert, updateRuntimeControl, type OperationalSnapshot, fetchKycSubmissions, reviewKycSubmission, kycDocumentUrl, type ApiKycSubmission } from "@/lib/admin-api";
 import { disableAdminMfa, enableAdminMfa, fetchCurrentAdmin, logoutAdmin, setupAdminMfa, type CurrentAdmin } from "@/lib/auth-client";
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -150,6 +150,7 @@ type Account = {
   keyHint: string;
   mailProvider: "Outlook / Hotmail" | "Gmail";
   accountBalance: number | null;
+  accountBalanceSource: "unavailable" | "provider" | "derived";
   cardBalance: number;
   cards: number;
   status: "Connected" | "Attention";
@@ -451,6 +452,8 @@ export default function DashboardApp() {
   const [kycPendingCount, setKycPendingCount] = useState(0);
   const [paymentByUser, setPaymentByUser] = useState<Record<string, boolean>>({});
   const [paymentStatusByUser, setPaymentStatusByUser] = useState<Record<string, string | null>>({});
+  const [paymentPipelineByUser, setPaymentPipelineByUser] = useState<Record<string, ClientPipelineItem>>({});
+  const [paymentPipelineTick, setPaymentPipelineTick] = useState(0);
   const [supportAttachment, setSupportAttachment] = useState<File | null>(null);
   const [operationalSnapshot, setOperationalSnapshot] = useState<OperationalSnapshot | null>(null);
   const [activeClientId, setActiveClientId] = useState<string | null>(null);
@@ -541,6 +544,7 @@ export default function DashboardApp() {
             keyHint: account.apiKeyHint ?? "Not connected",
             mailProvider: provider,
             accountBalance: centsToUsd(account.accountBalanceUsdCents),
+            accountBalanceSource: account.accountBalanceSource,
             cardBalance: totals.cents / 100,
             cards: totals.count,
             status: account.status === "connected" ? "Connected" : "Attention",
@@ -683,10 +687,10 @@ export default function DashboardApp() {
     if (!backendDataLoaded) return;
     let cancelled = false;
     fetchClientPipeline()
-      .then((r) => { if (!cancelled) { const m: Record<string, boolean> = {}; const st: Record<string, string | null> = {}; for (const it of r.items) { m[it.id] = it.declared; st[it.id] = it.status; } setPaymentByUser(m); setPaymentStatusByUser(st); } })
+      .then((r) => { if (!cancelled) { const m: Record<string, boolean> = {}; const st: Record<string, string | null> = {}; const pipeline: Record<string, ClientPipelineItem> = {}; for (const it of r.items) { m[it.id] = it.declared; st[it.id] = it.status; pipeline[it.id] = it; } setPaymentByUser(m); setPaymentStatusByUser(st); setPaymentPipelineByUser(pipeline); } })
       .catch(() => {});
     return () => { cancelled = true; };
-  }, [backendDataLoaded]);
+  }, [backendDataLoaded, paymentPipelineTick]);
 
   useEffect(() => {
     if (!backendDataLoaded) return;
@@ -943,6 +947,7 @@ export default function DashboardApp() {
           password: "••••••••",
           keyHint: `••••••••${accountForm.apiKey.slice(-4)}`,
           accountBalance: null,
+          accountBalanceSource: "unavailable",
           cardBalance: 0,
           cards: 0,
           status: "Attention",
@@ -1709,11 +1714,21 @@ export default function DashboardApp() {
                 kycPendingCount={kycPendingCount}
                 clients={clients}
                 paymentStatusByUser={paymentStatusByUser}
+                paymentPipelineByUser={paymentPipelineByUser}
                 transactions={transactions}
                 issues={transactionNotificationIssues}
                 onReconcileIssue={reconcileNotificationIssue}
                 onOpenRequest={setActiveRequestId}
                 onOpenClient={setActiveClientId}
+                onPaymentDecision={async (clientId, action) => {
+                  try {
+                    await activateClient(clientId, { action });
+                    toast.success(action === "accept" ? "Receipt accepted. Continue with account selection and card creation." : "Receipt denied. The customer can upload a replacement.");
+                    setPaymentPipelineTick((value) => value + 1);
+                  } catch (error) {
+                    toast.error(error instanceof Error ? error.message : "Could not update the first-card payment.");
+                  }
+                }}
               />
             )}
             {view === "operations" && (
@@ -2403,6 +2418,79 @@ function MetricCard({ icon: Icon, label, value, foot, tone }: { icon: typeof Lan
 
 function AccountsView({ accounts, clients, cards, accountEmails, onAdd, onOpen, onFundCard, onCreateCard, onEdit, onRevealCredentials, onSync, onDelete }: { accounts: Account[]; clients: Client[]; cards: ClientCard[]; accountEmails: AccountEmail[]; onAdd: () => void; onOpen: (id: string) => void; onFundCard: (cardId?: string, accountId?: string) => void; onCreateCard: (accountId?: string) => void; onEdit: (account: Account) => void; onRevealCredentials: (account: Account) => void; onSync: (account: Account) => void | Promise<void>; onDelete: (id: string) => void }) {
   const paging = usePaginatedItems(accounts, 6);
+  const [depositAccount, setDepositAccount] = useState<Account | null>(null);
+  const [depositCoins, setDepositCoins] = useState<Array<{ symbol: string; name: string; networks_count: number }>>([]);
+  const [depositNetworks, setDepositNetworks] = useState<Array<{ network: string; name: string; min_amount: number }>>([]);
+  const [depositCurrency, setDepositCurrency] = useState("");
+  const [depositNetwork, setDepositNetwork] = useState("");
+  const [depositAmount, setDepositAmount] = useState("100");
+  const [deposits, setDeposits] = useState<AccountDeposit[]>([]);
+  const [depositBusy, setDepositBusy] = useState(false);
+  const openDeposit = async (account: Account) => {
+    setDepositAccount(account);
+    setDepositBusy(true);
+    try {
+      const [coinResult, history] = await Promise.all([fetchAccountDepositCoins(account.id), fetchAccountDeposits(account.id)]);
+      setDepositCoins(coinResult.coins);
+      setDeposits(history.items);
+      const currency = coinResult.coins[0]?.symbol ?? "";
+      setDepositCurrency(currency);
+      if (currency) {
+        const result = await fetchAccountDepositNetworks(account.id, currency);
+        setDepositNetworks(result.networks);
+        setDepositNetwork(result.networks[0]?.network ?? "");
+      }
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Crypto deposit options could not be loaded.");
+    } finally {
+      setDepositBusy(false);
+    }
+  };
+  const selectDepositCurrency = async (currency: string) => {
+    if (!depositAccount) return;
+    setDepositCurrency(currency);
+    setDepositNetwork("");
+    setDepositBusy(true);
+    try {
+      const result = await fetchAccountDepositNetworks(depositAccount.id, currency);
+      setDepositNetworks(result.networks);
+      setDepositNetwork(result.networks[0]?.network ?? "");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Crypto networks could not be loaded.");
+    } finally {
+      setDepositBusy(false);
+    }
+  };
+  const submitDeposit = async () => {
+    if (!depositAccount || !depositCurrency || !depositNetwork) return;
+    const password = window.prompt("Re-enter your AccAbad admin password to create this crypto payment:");
+    if (!password) return;
+    const code = window.prompt("Enter your MFA code if MFA is enabled, otherwise leave this empty:") ?? "";
+    setDepositBusy(true);
+    try {
+      await reauthenticateAdmin(password, code.trim() || undefined);
+      const created = await createAccountDeposit(depositAccount.id, { amountUsd: Number(depositAmount), currency: depositCurrency, network: depositNetwork });
+      setDeposits((current) => [created, ...current]);
+      toast.success("Crypto payment address created.");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Crypto payment could not be created.");
+    } finally {
+      setDepositBusy(false);
+    }
+  };
+  const refreshDeposit = async (deposit: AccountDeposit) => {
+    if (!depositAccount) return;
+    setDepositBusy(true);
+    try {
+      const updated = await refreshAccountDeposit(depositAccount.id, deposit.id);
+      setDeposits((current) => current.map((item) => item.id === updated.id ? updated : item));
+      toast.success(updated.status === "completed" ? "Deposit confirmed and balance updated." : `Deposit is ${updated.status}.`);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Deposit status could not be refreshed.");
+    } finally {
+      setDepositBusy(false);
+    }
+  };
   return (
     <>
       <PageIntro title="Account connections" description="Credentials, visible account balances, external inboxes, and exclusive client assignments. Production card funding is executed only from accepted funding requests." action={<div className="flex flex-wrap gap-2"><Button variant="outline" onClick={onAdd} className="h-11 rounded-[14px] bg-white"><Plus className="size-4" />Add account</Button></div>} />
@@ -2420,7 +2508,7 @@ function AccountsView({ accounts, clients, cards, accountEmails, onAdd, onOpen, 
                 </div>
                 <h3 className="mt-5 text-lg font-semibold tracking-[-.025em] text-[#2c2940]">{account.name}</h3>
                 <div className="mt-2">{assignedClient ? <Badge variant="outline" className="rounded-full border-[#d8d3ff] bg-[#f2f0ff] text-[#5549ca]">Assigned to {assignedClient.name}</Badge> : <Badge variant="outline" className="rounded-full border-dashed text-[#858193]">Available to assign</Badge>}</div>
-                <div className="mt-5 grid grid-cols-3 gap-2.5"><div className="rounded-[15px] bg-[#f8f7fb] p-3.5"><p className="text-xs text-[#9692a3]">Cards</p><p className="mt-1.5 font-semibold tracking-[-.02em] text-[#302d43]">{accountCards.length}</p></div><div className="rounded-[15px] bg-[#f8f7fb] p-3.5"><p className="text-xs text-[#9692a3]">Account balance</p><p className="mt-1.5 font-semibold tracking-[-.02em] text-[#302d43]">{formatOptionalUsd(account.accountBalance)}</p></div><div className="rounded-[15px] bg-[#f8f7fb] p-3.5"><p className="text-xs text-[#9692a3]">On cards</p><p className="mt-1.5 font-semibold tracking-[-.02em] text-[#302d43]">{formatUsd(account.cardBalance)}</p></div></div>
+                <div className="mt-5 grid grid-cols-3 gap-2.5"><div className="rounded-[15px] bg-[#f8f7fb] p-3.5"><p className="text-xs text-[#9692a3]">Cards</p><p className="mt-1.5 font-semibold tracking-[-.02em] text-[#302d43]">{accountCards.length}</p></div><div className="rounded-[15px] bg-[#f8f7fb] p-3.5"><p className="text-xs text-[#9692a3]">Tracked wallet</p><p className="mt-1.5 font-semibold tracking-[-.02em] text-[#302d43]">{formatOptionalUsd(account.accountBalance)}</p><p className="mt-1 text-[10px] text-[#aaa6b8]">{account.accountBalanceSource === "unavailable" ? "Starts after deposit" : account.accountBalanceSource}</p></div><div className="rounded-[15px] bg-[#f8f7fb] p-3.5"><p className="text-xs text-[#9692a3]">On cards</p><p className="mt-1.5 font-semibold tracking-[-.02em] text-[#302d43]">{formatUsd(account.cardBalance)}</p></div></div>
                 <div className="mt-3 overflow-hidden rounded-[16px] border border-[#e8e5f0] bg-white"><div className="flex items-center justify-between border-b border-[#eeecf3] px-3.5 py-2.5"><p className="text-xs font-semibold uppercase tracking-[.08em] text-[#9692a3]">Cards</p><button onClick={() => onOpen(account.id)} className="text-xs font-semibold text-[#6157e7]">View all</button></div>{accountCards.slice(0, 2).map((card) => <div key={card.id} className="flex items-center gap-3 border-b border-[#f0eef4] px-3.5 py-2.5 last:border-b-0"><span className="grid size-8 shrink-0 place-items-center rounded-[10px] bg-[#eeecff] text-[#6157e7]"><CreditCard className="size-4" /></span><div className="min-w-0 flex-1"><p className="truncate text-sm font-semibold text-[#353146]">{card.label} · •{card.last4}</p><p className="text-xs text-[#9692a3]">{formatUsd(card.balance)} · {card.frozen ? "Frozen" : "Active"}</p></div><Button size="sm" variant="ghost" className="h-8 rounded-lg px-2.5 text-[#6157e7]" onClick={() => onFundCard(card.id)}><CircleDollarSign className="size-3.5" />Add funds</Button></div>)}{!accountCards.length && <div className="px-3.5 py-4 text-center text-sm text-[#9692a3]">No cards in this account</div>}{accountCards.length > 2 && <button onClick={() => onOpen(account.id)} className="w-full border-t border-[#eeecf3] px-3.5 py-2 text-left text-xs font-medium text-[#777287]">+{accountCards.length - 2} more cards</button>}</div>
                 <button onClick={() => onOpen(account.id)} className="mt-3 flex w-full items-center gap-3 rounded-[15px] border border-[#e8e5f0] bg-white p-3 text-left transition hover:border-[#d8d3ff] hover:bg-[#f8f7ff]">
                   <span className="grid size-9 place-items-center rounded-xl bg-[#eeecff] text-[#6157e7]"><Mail className="size-4" /></span>
@@ -2436,7 +2524,7 @@ function AccountsView({ accounts, clients, cards, accountEmails, onAdd, onOpen, 
                   </dl>
                 </div>
                 <Button variant="ghost" className="mt-2 h-9 w-full rounded-[12px] text-[#6157e7]" onClick={() => void onRevealCredentials(account)}><KeyRound className="size-4" />Reveal credentials</Button>
-                <div className="mt-4 grid grid-cols-2 gap-2"><Button variant="outline" className="h-10 rounded-[13px] bg-white" onClick={() => onOpen(account.id)}><Eye className="size-4" />Open account</Button><Button variant="outline" className="h-10 rounded-[13px] bg-white" disabled={!accountCards.length} onClick={() => onFundCard(undefined, account.id)}><WalletCards className="size-4" />Fund a card</Button><Button variant="ghost" className="col-span-2 h-9 rounded-[12px] text-[#6157e7]" onClick={() => onCreateCard(account.id)}><Plus className="size-4" />Create another card</Button></div>
+                <div className="mt-4 grid grid-cols-2 gap-2"><Button variant="outline" className="h-10 rounded-[13px] bg-white" onClick={() => onOpen(account.id)}><Eye className="size-4" />Open account</Button><Button variant="outline" className="h-10 rounded-[13px] bg-white" onClick={() => void openDeposit(account)}><CircleDollarSign className="size-4" />Add crypto</Button><Button variant="outline" className="h-10 rounded-[13px] bg-white" disabled={!accountCards.length} onClick={() => onFundCard(undefined, account.id)}><WalletCards className="size-4" />Fund a card</Button><Button variant="ghost" className="h-10 rounded-[12px] text-[#6157e7]" onClick={() => onCreateCard(account.id)}><Plus className="size-4" />Create card</Button></div>
                 <div className="mt-4 flex items-center justify-between border-t border-[#eeecf3] pt-4"><p className="text-xs text-[#aaa6b8]">Synced {account.lastSync}</p><div className="flex gap-1"><Button variant="ghost" size="icon" className="rounded-xl text-[#777287] hover:bg-[#f2f0fa]" onClick={() => void onSync(account)}><RefreshCw className="size-4" /><span className="sr-only">Sync</span></Button><Button variant="ghost" size="icon" className="rounded-xl text-[#777287] hover:bg-[#f2f0fa]" onClick={() => onEdit(account)}><PencilLine className="size-4" /><span className="sr-only">Edit</span></Button><Button variant="ghost" size="icon" className="rounded-xl text-[#c24755] hover:bg-[#fff0f2]" onClick={() => onDelete(account.id)}><Trash2 className="size-4" /><span className="sr-only">Delete</span></Button></div></div>
               </CardContent>
             </Card>
@@ -2446,6 +2534,18 @@ function AccountsView({ accounts, clients, cards, accountEmails, onAdd, onOpen, 
       </div>
       <div className="mt-4 overflow-hidden rounded-[20px] border border-[#e8e6ef] bg-white"><ListPagination page={paging.page} pageSize={paging.pageSize} totalItems={paging.totalItems} totalPages={paging.totalPages} onPageChange={paging.setPage} /></div>
       <Alert className="mt-5 rounded-[20px] border-[#ddd9f5] bg-[#f3f1ff]"><ShieldCheck className="text-[#6157e7]" /><AlertTitle className="text-[#302b68]">Account ownership controls bot access</AlertTitle><AlertDescription className="text-[#625c86]">Cards always remain inside their Kripicard account. Telegram clients only inherit cards from currently assigned accounts; disconnecting the final account immediately returns that client to the Contact admin state.</AlertDescription></Alert>
+      <Dialog open={Boolean(depositAccount)} onOpenChange={(open) => { if (!open) setDepositAccount(null); }}>
+        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
+          <DialogHeader><DialogTitle>Add crypto to {depositAccount?.name}</DialogTitle><DialogDescription>Kripicard creates a one-time payment address. Send the exact asset and network shown below.</DialogDescription></DialogHeader>
+          <div className="grid gap-4 sm:grid-cols-3">
+            <div className="grid gap-2"><Label>USD amount</Label><Input type="number" min={1} value={depositAmount} onChange={(event) => setDepositAmount(event.target.value)} /></div>
+            <div className="grid gap-2"><Label>Asset</Label><Select value={depositCurrency} onValueChange={(value) => void selectDepositCurrency(value)}><SelectTrigger><SelectValue placeholder="Choose asset" /></SelectTrigger><SelectContent>{depositCoins.map((coin) => <SelectItem key={coin.symbol} value={coin.symbol}>{coin.name} ({coin.symbol})</SelectItem>)}</SelectContent></Select></div>
+            <div className="grid gap-2"><Label>Network</Label><Select value={depositNetwork} onValueChange={setDepositNetwork}><SelectTrigger><SelectValue placeholder="Choose network" /></SelectTrigger><SelectContent>{depositNetworks.map((network) => <SelectItem key={network.network} value={network.network}>{network.name}</SelectItem>)}</SelectContent></Select></div>
+          </div>
+          <Button disabled={depositBusy || !depositCurrency || !depositNetwork || Number(depositAmount) < 1} onClick={() => void submitDeposit()}><CircleDollarSign className="size-4" />Create crypto payment</Button>
+          <div className="space-y-3">{deposits.map((deposit) => <div key={deposit.id} className="rounded-xl border p-4"><div className="flex items-center justify-between gap-3"><div><p className="font-semibold">{deposit.payAmount} {deposit.currency}</p><p className="text-xs text-[#8f8b9c]">{deposit.network} · {formatUsd(Number(deposit.expectedCreditUsdCents) / 100)} expected credit</p></div><Badge variant="outline">{deposit.status}</Badge></div><div className="mt-3 flex gap-2"><code className="min-w-0 flex-1 break-all rounded-lg bg-slate-50 p-2 text-xs">{deposit.payAddress}</code><Button size="sm" variant="outline" onClick={() => void navigator.clipboard.writeText(deposit.payAddress)}>Copy</Button></div><div className="mt-3 flex items-center justify-between"><p className="text-xs text-[#9692a3]">Expires {new Date(deposit.expiresAt).toLocaleString()}</p>{deposit.status === "pending" && <Button size="sm" variant="outline" disabled={depositBusy} onClick={() => void refreshDeposit(deposit)}><RefreshCw className="size-3.5" />Check status</Button>}</div></div>)}{!deposits.length && !depositBusy && <p className="rounded-xl border border-dashed p-5 text-center text-sm text-[#9692a3]">No crypto payments created for this account yet.</p>}</div>
+        </DialogContent>
+      </Dialog>
     </>
   );
 }
@@ -2487,7 +2587,8 @@ function ClientsView({ clients, cards, onOpen, onToggleBan, accountName, kycStat
   );
 }
 
-function RequestsView({ fundingRequests, clientName, search, onOpenRequest, kycPendingCount, clients, paymentStatusByUser, onOpenClient, transactions, issues, onReconcileIssue }: { fundingRequests: FundingRequest[]; clientName: (id: string | null) => string; search: string; onOpenRequest: (id: string) => void; kycPendingCount: number; clients: Client[]; paymentStatusByUser: Record<string, string | null>; onOpenClient: (id: string) => void; transactions: Transaction[]; issues: TransactionNotificationIssue[]; onReconcileIssue: (id: string, action: "acknowledge" | "retry") => void | Promise<void> }) {
+function RequestsView({ fundingRequests, clientName, search, onOpenRequest, kycPendingCount, clients, paymentStatusByUser, paymentPipelineByUser, onOpenClient, onPaymentDecision, transactions, issues, onReconcileIssue }: { fundingRequests: FundingRequest[]; clientName: (id: string | null) => string; search: string; onOpenRequest: (id: string) => void; kycPendingCount: number; clients: Client[]; paymentStatusByUser: Record<string, string | null>; paymentPipelineByUser: Record<string, ClientPipelineItem>; onOpenClient: (id: string) => void; onPaymentDecision: (clientId: string, action: "accept" | "deny") => void | Promise<void>; transactions: Transaction[]; issues: TransactionNotificationIssue[]; onReconcileIssue: (id: string, action: "acknowledge" | "retry") => void | Promise<void> }) {
+  const [paymentActionId, setPaymentActionId] = useState<string | null>(null);
   const needle = search.trim().toLowerCase();
   const matchingFundingRequests = fundingRequests.filter((request) => !needle || `${request.id} ${clientName(request.clientId)} ${request.cardLast4} ${request.receipt} ${request.receiptType} ${fundingMeta[request.status].label}`.toLowerCase().includes(needle));
   const onboardingClients = clients.filter((client) => {
@@ -2515,7 +2616,30 @@ function RequestsView({ fundingRequests, clientName, search, onOpenRequest, kycP
             <ListPagination page={fundingPaging.page} pageSize={fundingPaging.pageSize} totalItems={fundingPaging.totalItems} totalPages={fundingPaging.totalPages} onPageChange={fundingPaging.setPage} />
           </Card>
         </TabsContent>
-        <TabsContent value="onboarding"><Card className="data-table overflow-hidden surface-card rounded-[24px]"><div className="overflow-x-auto"><Table><TableHeader><TableRow className="bg-[#faf9fc]"><TableHead className="pl-6">Client</TableHead><TableHead>Telegram</TableHead><TableHead>Joined</TableHead><TableHead>Status</TableHead><TableHead /></TableRow></TableHeader><TableBody>{onboardingPaging.pageItems.map((client) => { const status = paymentStatusByUser[client.id] ?? "waiting"; return <TableRow key={client.id} className="cursor-pointer" onClick={() => onOpenClient(client.id)}><TableCell className="pl-6 font-semibold text-[#353146]">{client.name}</TableCell><TableCell>{client.username}<span className="block text-xs text-[#9d99aa]">{client.telegramId}</span></TableCell><TableCell>{client.joined}</TableCell><TableCell><Badge variant="outline" className="border-amber-200 bg-amber-50 text-amber-800">{status.replaceAll("_", " ")}</Badge></TableCell><TableCell><ChevronRight className="size-4 text-[#777287]" /></TableCell></TableRow>; })}</TableBody></Table></div>{onboardingClients.length === 0 && <div className="border-t p-8 text-center text-sm text-[#9692a3]">No first-card requests are waiting for admin action.</div>}<ListPagination page={onboardingPaging.page} pageSize={onboardingPaging.pageSize} totalItems={onboardingPaging.totalItems} totalPages={onboardingPaging.totalPages} onPageChange={onboardingPaging.setPage} /></Card></TabsContent>
+        <TabsContent value="onboarding">
+          <Card className="data-table overflow-hidden surface-card rounded-[24px]">
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader><TableRow className="bg-[#faf9fc]"><TableHead className="pl-6">Client</TableHead><TableHead>Amount</TableHead><TableHead>Receipt</TableHead><TableHead>Submitted</TableHead><TableHead>Status</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader>
+                <TableBody>{onboardingPaging.pageItems.map((client) => {
+                  const pipeline = paymentPipelineByUser[client.id];
+                  const status = pipeline?.status ?? paymentStatusByUser[client.id] ?? "waiting";
+                  const pending = status === "pending";
+                  return <TableRow key={client.id} className="cursor-pointer" onClick={() => onOpenClient(client.id)}>
+                    <TableCell className="pl-6"><span className="font-semibold text-[#353146]">{client.name}</span><span className="block text-xs text-[#9d99aa]">{client.username} · {client.telegramId}</span></TableCell>
+                    <TableCell className="font-semibold">{pipeline?.amountUsdCents ? formatUsd(Number(pipeline.amountUsdCents) / 100) : "—"}</TableCell>
+                    <TableCell>{pipeline?.hasReceipt ? <a href={clientReceiptUrl(client.id)} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 font-semibold text-[#6157e7] hover:underline" onClick={(event) => event.stopPropagation()}><ReceiptText className="size-4" />View receipt</a> : <Badge variant="outline" className="border-red-200 bg-red-50 text-red-700">Missing</Badge>}</TableCell>
+                    <TableCell>{pipeline?.receiptAt ? new Date(pipeline.receiptAt).toLocaleString() : client.joined}</TableCell>
+                    <TableCell><Badge variant="outline" className={pending ? "border-amber-200 bg-amber-50 text-amber-800" : status === "accepted" ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "border-slate-200 bg-slate-50 text-slate-700"}>{status.replaceAll("_", " ")}</Badge></TableCell>
+                    <TableCell><div className="flex justify-end gap-2">{pending ? <><Button size="sm" variant="outline" className="border-red-200 text-red-700" disabled={paymentActionId === client.id} onClick={(event) => { event.stopPropagation(); setPaymentActionId(client.id); void Promise.resolve(onPaymentDecision(client.id, "deny")).finally(() => setPaymentActionId(null)); }}>Deny</Button><Button size="sm" disabled={paymentActionId === client.id || !pipeline?.hasReceipt} onClick={(event) => { event.stopPropagation(); setPaymentActionId(client.id); void Promise.resolve(onPaymentDecision(client.id, "accept")).finally(() => setPaymentActionId(null)); }}>Accept</Button></> : <Button size="sm" variant="ghost" onClick={(event) => { event.stopPropagation(); onOpenClient(client.id); }}>Open</Button>}</div></TableCell>
+                  </TableRow>;
+                })}</TableBody>
+              </Table>
+            </div>
+            {onboardingClients.length === 0 && <div className="border-t p-8 text-center text-sm text-[#9692a3]">No first-card requests are waiting for admin action.</div>}
+            <ListPagination page={onboardingPaging.page} pageSize={onboardingPaging.pageSize} totalItems={onboardingPaging.totalItems} totalPages={onboardingPaging.totalPages} onPageChange={onboardingPaging.setPage} />
+          </Card>
+        </TabsContent>
         <TabsContent value="kyc"><KycView /></TabsContent>
         <TabsContent value="transactions"><TransactionsView transactions={transactions} clientName={clientName} search={search} issues={issues} onReconcileIssue={onReconcileIssue} /></TabsContent>
       </Tabs>
@@ -2806,10 +2930,10 @@ function SettingsView({ serviceFee, exchangeRate, minimumFunding, botToken, show
         <Card className={`surface-card rounded-[24px] ${settingsTab==="general"?"":"hidden"}`}><CardHeader><div className="flex items-center gap-3"><span className="grid size-10 place-items-center rounded-[13px] bg-[#eeecff] text-[#6157e7]"><CircleDollarSign className="size-5" /></span><div><CardTitle className="text-[17px] tracking-[-.02em] text-[#2c2940]">Pricing and exchange</CardTitle><p className="mt-1 text-sm text-[#8f8b9c]">Calculate the Rial amount before a request is created.</p></div></div></CardHeader><CardContent className="space-y-5"><div className="grid gap-4 sm:grid-cols-2"><div className="grid gap-2"><Label htmlFor="service-fee">Your funding fee (%)</Label><Input id="service-fee" type="number" min="0" step="0.1" value={serviceFee} onChange={(event) => onServiceFee(Number(event.target.value))} /></div><div className="grid gap-2"><Label>Provider card fee</Label><Input value="4% + $1.00" readOnly className="bg-[#f8f7fb]" /></div><div className="grid gap-2 sm:col-span-2"><Label htmlFor="minimum-funding">Minimum existing-card funding (USD)</Label><Input id="minimum-funding" type="number" min="1" step="1" value={minimumFunding} onChange={(event) => onMinimumFunding(Number(event.target.value))} /><p className="text-xs text-[#8f8b9c]">Applies only after onboarding when a customer adds money to an existing card. The first-card minimum is configured separately below.</p></div></div><div className="grid gap-2"><div className="flex items-center justify-between gap-2"><Label htmlFor="exchange-rate">Rial per 1 USD</Label><Badge variant="outline" className="rounded-full border-amber-200 bg-amber-50 text-amber-800">Manual snapshot</Badge></div><Input id="exchange-rate" type="number" min="1" value={exchangeRate} onChange={(event) => onExchangeRate(Number(event.target.value))} /><div className="rounded-[14px] border border-[#ece9f2] bg-[#faf9fc] p-3 text-xs leading-5 text-[#777287]"><p className="font-semibold text-[#353146]">Source: admin-approved manual snapshot</p><p>Saving creates a new immutable exchange-rate row used by new funding quotes until it expires.</p><p className="mt-1 text-[#9692a3]">Existing funding requests never recalculate when this value changes.</p></div><Button variant="outline" className="mt-3 rounded-xl" onClick={() => void onSavePricing()}><Check className="size-4" />Save pricing & rate snapshot</Button></div><div className="hero-grid rounded-[20px] p-5 text-white"><p className="text-xs font-medium uppercase tracking-[.14em] text-[#c8c3ff]">Example · $100 card funding request</p><div className="mt-3 grid grid-cols-2 gap-4"><div><p className="text-sm text-[#aaa5c8]">USD basis</p><p className="mt-1 text-xl font-semibold">{formatUsd(total)}</p></div><div><p className="text-sm text-[#aaa5c8]">Client pays</p><p className="mt-1 text-xl font-semibold">{formatRial(total * exchangeRate)}</p></div></div><div className="mt-3 border-t border-white/10 pt-3 text-xs text-[#aaa5c8]">$100 + {formatUsd(providerFee)} provider + {formatUsd(ownFee)} service fee</div></div></CardContent></Card>
 
         <Card className={`surface-card rounded-[24px] ${settingsTab==="general"?"":"hidden"}`}><CardHeader><div className="flex items-center gap-3"><span className="grid size-10 place-items-center rounded-[13px] bg-[#eeecff] text-[#6157e7]"><CreditCard className="size-5" /></span><div><CardTitle className="text-[17px] tracking-[-.02em] text-[#2c2940]">Customer payment destination</CardTitle><p className="mt-1 text-sm text-[#8f8b9c]">Customers pay this local card and upload a receipt. This is separate from Kripicard issuance.</p></div></div></CardHeader><CardContent className="space-y-4"><div className="grid gap-3 sm:grid-cols-2"><div className="grid gap-2"><Label htmlFor="pay-card-number">Card number</Label><Input id="pay-card-number" value={payCard.cardNumber} onChange={(e) => setPayCard((c) => ({ ...c, cardNumber: e.target.value }))} placeholder="6037-9911-2233-4455" className="bg-white" /></div><div className="grid gap-2"><Label htmlFor="pay-card-holder">Card holder name</Label><Input id="pay-card-holder" value={payCard.cardHolder} onChange={(e) => setPayCard((c) => ({ ...c, cardHolder: e.target.value }))} placeholder="Full name as on the card" className="bg-white" /></div></div><Button className="rounded-xl bg-[#6157e7] text-white hover:bg-[#554bcf]" disabled={payBusy} onClick={() => void savePayCard()}><Check className="size-4" />Save payment destination</Button></CardContent></Card>
-        <Card className={`surface-card rounded-[24px] ${settingsTab==="general"?"":"hidden"}`}><CardHeader><div className="flex items-center gap-3"><span className="grid size-10 place-items-center rounded-[13px] bg-[#e6f8f1] text-[#16815e]"><WalletCards className="size-5" /></span><div><CardTitle className="text-[17px] tracking-[-.02em] text-[#2c2940]">First-card issuance</CardTitle><p className="mt-1 text-sm text-[#8f8b9c]">Controls the virtual card created after payment and KYC approval.</p></div></div></CardHeader><CardContent className="space-y-4"><div className="grid gap-3 sm:grid-cols-2"><div className="grid gap-2"><Label htmlFor="pay-min-load">Minimum first-card amount (USD)</Label><Input id="pay-min-load" type="number" min={1} value={firstCard.minLoadUsd} onChange={(e) => setFirstCard((c) => ({ ...c, minLoadUsd: Number(e.target.value) || 25 }))} className="bg-white" /><p className="text-xs text-[#8f8b9c]">The accepted amount becomes the initial virtual-card balance.</p></div><div className="grid gap-2"><Label htmlFor="onboarding-bin">Virtual-card BIN</Label><Select value={firstCard.onboardingBin} onValueChange={(value) => setFirstCard((c) => ({ ...c, onboardingBin: value }))}><SelectTrigger id="onboarding-bin" className="bg-white"><SelectValue placeholder="Choose a provider BIN" /></SelectTrigger><SelectContent>{firstCard.allowedBins.map((item) => <SelectItem key={item.bin} value={item.bin}>{item.bin}{item.requiresDob ? " · DOB required" : ""}</SelectItem>)}</SelectContent></Select><p className="text-xs text-[#8f8b9c]">This BIN belongs to the issued Kripicard, not the customer payment card.</p></div></div><Button className="rounded-xl bg-[#167957] text-white hover:bg-[#116144]" disabled={payBusy} onClick={() => void saveFirstCard()}><Check className="size-4" />Save issuance settings</Button></CardContent></Card>
+        <Card className={`surface-card rounded-[24px] ${settingsTab==="general"?"":"hidden"}`}><CardHeader><div className="flex items-center gap-3"><span className="grid size-10 place-items-center rounded-[13px] bg-[#e6f8f1] text-[#16815e]"><WalletCards className="size-5" /></span><div><CardTitle className="text-[17px] tracking-[-.02em] text-[#2c2940]">First-card defaults</CardTitle><p className="mt-1 text-sm text-[#8f8b9c]">Defaults used when an approved client receives their first Kripicard.</p></div></div></CardHeader><CardContent className="space-y-4"><div className="grid gap-3 sm:grid-cols-2"><div className="grid gap-2"><Label htmlFor="pay-min-load">Minimum first-card amount (USD)</Label><Input id="pay-min-load" type="number" min={1} value={firstCard.minLoadUsd} onChange={(e) => setFirstCard((c) => ({ ...c, minLoadUsd: Number(e.target.value) || 25 }))} className="bg-white" /><p className="text-xs text-[#8f8b9c]">The approved receipt amount becomes the initial card balance.</p></div><div className="grid gap-2"><Label htmlFor="onboarding-bin">Kripicard card product (BIN)</Label><Select value={firstCard.onboardingBin} onValueChange={(value) => setFirstCard((c) => ({ ...c, onboardingBin: value }))}><SelectTrigger id="onboarding-bin" className="bg-white"><SelectValue placeholder="Choose a Kripicard product" /></SelectTrigger><SelectContent>{firstCard.allowedBins.map((item) => <SelectItem key={item.bin} value={item.bin}>{item.bin}{item.requiresDob ? " · DOB required" : ""}</SelectItem>)}</SelectContent></Select><p className="text-xs text-[#8f8b9c]">Kripicard requires this product identifier when creating a card. It is not a customer payment-card number.</p></div></div><Button className="rounded-xl bg-[#167957] text-white hover:bg-[#116144]" disabled={payBusy} onClick={() => void saveFirstCard()}><Check className="size-4" />Save first-card defaults</Button></CardContent></Card>
         <Card className={`surface-card rounded-[24px] ${settingsTab==="telegram"?"":"hidden"}`}><CardHeader><div className="flex items-center gap-3"><span className="grid size-10 place-items-center rounded-[13px] bg-[#f1eefe] text-[#7864c9]"><Bot className="size-5" /></span><div><CardTitle className="text-[17px] tracking-[-.02em] text-[#2c2940]">Telegram bot</CardTitle><p className="mt-1 text-sm text-[#8f8b9c]">Webhook readiness, server-side token status, and required channels.</p></div></div></CardHeader><CardContent className="space-y-5"><div className="grid gap-2"><Label htmlFor="bot-token">Bot token</Label><div className="flex flex-wrap gap-2"><div className="relative min-w-[220px] flex-1"><Input id="bot-token" type={showToken ? "text" : "password"} value={botToken} onChange={(event) => onBotToken(event.target.value)} placeholder={telegramStatus?.tokenHint ? `Update token (current ends ${telegramStatus.tokenHint})` : "Paste bot token from @BotFather"} className="pr-10" autoComplete="off" /><button type="button" aria-label={showToken ? "Hide token" : "Show token"} onClick={() => onShowToken(!showToken)} className="absolute right-3 top-1/2 -translate-y-1/2 text-[#9692a3]">{showToken ? <EyeOff className="size-4" /> : <Eye className="size-4" />}</button></div><Button className="rounded-xl bg-[#6157e7] text-white hover:bg-[#554bcf]" disabled={!botToken.trim()} onClick={() => void onSaveBotToken()}><Check className="size-4" />Save token</Button><Button variant="outline" className="rounded-xl" disabled={!telegramStatus?.configured} onClick={() => void onConfigureWebhook()}><Radio className="size-4" />Configure webhook</Button>{telegramStatus?.tokenSource === "database" && <Button variant="outline" className="rounded-xl border-red-200 text-red-700 hover:bg-red-50" onClick={() => void onClearBotToken()}><Trash2 className="size-4" />Clear</Button>}</div><p className="text-xs text-[#8f8b9c]">{telegramStatus?.tokenHint ? <>Current token: <code>••••{telegramStatus.tokenHint}</code> · stored {telegramStatus.tokenSource === "database" ? "encrypted in the database (set here)" : "in the server environment"}. Only the last 4 characters are ever shown.</> : <>Paste a token from <b>@BotFather</b> and click <b>Save token</b>. It is stored encrypted (AES-256-GCM); only the last 4 characters are shown afterward.</>}</p></div><div className="rounded-[14px] border border-[#ece9f2] bg-[#faf9fc] p-3 text-sm"><div className="flex flex-wrap gap-2"><Badge variant="outline" className={telegramStatus?.configured ? "rounded-full border-emerald-200 bg-emerald-50 text-emerald-700" : "rounded-full border-amber-200 bg-amber-50 text-amber-700"}>{telegramStatus?.configured ? "Bot configured" : "Bot not configured"}</Badge>{telegramStatus?.bot?.username && <Badge variant="outline" className="rounded-full">@{telegramStatus.bot.username}</Badge>}{telegramStatus?.webhook?.url && <Badge variant="outline" className="rounded-full border-emerald-200 text-emerald-700">Webhook connected</Badge>}</div><p className="mt-2 break-all text-xs text-[#777287]">Expected webhook: {telegramStatus?.expectedWebhookUrl ?? "Configure Telegram environment variables to inspect status."}</p>{telegramStatus?.webhook?.lastErrorMessage && <p className="mt-1 text-xs text-red-600">Telegram: {telegramStatus.webhook.lastErrorMessage}</p>}{telegramStatus?.error && <p className="mt-1 text-xs text-red-600">Telegram: {telegramStatus.error}</p>}</div><div><div className="mb-2 flex items-center justify-between"><Label>Force-join channels</Label><Badge variant="outline" className="rounded-full">{channels.length} required</Badge></div><div className="space-y-2">{channels.map((channel) => <div key={channel} className="flex items-center gap-3 rounded-[14px] border border-[#ebe9f1] bg-[#fbfafc] p-3"><Hash className="size-4 text-[#9692a3]" /><span className="flex-1 text-sm font-medium">{channel}</span><button onClick={() => void onRemoveChannel(channel)} className="text-[#9692a3] hover:text-red-600"><Trash2 className="size-4" /><span className="sr-only">Remove {channel}</span></button></div>)}</div><div className="mt-2 flex gap-2"><Input value={newChannel} onChange={(event) => onNewChannel(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); void onAddChannel(); } }} placeholder="@channel_username" /><Button variant="outline" className="rounded-xl" onClick={() => void onAddChannel()}><Plus className="size-4" />Add</Button></div><p className="mt-2 text-xs text-[#8f8b9c]">Membership checks fail open on Telegram/API configuration errors so one broken channel cannot lock out every client; explicit left/kicked status is enforced.</p></div><Alert className="rounded-[16px] border-[#cfeadf] bg-[#f0faf6]"><CheckCircle2 className="text-[#167957]" /><AlertTitle className="text-[#245f4c]">Telegram backend implemented</AlertTitle><AlertDescription className="text-[#4f7669]">The bot uses verified and deduplicated webhooks, assignment and ban gates, opaque callbacks, guarded card actions, support relay, and durable OTP delivery.</AlertDescription></Alert></CardContent></Card>
 
-        <Card className={`surface-card rounded-[24px] xl:col-span-2 ${settingsTab==="email"?"":"hidden"}`}><CardHeader><CardTitle>Email OAuth setup</CardTitle><p className="text-sm text-[#8f8b9c]">Register these exact callback URLs before using Connect on an account.</p></CardHeader><CardContent className="grid gap-4 md:grid-cols-2">{(["outlook","gmail"] as const).map((provider) => { const setup = emailOAuth?.providers[provider]; const label = provider === "outlook" ? "Outlook / Hotmail" : "Gmail"; return <div key={provider} className="rounded-xl border p-4"><div className="flex items-center justify-between gap-2"><p className="font-semibold">{label}</p><Badge variant="outline" className={setup?.configured ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "border-amber-200 bg-amber-50 text-amber-800"}>{setup?.configured ? "Configured" : "Missing credentials"}</Badge></div><p className="mt-3 text-xs font-medium text-[#777287]">Authorized redirect URI</p><code className="mt-1 block break-all rounded-lg bg-slate-50 p-2 text-xs">{setup?.callbackUrl ?? "Loading…"}</code><ol className="mt-3 list-decimal space-y-1 pl-5 text-xs leading-5 text-[#777287]"><li>Create an OAuth web application in the provider console.</li><li>Add the exact redirect URI shown above.</li><li>Set the client ID and secret in the deployment environment, then restart.</li><li>Open Accounts, choose the matching mailbox provider, and click Connect.</li></ol><p className="mt-3 text-xs text-[#9692a3]">{provider === "outlook" ? "Environment: MICROSOFT_OAUTH_CLIENT_ID and MICROSOFT_OAUTH_CLIENT_SECRET" : "Environment: GOOGLE_OAUTH_CLIENT_ID and GOOGLE_OAUTH_CLIENT_SECRET"}</p></div>; })}</CardContent></Card>
+        <Card className={`surface-card rounded-[24px] xl:col-span-2 ${settingsTab==="email"?"":"hidden"}`}><CardHeader><CardTitle>Email OAuth setup</CardTitle><p className="text-sm text-[#8f8b9c]">Create a web OAuth application, then register the exact callback shown here.</p></CardHeader><CardContent className="grid gap-4 md:grid-cols-2">{(["outlook","gmail"] as const).map((provider) => { const setup = emailOAuth?.providers[provider]; const label = provider === "outlook" ? "Outlook / Hotmail" : "Gmail"; const consoleUrl = provider === "outlook" ? "https://entra.microsoft.com/#view/Microsoft_AAD_RegisteredApps/ApplicationsListBlade" : "https://console.cloud.google.com/apis/credentials"; return <div key={provider} className="rounded-xl border p-4"><div className="flex items-center justify-between gap-2"><p className="font-semibold">{label}</p><Badge variant="outline" className={setup?.configured ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "border-amber-200 bg-amber-50 text-amber-800"}>{setup?.configured ? "Configured" : "Missing credentials"}</Badge></div><a href={consoleUrl} target="_blank" rel="noreferrer" className="mt-3 inline-flex items-center gap-1.5 text-sm font-semibold text-[#6157e7] hover:underline">Open provider console<ExternalLink className="size-3.5" /></a><p className="mt-3 text-xs font-medium text-[#777287]">Authorized redirect URI</p><code className="mt-1 block break-all rounded-lg bg-slate-50 p-2 text-xs">{setup?.callbackUrl ?? "Loading…"}</code><ol className="mt-3 list-decimal space-y-1 pl-5 text-xs leading-5 text-[#777287]"><li>Create a web application. For Microsoft, allow organizational and personal Microsoft accounts.</li><li>Add the exact redirect URI above. For Gmail, enable the Gmail API and configure the consent screen.</li><li>Set the client ID and secret below in the deployment environment, then restart the app.</li><li>Open Accounts, choose the matching provider, save, then click Connect.</li></ol><p className="mt-3 text-xs text-[#9692a3]">{provider === "outlook" ? "MICROSOFT_OAUTH_CLIENT_ID and MICROSOFT_OAUTH_CLIENT_SECRET" : "GOOGLE_OAUTH_CLIENT_ID and GOOGLE_OAUTH_CLIENT_SECRET"}</p></div>; })}</CardContent></Card>
         <EmailRulesCard hidden={settingsTab !== "email"} />
       </div>
     </>

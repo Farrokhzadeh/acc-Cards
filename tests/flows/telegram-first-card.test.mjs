@@ -131,6 +131,9 @@ test("Request Center shows first-card work instead of an empty funding table", (
   assert.match(dashboard, /value="onboarding"/);
   assert.match(dashboard, /First cards/);
   assert.match(dashboard, /paymentStatusByUser/);
+  assert.match(dashboard, /clientReceiptUrl\(client\.id\)/);
+  assert.match(dashboard, /onPaymentDecision\(client\.id, "accept"\)/);
+  assert.match(dashboard, /onPaymentDecision\(client\.id, "deny"\)/);
   assert.match(dashboard, /No existing-card funding requests/);
 });
 
