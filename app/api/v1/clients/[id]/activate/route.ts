@@ -7,7 +7,7 @@ import { attachExistingOnboardingCard, ensureOnboardingCardRequest, getOnboardin
 import { assertCardCreationAvailable, issueApprovedCardRequest, reconcileCardIssuance } from "@/server/card-requests/issuance";
 import { randomToken } from "@/server/security/crypto";
 import { requestIp } from "@/server/auth/request-meta";
-import { deletePrivateSupportAttachment } from "@/server/support/storage";
+import { assertAcceptedFirstCardPayment, markFirstCardPaymentCompleted, reviewCustomerPayment } from "@/server/payments/service";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -49,8 +49,9 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
       payment_receipt_object_key: string | null;
       payment_amount_usd_cents: string | bigint | null;
       onboarding_card_id: string | null;
+      first_card_payment_id: string | null;
     }>(
-      `SELECT payment_status,payment_receipt_object_key,payment_amount_usd_cents,onboarding_card_id
+      `SELECT payment_status,payment_receipt_object_key,payment_amount_usd_cents,onboarding_card_id,first_card_payment_id
          FROM telegram_users WHERE id=$1::uuid`,
       [userId],
     );
@@ -67,30 +68,35 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
         [userId],
       );
       if (!kyc.rows[0]?.ok) throw new ApiError(409, "kyc_required", "Approve KYC before accepting the first-card payment.");
-      await getPool().query(`UPDATE telegram_users SET payment_status='accepted',updated_at=now() WHERE id=$1::uuid`, [userId]);
-      await auditAdminEvent({ adminId: session.principal.id, action: "payment.accepted", entityType: "telegram_user", entityId: userId, request, requestId });
+      if (!user.first_card_payment_id) throw new ApiError(409, "payment_record_missing", "The first-card payment record is missing.");
+      await reviewCustomerPayment({
+        paymentId: user.first_card_payment_id,
+        action: "accept",
+        adminId: session.principal.id,
+      });
+      await auditAdminEvent({ adminId: session.principal.id, action: "payment.accepted", entityType: "telegram_user", entityId: userId, request, requestId, metadata: { paymentId: user.first_card_payment_id } });
       return { ok: true as const, status: "accepted" };
     }
 
     if (input.action === "deny") {
       if (current !== "pending" && current !== "accepted") throw new ApiError(409, "invalid_state", "Payment cannot be denied after first-card creation has started.");
-      await getPool().query(
-        `UPDATE telegram_users
-            SET payment_status='denied',payment_declared_at=NULL,payment_amount_usd_cents=NULL,
-                payment_receipt_object_key=NULL,payment_receipt_mime=NULL,payment_receipt_at=NULL,updated_at=now()
-          WHERE id=$1::uuid`,
-        [userId],
-      );
-      if (user.payment_receipt_object_key) {
-        await deletePrivateSupportAttachment(user.payment_receipt_object_key).catch((error) => {
-          console.warn("[payment] receipt cleanup failed", {
-            userId,
-            errorName: error instanceof Error ? error.name : "unknown",
-          });
-        });
-      }
+      if (!user.first_card_payment_id) throw new ApiError(409, "payment_record_missing", "The first-card payment record is missing.");
+      await reviewCustomerPayment({
+        paymentId: user.first_card_payment_id,
+        action: "reject",
+        adminId: session.principal.id,
+        note: "First-card payment rejected by administrator",
+      });
       await enqueuePaymentNotify(userId, "denied");
-      await auditAdminEvent({ adminId: session.principal.id, action: "payment.denied", entityType: "telegram_user", entityId: userId, request, requestId });
+      await auditAdminEvent({
+        adminId: session.principal.id,
+        action: "payment.denied",
+        entityType: "telegram_user",
+        entityId: userId,
+        request,
+        requestId,
+        metadata: { paymentId: user.first_card_payment_id },
+      });
       return { ok: true as const, status: "denied" };
     }
 
@@ -98,6 +104,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
       requireRecentReauthentication(session);
       if (input.walletFundingConfirmed !== true) throw new ApiError(409, "provider_wallet_confirmation_required", "Fund the selected Kripicard wallet with crypto and confirm it before creating the card.");
       if (current !== "accepted" && current !== "card_creating") throw new ApiError(409, "invalid_state", "Accept the payment before creating the first card.");
+      await assertAcceptedFirstCardPayment(getPool(), userId);
       if (!input.accountId) throw new ApiError(400, "validation_error", "Choose the Kripicard account that will own this customer's first card.");
       await assertCardCreationAvailable();
       const onboarding = await ensureOnboardingCardRequest({
@@ -133,6 +140,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
       if (!["accepted", "card_creating", "card_reconciliation", "card_ready"].includes(current ?? "")) {
         throw new ApiError(409, "invalid_state", "Accept the payment before attaching the customer's first card.");
       }
+      await assertAcceptedFirstCardPayment(getPool(), userId);
       if (!input.accountId || !input.cardId) throw new ApiError(400, "validation_error", "Choose the assigned Kripicard account and an existing card.");
       const onboarding = await ensureOnboardingCardRequest({
         userId,
@@ -179,6 +187,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     );
     if (!owned.rows[0]) throw new ApiError(409, "card_not_assigned", "The created first card is no longer reachable through the customer's assigned account.");
     await getPool().query(`UPDATE telegram_users SET payment_status='complete',updated_at=now() WHERE id=$1::uuid`, [userId]);
+    await markFirstCardPaymentCompleted(getPool(), userId);
     await enqueuePaymentNotify(userId, "complete");
     await auditAdminEvent({
       adminId: session.principal.id,
