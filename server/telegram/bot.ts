@@ -660,30 +660,68 @@ async function sendTransactions(client: TelegramClient, user: BotUser, chatId: n
   await client.sendMessage({ chatId, text: `<b>Recent transactions · •${escapeHtml(card.last4 ?? "????")}</b>\n${lines}`, replyMarkup: { inline_keyboard: [[{ text: "← Card", callback_data: back }]] } });
 }
 
+function customerPaymentPurposeLabel(purpose: "first_card" | "additional_card" | "card_funding", lang: string | null) {
+  if (purpose === "first_card") return lang === "fa" ? "اولین کارت" : "First card";
+  if (purpose === "additional_card") return lang === "fa" ? "کارت جدید" : "New card";
+  return lang === "fa" ? "افزایش موجودی کارت" : "Card funding";
+}
+
+function customerPaymentPurposeIcon(purpose: "first_card" | "additional_card" | "card_funding") {
+  return purpose === "first_card" ? "🌟" : purpose === "additional_card" ? "💳" : "➕";
+}
+
 async function sendRequests(client: TelegramClient, user: BotUser, chatId: number) {
-  const [funding, cards] = await Promise.all([
+  const [payments, funding, cards] = await Promise.all([
+    listCustomerPaymentsForUser(user.id, 20),
     getPool().query<{ id: string; reference: string; status: string; submitted_at: Date }>(
-      `SELECT id,reference,status,submitted_at FROM funding_requests WHERE user_id=$1::uuid ORDER BY submitted_at DESC LIMIT 10`,
+      `SELECT fr.id,fr.reference,fr.status,fr.submitted_at
+         FROM funding_requests fr
+        WHERE fr.user_id=$1::uuid
+          AND NOT EXISTS (SELECT 1 FROM customer_payments cp WHERE cp.funding_request_id=fr.id)
+        ORDER BY fr.submitted_at DESC
+        LIMIT 10`,
       [user.id],
     ),
     getPool().query<{ id: string; reference: string; status: string; created_at: Date }>(
-      `SELECT id,reference,status,created_at FROM card_requests WHERE user_id=$1::uuid ORDER BY created_at DESC LIMIT 10`,
+      `SELECT cr.id,cr.reference,cr.status,cr.created_at
+         FROM card_requests cr
+        WHERE cr.user_id=$1::uuid
+          AND NOT EXISTS (SELECT 1 FROM customer_payments cp WHERE cp.card_request_id=cr.id)
+          AND NOT EXISTS (SELECT 1 FROM telegram_users tu WHERE tu.id=cr.user_id AND tu.onboarding_card_request_id=cr.id)
+        ORDER BY cr.created_at DESC
+        LIMIT 10`,
       [user.id],
     ),
   ]);
+
   const combined = [
-    ...funding.rows.map((request) => ({ ...request, kind: "funding" as const, at: request.submitted_at })),
-    ...cards.rows.map((request) => ({ ...request, kind: "card" as const, at: request.created_at })),
-  ].sort((a, b) => b.at.getTime() - a.at.getTime()).slice(0, 15);
+    ...payments.map((payment) => ({
+      kind: "payment" as const,
+      id: payment.id,
+      reference: payment.requestReference ?? payment.reference,
+      status: payment.status,
+      purpose: payment.purpose,
+      at: new Date(payment.createdAt),
+    })),
+    ...funding.rows.map((request) => ({ ...request, kind: "funding" as const, purpose: null, at: request.submitted_at })),
+    ...cards.rows.map((request) => ({ ...request, kind: "card" as const, purpose: null, at: request.created_at })),
+  ].sort((a, b) => b.at.getTime() - a.at.getTime()).slice(0, 20);
 
   const rows: TelegramInlineKeyboard["inline_keyboard"] = [];
-  for (const request of combined) {
+  for (const item of combined) {
+    if (item.kind === "payment") {
+      rows.push([{
+        text: `${customerPaymentPurposeIcon(item.purpose)} ${item.reference} · ${item.status.replaceAll("_", " ")}`,
+        callback_data: await createCallbackToken({ userId: user.id, action: "payment.detail", entityId: item.id }),
+      }]);
+      continue;
+    }
     rows.push([{
-      text: `${request.kind === "card" ? "💳" : "➕"} ${request.reference} · ${request.status}`,
+      text: `${item.kind === "card" ? "💳" : "➕"} ${item.reference} · ${item.status}`,
       callback_data: await createCallbackToken({
         userId: user.id,
-        action: request.kind === "card" ? "cardreq.detail" : "fundreq.detail",
-        entityId: request.id,
+        action: item.kind === "card" ? "cardreq.detail" : "fundreq.detail",
+        entityId: item.id,
       }),
     }]);
   }
@@ -692,6 +730,71 @@ async function sendRequests(client: TelegramClient, user: BotUser, chatId: numbe
   await client.sendMessage({ chatId, text, replyMarkup: { inline_keyboard: rows } });
 }
 
+async function sendCustomerPaymentDetail(client: TelegramClient, user: BotUser, chatId: number, paymentId: string) {
+  const payment = await getCustomerPaymentHistoryDetail(paymentId, user.id);
+  const purpose = customerPaymentPurposeLabel(payment.purpose, user.lang);
+  const lines = [
+    `<b>${customerPaymentPurposeIcon(payment.purpose)} ${escapeHtml(purpose)}</b>`,
+    `${user.lang === "fa" ? "مرجع" : "Reference"}: <code>${escapeHtml(payment.requestReference ?? payment.reference)}</code>`,
+    `${user.lang === "fa" ? "مرجع پرداخت" : "Payment reference"}: <code>${escapeHtml(payment.reference)}</code>`,
+    `${user.lang === "fa" ? "وضعیت پرداخت" : "Payment status"}: <b>${escapeHtml(payment.status.replaceAll("_", " "))}</b>`,
+  ];
+  if (payment.requestStatus) lines.push(`${user.lang === "fa" ? "وضعیت درخواست" : "Request status"}: <b>${escapeHtml(payment.requestStatus.replaceAll("_", " "))}</b>`);
+  if (payment.cardLast4) lines.push(`${user.lang === "fa" ? "کارت" : "Card"}: •${escapeHtml(payment.cardLast4)}`);
+  lines.push(`${user.lang === "fa" ? "مبلغ کارت" : "Card amount"}: <b>${formatUsdCents(payment.amountUsdCents)}</b>`);
+  if (BigInt(payment.providerFeeUsdCents) > 0n) lines.push(`${user.lang === "fa" ? "کارمزد سرویس کارت" : "Provider fee"}: ${formatUsdCents(payment.providerFeeUsdCents)}`);
+  if (BigInt(payment.serviceFeeUsdCents) > 0n) lines.push(`${user.lang === "fa" ? "کارمزد خدمات" : "Service fee"}: ${formatUsdCents(payment.serviceFeeUsdCents)}`);
+  lines.push(`${user.lang === "fa" ? "مبنای کل دلاری" : "Total USD basis"}: <b>${formatUsdCents(payment.customerPaysUsdCents)}</b>`);
+  lines.push(`${user.lang === "fa" ? "نرخ ثبت‌شده" : "Locked rate"}: ${escapeHtml(BigInt(payment.rateRialPerUsd).toLocaleString("en-US"))} ${user.lang === "fa" ? "ریال/دلار" : "rial/USD"}`);
+  lines.push(`${user.lang === "fa" ? "مبلغ دقیق ریالی" : "Exact rial amount"}: <b>${escapeHtml(formatRialValue(payment.customerPaysRial))}</b>`);
+  lines.push(`${user.lang === "fa" ? "رسید" : "Receipt"}: ${payment.receipt ? escapeHtml(payment.receipt.scanStatus ?? "stored") : user.lang === "fa" ? "ثبت نشده" : "not uploaded"}`);
+  lines.push(`${user.lang === "fa" ? "ایجاد" : "Created"}: ${escapeHtml(new Date(payment.createdAt).toISOString().replace("T", " ").slice(0, 16))} UTC`);
+  if (payment.reviewedAt) lines.push(`${user.lang === "fa" ? "بررسی" : "Reviewed"}: ${escapeHtml(new Date(payment.reviewedAt).toISOString().replace("T", " ").slice(0, 16))} UTC`);
+  if (payment.adminNote) lines.push(`${user.lang === "fa" ? "یادداشت مدیر" : "Admin note"}: ${escapeHtml(payment.adminNote)}`);
+
+  const rows: TelegramInlineKeyboard["inline_keyboard"] = [];
+  if (payment.receipt) {
+    rows.push([{ text: user.lang === "fa" ? "🧾 مشاهده رسید" : "🧾 View receipt", callback_data: await createCallbackToken({ userId: user.id, action: "payment.receipt", entityId: payment.id }) }]);
+  }
+  if (["pending_receipt", "correction_needed"].includes(payment.status)) {
+    rows.push([{ text: user.lang === "fa" ? "📤 ارسال رسید" : "📤 Upload receipt", callback_data: await createCallbackToken({ userId: user.id, action: "payment.upload", entityId: payment.id, ttlMinutes: 20 }) }]);
+  }
+  if (payment.cardRequestId) rows.push([{ text: user.lang === "fa" ? "جزئیات درخواست کارت" : "Card request details", callback_data: await createCallbackToken({ userId: user.id, action: "cardreq.detail", entityId: payment.cardRequestId }) }]);
+  if (payment.fundingRequestId) rows.push([{ text: user.lang === "fa" ? "جزئیات افزایش موجودی" : "Funding request details", callback_data: await createCallbackToken({ userId: user.id, action: "fundreq.detail", entityId: payment.fundingRequestId }) }]);
+  rows.push([{ text: user.lang === "fa" ? "← پرداخت‌ها و درخواست‌ها" : "← Payments & requests", callback_data: await createCallbackToken({ userId: user.id, action: "menu.requests" }) }]);
+
+  await client.sendMessage({ chatId, text: lines.join("\n"), replyMarkup: { inline_keyboard: rows } });
+}
+
+async function sendCustomerPaymentReceipt(client: TelegramClient, user: BotUser, chatId: number, paymentId: string) {
+  const payment = await getCustomerPaymentHistoryDetail(paymentId, user.id);
+  if (!payment.receipt) throw new ApiError(404, "receipt_not_found", "No receipt is attached to this payment.");
+  const receipt = await getCustomerPaymentReceiptForTelegram(payment.id, user.id);
+  const ext = receipt.mimeType === "application/pdf" ? "pdf" : receipt.mimeType === "image/png" ? "png" : receipt.mimeType === "image/webp" ? "webp" : "jpg";
+  await client.sendDocument({
+    chatId,
+    bytes: receipt.bytes,
+    filename: `payment-${payment.reference}.${ext}`,
+    mimeType: receipt.mimeType,
+    caption: `${customerPaymentPurposeIcon(payment.purpose)} ${escapeHtml(customerPaymentPurposeLabel(payment.purpose, user.lang))} · ${escapeHtml(payment.requestReference ?? payment.reference)}`,
+    protectContent: true,
+  });
+}
+
+async function beginCustomerPaymentReceiptUpload(client: TelegramClient, user: BotUser, chatId: number, paymentId: string) {
+  const payment = await getCustomerPaymentHistoryDetail(paymentId, user.id);
+  if (!["pending_receipt", "correction_needed"].includes(payment.status)) throw new ApiError(409, "invalid_state", "This payment is not waiting for a receipt.");
+  if (payment.purpose === "additional_card" && payment.cardRequestId) {
+    await setBotState(user.id, "card_request_receipt", { cardRequestId: payment.cardRequestId, paymentId: payment.id }, 60);
+  } else if (payment.purpose === "card_funding" && payment.fundingRequestId) {
+    await setBotState(user.id, "funding_request_receipt", { fundingRequestId: payment.fundingRequestId, paymentId: payment.id }, 60);
+  } else if (payment.purpose === "first_card") {
+    await setKycState(user.id, "payment_receipt", { paymentId: payment.id }, 60);
+  } else {
+    throw new ApiError(409, "invalid_state", "This payment cannot accept a replacement receipt.");
+  }
+  await client.sendMessage({ chatId, text: user.lang === "fa" ? "رسید پرداخت را به صورت JPEG، PNG، WebP یا PDF ارسال کنید." : "Upload the payment receipt as JPEG, PNG, WebP, or PDF." });
+}
 
 type CardRequestDraftPayload = {
   bin?: string;
