@@ -15,6 +15,9 @@ const activateRoute = await readFile(new URL("../../app/api/v1/clients/[id]/acti
 const kycService = await readFile(new URL("../../server/kyc/service.ts", import.meta.url), "utf8");
 const dashboard = await readFile(new URL("../../app/dashboard-app.tsx", import.meta.url), "utf8");
 const telegramProvider = await readFile(new URL("../../server/providers/telegram/client.ts", import.meta.url), "utf8");
+const payments = await readFile(new URL("../../server/payments/service.ts", import.meta.url), "utf8");
+const paymentReceipts = await readFile(new URL("../../server/payments/receipts.ts", import.meta.url), "utf8");
+const paymentMigration = await readFile(new URL("../../db/migrations/0030_customer_payments.sql", import.meta.url), "utf8");
 
 
 test("Phase 10 adds persistent force-join, callback token, and bot-state tables", () => {
@@ -63,7 +66,7 @@ test("pending customers get a restricted setup menu and can review their own onb
   assert.match(bot, /setup\.status/);
   assert.match(bot, /setup\.kyc/);
   assert.match(bot, /setup\.receipt/);
-  assert.match(bot, /readPrivateSupportAttachment/);
+  assert.match(bot, /readPrivateReceipt/);
   assert.match(bot, /protectContent: true/);
 });
 
@@ -124,27 +127,43 @@ test("Telegram credentials stay in environment configuration, not browser code",
 });
 
 
-test("first-card receipt persistence is atomic and denied receipts are cleaned from private storage", () => {
-  assert.match(bot, /setPaymentReceiptPending/);
-  assert.match(bot, /payment_status='pending'/);
-  assert.match(bot, /DELETE FROM telegram_bot_states/);
-  assert.match(bot, /deletePrivateSupportAttachment\(stored\.objectKey\)/);
-  assert.match(activateRoute, /deletePrivateSupportAttachment\(user\.payment_receipt_object_key\)/);
+test("first-card receipts use the shared payment ledger and private receipt storage", () => {
+  assert.match(paymentMigration, /CREATE TABLE IF NOT EXISTS customer_payments/);
+  assert.match(paymentMigration, /first_card_payment_id/);
+  assert.match(paymentReceipts, /attachTelegramCustomerPaymentReceipt/);
+  assert.match(paymentReceipts, /INSERT INTO receipts/);
+  assert.match(paymentReceipts, /payment_id/);
+  assert.match(paymentReceipts, /withTransaction/);
+  assert.match(paymentReceipts, /deletePrivateReceipt/);
+  assert.match(bot, /attachTelegramCustomerPaymentReceipt/);
+  assert.match(bot, /readPrivateReceipt/);
+  assert.doesNotMatch(bot, /setPaymentReceiptPending/);
 });
 
 
-test("first-card amount declaration and receipt-mode transition are atomic", () => {
-  assert.match(bot, /setPaymentAmountAwaitingReceipt/);
-  assert.match(bot, /payment_amount_usd_cents=\$2,payment_declared_at=now\(\)/);
-  assert.match(bot, /mode='payment_receipt'/);
-  assert.doesNotMatch(bot, /async function setPaymentDeclared/);
-  assert.doesNotMatch(bot, /async function setPaymentAmount\(/);
+test("first-card payment snapshots the exchange rate before receipt collection", () => {
+  assert.match(bot, /createFirstCardPayment/);
+  assert.match(bot, /"payment_receipt", \{ paymentId: payment\.id \}/);
+  assert.match(bot, /Locked rate/);
+  assert.match(payments, /currentPaymentRate/);
+  assert.match(payments, /rate_rial_per_usd/);
+  assert.match(payments, /customer_pays_rial/);
+  assert.match(payments, /purpose: "first_card"/);
+  assert.doesNotMatch(bot, /setPaymentAmountAwaitingReceipt/);
 });
 
 test("stale payment callbacks cannot regress an accepted or completed onboarding", () => {
-  assert.match(bot, /payment_status IS NULL OR payment_status='denied'/);
-  assert.match(bot, /mode='payment_receipt' AND expires_at>now\(\)/);
+  assert.match(payments, /row\.payment_status && row\.payment_status !== "denied"/);
+  assert.match(paymentReceipts, /\["pending_receipt","correction_needed"\]/);
   assert.match(bot, /if \(ps !== null && ps !== "denied"\)/);
+  assert.match(activateRoute, /reviewCustomerPayment/);
+});
+
+test("first-card provider actions require an admin-accepted payment record", () => {
+  assert.match(activateRoute, /assertAcceptedFirstCardPayment/);
+  assert.match(activateRoute, /reviewCustomerPayment/);
+  assert.match(activateRoute, /markFirstCardPaymentCompleted/);
+  assert.match(payments, /payment_not_approved/);
 });
 
 test("KYC review is a single atomic decision with its audit and notification", () => {
