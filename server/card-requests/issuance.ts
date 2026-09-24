@@ -25,6 +25,7 @@ type IssueRequestRow = {
   status: string;
   provider_card_id: string | null;
   issuance_started_at: Date | null;
+  last_issue_operation_id: string | null;
 };
 
 type AccountRow = {
@@ -338,6 +339,139 @@ async function reconcileWithList(args: {
     return { requestId: args.row.id, operationId: args.operationId, status: "needs_reconciliation" as const, reconciled: false, needsReconciliation: true };
   }
   return persistIssued({ operationId: args.operationId, row: args.row, accountId: args.account.id, providerCard: match, providerResponse: null, reconciled: true, session: args.session, request: args.request, requestId: args.requestId });
+}
+
+export async function attachExistingCardToRequest(
+  requestId: string,
+  cardId: string,
+  session: AuthSession,
+  request: Request,
+  traceId: string,
+) {
+  return withTransaction(async (db) => {
+    const locked = await db.query<IssueRequestRow>(
+      `SELECT * FROM card_requests WHERE id=$1::uuid FOR UPDATE`,
+      [requestId],
+    );
+    const row = locked.rows[0];
+    if (!row) throw new ApiError(404, "not_found", "Card request not found.");
+    if (!["approved", "issuing", "issue_failed", "needs_reconciliation"].includes(row.status)) {
+      throw new ApiError(409, "invalid_state", `This request cannot attach an existing card from status ${row.status}.`);
+    }
+    if (!row.selected_account_id) {
+      throw new ApiError(409, "account_required", "Approve the request with an internal issuing account before attaching a card.");
+    }
+
+    const ownership = await db.query<{ ok: boolean }>(
+      `SELECT true AS ok
+         FROM telegram_account_assignments
+        WHERE telegram_user_id=$1::uuid AND account_id=$2::uuid
+        FOR UPDATE`,
+      [row.user_id, row.selected_account_id],
+    );
+    if (!ownership.rows[0]?.ok) {
+      throw new ApiError(409, "account_not_assigned", "The issuing account is no longer assigned to this customer.");
+    }
+
+    const cardResult = await db.query<{ id: string; provider_card_id: string; last4: string | null; status: string }>(
+      `SELECT id,provider_card_id,last4,status
+         FROM cards
+        WHERE id=$1::uuid
+          AND account_id=$2::uuid
+          AND provider_card_id IS NOT NULL
+          AND archived_at IS NULL
+          AND status NOT IN ('closed','expired')
+        FOR UPDATE`,
+      [cardId, row.selected_account_id],
+    );
+    const card = cardResult.rows[0];
+    if (!card) {
+      throw new ApiError(409, "card_not_available", "Sync the selected account and choose an active card from that account.");
+    }
+
+    const onboardingUse = await db.query<{ id: string }>(
+      `SELECT id FROM telegram_users WHERE onboarding_card_id=$1::uuid LIMIT 1`,
+      [card.id],
+    );
+    if (onboardingUse.rows[0]) {
+      throw new ApiError(409, "card_already_linked", "That card is already linked as a customer's first card.");
+    }
+
+    const requestUse = await db.query<{ id: string; reference: string }>(
+      `SELECT id,reference
+         FROM card_requests
+        WHERE id<>$1::uuid
+          AND provider_card_id=$2
+          AND status='issued'
+        LIMIT 1`,
+      [row.id, card.provider_card_id],
+    );
+    if (requestUse.rows[0]) {
+      throw new ApiError(409, "card_already_linked", `That card is already linked to ${requestUse.rows[0].reference}.`);
+    }
+
+    if (row.last_issue_operation_id) {
+      await db.query(
+        `UPDATE card_operations
+            SET card_id=$2::uuid,
+                status='succeeded',
+                provider_status='issued_external',
+                provider_ref=$3,
+                provider_response_ref='attached_existing_card',
+                safe_result=safe_result||$4::jsonb,
+                updated_at=now()
+          WHERE id=$1::uuid
+            AND status IN ('created','pending','failed','needs_reconciliation')`,
+        [
+          row.last_issue_operation_id,
+          card.id,
+          card.provider_card_id,
+          JSON.stringify({ safeToRetry: false, attachedExistingCard: true }),
+        ],
+      );
+    }
+
+    await db.query(
+      `UPDATE card_requests
+          SET status='issued',
+              provider_card_id=$2,
+              issued_at=COALESCE(issued_at,now()),
+              updated_at=now()
+        WHERE id=$1::uuid`,
+      [row.id, card.provider_card_id],
+    );
+    await event(db, {
+      requestId: row.id,
+      fromStatus: row.status,
+      toStatus: "issued",
+      adminId: session.principal.id,
+      note: "Existing provider card attached by administrator",
+      metadata: { accountId: row.selected_account_id, cardId: card.id, providerCardId: card.provider_card_id },
+    });
+    await notify(db, row.id, "issued");
+    await audit(db, {
+      adminId: session.principal.id,
+      action: "card_request.existing_card_attached",
+      entityId: row.id,
+      requestId: traceId,
+      ip: requestIp(request),
+      metadata: {
+        reference: row.reference,
+        accountId: row.selected_account_id,
+        cardId: card.id,
+        providerCardId: card.provider_card_id,
+      },
+    });
+
+    return {
+      requestId: row.id,
+      cardId: card.id,
+      providerCardId: card.provider_card_id,
+      last4: card.last4,
+      status: "issued" as const,
+      attachedExisting: true,
+    };
+  });
 }
 
 export async function assertCardCreationAvailable() {

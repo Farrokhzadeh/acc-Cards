@@ -9,6 +9,7 @@ const errors = await readFile(new URL("../../server/providers/kripicard/errors.t
 const issuance = await readFile(new URL("../../server/card-requests/issuance.ts", import.meta.url), "utf8");
 const issueRoute = await readFile(new URL("../../app/api/v1/card-requests/[id]/issue/route.ts", import.meta.url), "utf8");
 const reconcileRoute = await readFile(new URL("../../app/api/v1/card-requests/[id]/reconcile/route.ts", import.meta.url), "utf8");
+const attachRoute = await readFile(new URL("../../app/api/v1/card-requests/[id]/attach/route.ts", import.meta.url), "utf8");
 const env = await readFile(new URL("../../config/env-schema.mjs", import.meta.url), "utf8");
 const dashboard = await readFile(new URL("../../app/dashboard-app.tsx", import.meta.url), "utf8");
 const activateRoute = await readFile(new URL("../../app/api/v1/clients/[id]/activate/route.ts", import.meta.url), "utf8");
@@ -104,6 +105,24 @@ test("additional-card issuance routes are guarded while first-card onboarding ke
   assert.match(activateRoute, /requireAdmin\(request, "clients\.assign"\)/);
   assert.match(activateRoute, /requireCsrf\(request, session\)/);
   assert.match(activateRoute, /requireRecentReauthentication\(session\)/);
+});
+
+test("admins can attach an externally created card without sending another provider create call", () => {
+  assert.match(issuance, /export async function attachExistingCardToRequest/);
+  assert.match(issuance, /attached_existing_card/);
+  assert.match(issuance, /card_request\.existing_card_attached/);
+  assert.match(issuance, /card_already_linked/);
+  assert.match(issuance, /onboarding_card_id/);
+  assert.match(issuance, /status='issued'/);
+  assert.match(attachRoute, /card_requests\.issue/);
+  assert.match(attachRoute, /requireCsrf/);
+  assert.match(attachRoute, /attachExistingCardToRequest/);
+  assert.doesNotMatch(attachRoute, /issueApprovedCardRequest|createCard/);
+  assert.match(dashboard, /Attach existing/);
+  assert.match(dashboard, /Attach & complete/);
+  assert.match(dashboard, /syncAccountCards/);
+  assert.match(dashboard, /fetchAccountCards/);
+  assert.match(dashboard, /attachExistingCardRequest/);
 });
 
 test("deployment has a dedicated card-creation kill switch", () => {
