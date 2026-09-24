@@ -103,7 +103,7 @@ Read-only reconciliation stores observed balance/transaction evidence but delibe
 
 Freeze/unfreeze remains a guarded Phase 6 state write with read-after-error reconciliation.
 
-`createDeposit` remains unavailable in the provider client in Phase 16. Card deletion is also not exposed by the launch workflow.
+`createDeposit` is available only behind the deployment gate, runtime control, recent admin reauthentication, and database-backed readiness checks. Each request uses a unique `order_id`; completion is applied to the tracked wallet balance once. Card deletion is not exposed by the launch workflow.
 
 ## Account-wallet balance
 

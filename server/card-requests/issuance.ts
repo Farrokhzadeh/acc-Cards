@@ -310,6 +310,13 @@ async function persistIssued(args: {
             provider_response_ref=$5,safe_result=safe_result||$6::jsonb,updated_at=now() WHERE id=$1::uuid`,
         [args.operationId, cardId, args.providerCard.card_id, providerFeeCents, args.reconciled ? "reconciled_by_cards_list" : "createcard_success", JSON.stringify({ reconciled: args.reconciled, providerCardId: args.providerCard.card_id })],
       );
+      if (args.providerResponse) {
+        await db.query(
+          `UPDATE kripi_accounts SET account_balance_usd_cents=GREATEST(0,COALESCE(account_balance_usd_cents,0)-$2::bigint),account_balance_as_of=now(),updated_at=now()
+            WHERE id=$1::uuid AND account_balance_source='derived'`,
+          [args.accountId, cents(args.providerResponse.total_charged)],
+        );
+      }
       await event(db, { requestId: args.row.id, fromStatus: args.reconciled ? "needs_reconciliation" : "issuing", toStatus: "issued", adminId: args.session.principal.id, metadata: { operationId: args.operationId, cardId, providerCardId: args.providerCard.card_id, last4: args.providerCard.last_4 ?? args.providerCard.last4 ?? null, reconciled: args.reconciled } });
       await notify(db, args.row.id, "issued");
       await audit(db, { adminId: args.session.principal.id, action: "card_request.issued", entityId: args.row.id, requestId: args.requestId, ip: requestIp(args.request), metadata: { operationId: args.operationId, cardId, providerCardId: args.providerCard.card_id, reconciled: args.reconciled, providerFeeUsdCents: providerFeeCents?.toString() ?? null } });
