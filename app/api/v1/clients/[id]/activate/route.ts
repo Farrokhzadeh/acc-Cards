@@ -79,7 +79,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     }
 
     if (input.action === "deny") {
-      if (current !== "pending" && current !== "accepted") throw new ApiError(409, "invalid_state", "Payment cannot be denied after first-card creation has started.");
+      if (current !== "pending") throw new ApiError(409, "invalid_state", "Only a pending first-card payment can be denied.");
       if (!user.first_card_payment_id) throw new ApiError(409, "payment_record_missing", "The first-card payment record is missing.");
       await reviewCustomerPayment({
         paymentId: user.first_card_payment_id,
