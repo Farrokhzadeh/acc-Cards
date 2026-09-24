@@ -3416,6 +3416,59 @@ function ClientKycSection({ clientId }: { clientId: string | null }) {
   );
 }
 
+function ClientFinancialHistorySection({ clientId }: { clientId: string | null }) {
+  const [items, setItems] = useState<ApiCustomerPaymentHistory[]>([]);
+
+  useEffect(() => {
+    if (!clientId) return;
+    let cancelled = false;
+    fetchClientPayments(clientId)
+      .then((result) => { if (!cancelled) setItems(result.items); })
+      .catch(() => { if (!cancelled) setItems([]); });
+    return () => { cancelled = true; };
+  }, [clientId]);
+
+  if (!clientId) return null;
+
+  const purposeLabel = (purpose: ApiCustomerPaymentHistory["purpose"]) =>
+    purpose === "first_card" ? "First card" : purpose === "additional_card" ? "Additional card" : "Card funding";
+
+  return (
+    <div className="border-b border-[#eceaf2] bg-white px-6 py-4">
+      <div className="mb-3 flex items-center justify-between gap-3">
+        <div>
+          <p className="text-xs font-bold uppercase tracking-[.14em] text-[#8179e8]">Financial history</p>
+          <p className="mt-1 text-xs text-[#777287]">Customer-paid first cards, additional cards, and card funding from the unified payment ledger.</p>
+        </div>
+        <Badge variant="outline" className="rounded-full">{items.length}</Badge>
+      </div>
+      <div className="max-h-72 space-y-2 overflow-y-auto">
+        {items.map((payment) => (
+          <div key={payment.id} className="rounded-[14px] border border-[#eceaf2] bg-[#faf9fc] p-3">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <p className="text-sm font-semibold text-[#353146]">{purposeLabel(payment.purpose)} · {payment.requestReference ?? payment.reference}</p>
+                <p className="mt-0.5 text-xs text-[#9692a3]">{new Date(payment.createdAt).toLocaleString()}{payment.cardLast4 ? ` · card •${payment.cardLast4}` : ""}</p>
+              </div>
+              <Badge variant="outline" className={payment.status === "completed" || payment.status === "accepted" ? "rounded-full border-emerald-200 bg-emerald-50 text-emerald-700" : payment.status === "rejected" || payment.status === "cancelled" ? "rounded-full border-red-200 bg-red-50 text-red-700" : "rounded-full border-amber-200 bg-amber-50 text-amber-800"}>{payment.status.replaceAll("_", " ")}</Badge>
+            </div>
+            <div className="mt-2 grid gap-1 text-xs text-[#55516b] sm:grid-cols-2">
+              <p>Card amount: <b>{formatUsd(Number(payment.amountUsdCents) / 100)}</b></p>
+              <p>Customer paid: <b>{BigInt(payment.customerPaysRial).toLocaleString("en-US")} IRR</b></p>
+              <p>USD basis: {formatUsd(Number(payment.customerPaysUsdCents) / 100)}</p>
+              <p>Locked rate: {BigInt(payment.rateRialPerUsd).toLocaleString("en-US")} IRR/USD</p>
+              {(BigInt(payment.providerFeeUsdCents) > 0n || BigInt(payment.serviceFeeUsdCents) > 0n) && <p className="sm:col-span-2">Fees: provider {formatUsd(Number(payment.providerFeeUsdCents) / 100)} · service {formatUsd(Number(payment.serviceFeeUsdCents) / 100)}</p>}
+              {payment.requestStatus && <p>Request status: {payment.requestStatus.replaceAll("_", " ")}</p>}
+              {payment.receipt && <p><a href={customerPaymentReceiptUrl(payment.id)} target="_blank" rel="noreferrer" className="font-semibold text-[#6157e7] hover:underline">View receipt</a> · {payment.receipt.scanStatus ?? "stored"}</p>}
+            </div>
+            {payment.adminNote && <p className="mt-2 text-xs text-[#777287]">Admin note: {payment.adminNote}</p>}
+          </div>
+        ))}
+        {items.length === 0 && <p className="rounded-xl border border-dashed p-3 text-center text-xs text-[#9692a3]">No customer payment records yet.</p>}
+      </div>
+    </div>
+  );
+}
 function ClientPaymentSection({ clientId }: { clientId: string | null }) {
   const [payment, setPayment] = useState<ClientPayment>(null);
   const [accounts, setAccounts] = useState<AssignableClientAccount[]>([]);
