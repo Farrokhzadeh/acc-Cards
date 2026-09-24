@@ -446,6 +446,92 @@ export type ClientPayment = {
   onboardingCardRequestStatus: string | null;
 } | null;
 
+export type ClientWorkspace = {
+  client: {
+    id: string;
+    telegramUserId: string;
+    username: string | null;
+    displayName: string | null;
+    banned: boolean;
+    bannedAt: string | null;
+    joinedAt: string;
+    lastSeenAt: string | null;
+    onboardingStatus: string | null;
+    totalFundedUsdCents: string;
+    totalCardBalanceUsdCents: string;
+  };
+  accounts: Array<{
+    id: string;
+    label: string;
+    status: string;
+    loginEmail: string;
+    assignedAt: string;
+  }>;
+  cards: Array<{
+    id: string;
+    accountId: string;
+    accountLabel: string;
+    providerCardId: string | null;
+    last4: string | null;
+    bin: string | null;
+    label: string | null;
+    cardholderName: string | null;
+    cardEmail: string | null;
+    status: string;
+    balanceUsdCents: string | null;
+    balanceAsOf: string | null;
+    expiryMonth: number | null;
+    expiryYear: number | null;
+    createdAt: string;
+  }>;
+  transactions: Array<{
+    id: string;
+    cardId: string;
+    cardLast4: string | null;
+    amountMinor: string;
+    currency: string;
+    type: string | null;
+    status: string;
+    merchant: string | null;
+    occurredAt: string;
+  }>;
+  cardRequests: Array<{
+    id: string;
+    reference: string;
+    amountUsdCents: string;
+    status: string;
+    adminNote: string | null;
+    providerCardId: string | null;
+    createdAt: string;
+    updatedAt: string;
+  }>;
+  fundingRequests: Array<{
+    id: string;
+    reference: string;
+    amountUsdCents: string;
+    status: string;
+    cardId: string;
+    cardLast4: string | null;
+    createdAt: string;
+    updatedAt: string;
+  }>;
+  adminActivity: Array<{
+    id: string;
+    action: string;
+    entityType: string;
+    entityId: string | null;
+    actorType: string;
+    actorId: string | null;
+    metadata: Record<string, unknown>;
+    requestId: string | null;
+    createdAt: string;
+  }>;
+};
+
+export async function fetchClientWorkspace(id: string) {
+  return apiJson<ClientWorkspace>(`/api/v1/clients/${encodeURIComponent(id)}/workspace`, { method: "GET" });
+}
+
 export async function fetchClientKyc(id: string) {
   return apiJson<{ kyc: ClientKyc; payment: ClientPayment }>(`/api/v1/clients/${encodeURIComponent(id)}/kyc`, { method: "GET" });
 }
