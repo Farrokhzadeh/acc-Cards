@@ -1297,6 +1297,7 @@ No card funding has been executed yet.` });
 }
 
 type KycDraftPayload = {
+  paymentId?: string;
   fullName?: string;
   dateOfBirth?: string | null;
   country?: string;
