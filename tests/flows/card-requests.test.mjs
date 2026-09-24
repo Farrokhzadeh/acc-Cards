@@ -48,11 +48,11 @@ test("request submission requires an assigned account and respects configured mi
   assert.match(service, /Math\.max\(1000/);
 });
 
-test("admin approval rechecks assignment and platform capacity before selecting issuing account", () => {
+test("admin approval rechecks assignment without enforcing a card-count limit", () => {
   assert.match(service, /account_not_assigned/);
   assert.match(service, /selected_account_id/);
   assert.match(service, /telegram_account_assignments/);
-  assert.match(service, /capacitySnapshot\(db, row\.user_id, row\.id\)/);
+  assert.doesNotMatch(service, /platform_card_limit|platformLimit|card_limit_reached/);
 });
 
 test("legacy card-request mutation route is closed while read-only history remains available", () => {
