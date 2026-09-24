@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { getPool, withTransaction, type DatabaseQueryable } from "@/server/database/pool";
 import { ApiError } from "@/server/http/api";
+import { createCustomerPaymentInTransaction, syncFundingPaymentStatus } from "@/server/payments/service";
 
 export type FundingStatus = "pending_receipt" | "pending_review" | "correction_needed" | "accepted" | "funding" | "funding_failed" | "needs_reconciliation" | "completed" | "rejected" | "cancelled";
 
@@ -167,6 +168,18 @@ export async function createTelegramFundingRequest(input: { userId: string; card
       [input.userId,card.id,amount.toString(),providerFee.toString(),serviceFee.toString(),total.toString(),rialFor(total,BigInt(input.quote.rialPerUsd)).toString(),rate.id,input.quote.rialPerUsd,input.quote.providerFeeBasisPoints,input.quote.providerFeeFixedUsdCents,input.quote.serviceFeeBasisPoints,quoteExpiresAt],
     );
     const row=result.rows[0]!;
+    await createCustomerPaymentInTransaction(db, {
+      userId: input.userId,
+      purpose: "card_funding",
+      fundingRequestId: row.id,
+      cardId: card.id,
+      amountUsdCents: row.card_amount_usd_cents,
+      providerFeeUsdCents: row.provider_fee_usd_cents,
+      serviceFeeUsdCents: row.own_fee_usd_cents,
+      rateId: row.rate_id,
+      rateRialPerUsd: row.rate_rial_per_usd,
+      customerPaysRial: row.client_pays_rial,
+    });
     await insertEvent(db,{requestId:row.id,toStatus:"pending_receipt",actorType:"telegram_user",telegramUserId:input.userId,metadata:{reference:row.reference,cardId:card.id,last4:card.last4,quoteExpiresAt:input.quote.expiresAt}});
     await db.query(`INSERT INTO audit_logs(actor_type,actor_id,action,entity_type,entity_id,metadata_redacted) VALUES('telegram_user',$1::uuid,'funding_request.created','funding_request',$2,$3::jsonb)`,[input.userId,row.id,JSON.stringify({reference:row.reference,cardId:card.id,amountUsdCents:String(row.card_amount_usd_cents),clientPaysRial:String(row.client_pays_rial),rateId:row.rate_id,providerFeeBasisPoints:row.provider_fee_basis_points,serviceFeeBasisPoints:row.service_fee_basis_points})]);
     return serialize(row);
@@ -180,6 +193,11 @@ export async function markReceiptAttachedInTransaction(db: DatabaseQueryable, in
   const receipt=await db.query<{scan_status:string}>(`SELECT scan_status FROM receipts WHERE id=$1::uuid AND request_id=$2::uuid`,[input.receiptId,row.id]);
   if(receipt.rows[0]?.scan_status!=="clean") throw new ApiError(409,"receipt_not_clean","Receipt validation has not completed successfully.");
   const updated=await db.query<FundingRow>(`UPDATE funding_requests SET status='pending_review',admin_note=NULL,updated_at=now() WHERE id=$1::uuid RETURNING *`,[row.id]);
+  await db.query(
+    `UPDATE customer_payments SET status='pending_review',receipt_id=$2::uuid,admin_note=NULL,updated_at=now()
+      WHERE funding_request_id=$1::uuid`,
+    [row.id,input.receiptId],
+  );
   await insertEvent(db,{requestId:row.id,fromStatus:row.status,toStatus:"pending_review",actorType:"telegram_user",telegramUserId:input.userId,metadata:{receiptId:input.receiptId}});
   await queueStatus(db,row.id,"pending_review");
   return serialize(updated.rows[0]!);
@@ -195,6 +213,7 @@ export async function cancelTelegramFundingRequest(userId:string,requestId:strin
     const row=locked.rows[0]; if(!row) throw new ApiError(404,"not_found","Funding request not found.");
     if(!["pending_receipt","pending_review","correction_needed"].includes(row.status)) throw new ApiError(409,"invalid_state","This funding request can no longer be cancelled.");
     const updated=await db.query<FundingRow>(`UPDATE funding_requests SET status='cancelled',updated_at=now() WHERE id=$1::uuid RETURNING *`,[row.id]);
+    await syncFundingPaymentStatus(db,row.id,"cancelled");
     await insertEvent(db,{requestId:row.id,fromStatus:row.status,toStatus:"cancelled",actorType:"telegram_user",telegramUserId:userId});
     await queueStatus(db,row.id,"cancelled");
     return serialize(updated.rows[0]!);
@@ -250,6 +269,12 @@ export async function reviewFundingRequest(args:{requestId:string;action:"accept
       );
     }
     const updated=await db.query<FundingRow>(`UPDATE funding_requests SET status=$2,admin_note=$3,reviewed_by=$4::uuid,reviewed_at=now(),updated_at=now() WHERE id=$1::uuid RETURNING *`,[row.id,next,args.note?.trim().slice(0,1000)||null,args.adminId]);
+    await syncFundingPaymentStatus(
+      db,
+      row.id,
+      args.action === "accept" ? "accepted" : args.action === "correction" ? "correction_needed" : "rejected",
+      { adminId: args.adminId, note: args.note ?? null },
+    );
     await insertEvent(db,{requestId:row.id,fromStatus:row.status,toStatus:next,actorType:"admin",adminId:args.adminId,note:args.note??null});
     await db.query(`INSERT INTO audit_logs(actor_type,actor_id,action,entity_type,entity_id,metadata_redacted,ip,request_id) VALUES('admin',$1::uuid,$2,'funding_request',$3,$4::jsonb,$5::inet,$6)`,[args.adminId,`funding_request.${args.action}`,row.id,JSON.stringify({reference:row.reference,fromStatus:row.status,toStatus:next}),args.ip??null,args.requestIdHeader]);
     await queueStatus(db,row.id,next); return serialize(updated.rows[0]!);
