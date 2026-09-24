@@ -25,6 +25,7 @@ type IssueRequestRow = {
   status: string;
   provider_card_id: string | null;
   issuance_started_at: Date | null;
+  last_issue_operation_id: string | null;
 };
 
 type AccountRow = {
