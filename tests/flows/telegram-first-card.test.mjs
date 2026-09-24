@@ -58,6 +58,34 @@ test("misconfigured force-join checks fail open instead of locking every user ou
   assert.match(bot, /telegram\.force_join\.check_failed/);
 });
 
+test("pending customers get a restricted setup menu and can review their own onboarding data", () => {
+  assert.match(bot, /waitingKeyboard/);
+  assert.match(bot, /setup\.status/);
+  assert.match(bot, /setup\.kyc/);
+  assert.match(bot, /setup\.receipt/);
+  assert.match(bot, /readPrivateSupportAttachment/);
+  assert.match(bot, /protectContent: true/);
+});
+
+test("support remains usable before first-card onboarding completes", () => {
+  assert.match(bot, /resolved\.action === "support\.start"/);
+  assert.match(bot, /if \(await supportMode\(user\.id\)\)/);
+  assert.match(bot, /DELETE FROM telegram_bot_states WHERE user_id=\$1::uuid AND mode='support'/);
+});
+
+test("Telegram reveals full card details only for the current owner and does not persist protected card data", () => {
+  assert.match(bot, /card\.reveal/);
+  assert.match(bot, /Show full card info/);
+  assert.match(bot, /getLiveKripicardCardDetailsForTelegram/);
+  assert.match(bot, /protectContent: true/);
+  assert.match(bot, /if \(!args\.protectContent\) logChatMessage/);
+  assert.match(cardService, /getLiveKripicardCardDetailsForTelegram/);
+  assert.match(cardService, /telegram_account_assignments/);
+  assert.match(cardService, /client\.cardDetails/);
+  assert.match(cardService, /card\.provider\.sensitive_reveal/);
+  assert.doesNotMatch(cardService, /metadata: \{[^}]*cardNumber|metadata: \{[^}]*cvv/s);
+});
+
 test("Telegram card freeze/unfreeze rechecks ownership and keeps no-blind-retry semantics", () => {
   assert.match(cardService, /setKripicardCardFrozenStateForTelegram/);
   assert.match(cardService, /telegram_account_assignments/);

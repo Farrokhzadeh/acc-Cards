@@ -16,21 +16,16 @@ export async function getCardPolicy(db: DatabaseQueryable = getPool()) {
   const rawBins = await setting<unknown[]>(db, "card_request_bins", []);
   const bins = binsSchema.safeParse(rawBins);
   return {
-    platformCardLimit: Math.max(1, Math.min(50, Number(await setting(db, "platform_card_limit", 3)) || 3)),
     minimumCardCreationUsdCents: Math.max(1000, Number(await setting(db, "minimum_card_creation_usd_cents", 2000)) || 2000),
     bins: bins.success ? bins.data : [],
   };
 }
 
 export async function updateCardPolicy(input: {
-  platformCardLimit?: number;
   minimumCardCreationUsdCents?: number;
   bins?: Array<{ bin: string; requiresDob: boolean }>;
   adminId: string;
 }) {
-  if (input.platformCardLimit !== undefined && (!Number.isInteger(input.platformCardLimit) || input.platformCardLimit < 1 || input.platformCardLimit > 50)) {
-    throw new ApiError(400, "invalid_platform_card_limit", "Maximum cards per client must be between 1 and 50.");
-  }
   if (input.minimumCardCreationUsdCents !== undefined && (!Number.isInteger(input.minimumCardCreationUsdCents) || input.minimumCardCreationUsdCents < 1000 || input.minimumCardCreationUsdCents > 10_000_000)) {
     throw new ApiError(400, "invalid_card_creation_minimum", "Minimum card creation amount must be between $10 and $100,000.");
   }
@@ -41,7 +36,6 @@ export async function updateCardPolicy(input: {
 
   return withTransaction(async (db) => {
     const updates: Array<[string, unknown]> = [];
-    if (input.platformCardLimit !== undefined) updates.push(["platform_card_limit", input.platformCardLimit]);
     if (input.minimumCardCreationUsdCents !== undefined) updates.push(["minimum_card_creation_usd_cents", input.minimumCardCreationUsdCents]);
     if (bins !== undefined) updates.push(["card_request_bins", bins]);
 
@@ -62,7 +56,6 @@ export async function updateCardPolicy(input: {
       `INSERT INTO audit_logs(actor_type,actor_id,action,entity_type,entity_id,metadata_redacted)
        VALUES('admin',$1::uuid,'card.policy.updated','configuration','card-policy',$2::jsonb)`,
       [input.adminId, JSON.stringify({
-        platformCardLimit: input.platformCardLimit ?? null,
         minimumCardCreationUsdCents: input.minimumCardCreationUsdCents ?? null,
         binCount: bins?.length ?? null,
       })],

@@ -8,11 +8,9 @@ import { KripicardClient } from "@/server/providers/kripicard/client";
 import { KripicardError } from "@/server/providers/kripicard/errors";
 import type { KripicardListCard, KripicardCreateCardResponse } from "@/server/providers/kripicard/schemas";
 import { assertProviderMoneyReadiness } from "@/server/providers/kripicard/readiness";
-import { getCardRequestBins, getCardRequestPolicy } from "@/server/card-requests/service";
+import { getCardRequestBins } from "@/server/card-requests/service";
 import { requestIp } from "@/server/auth/request-meta";
 import { runtimeControlEnabled } from "@/server/operations/controls";
-
-const OPEN_STATUSES = ["pending_review", "approved", "correction_needed", "issuing", "issue_failed", "needs_reconciliation"];
 
 type IssueRequestRow = {
   id: string;
@@ -151,20 +149,6 @@ async function assertCapacity(db: DatabaseQueryable, row: IssueRequestRow) {
     return;
   }
 
-  const policy = await getCardRequestPolicy(db);
-  const counts = await db.query<{ active_cards: number; other_open_requests: number }>(
-    `SELECT
-       (SELECT COUNT(*)::int FROM cards c
-          JOIN telegram_account_assignments taa ON taa.account_id=c.account_id
-         WHERE taa.telegram_user_id=$1::uuid AND c.archived_at IS NULL AND c.status NOT IN ('closed','expired')) AS active_cards,
-       (SELECT COUNT(*)::int FROM card_requests cr
-         WHERE cr.user_id=$1::uuid AND cr.id<>$2::uuid AND cr.status=ANY($3::text[])) AS other_open_requests`,
-    [row.user_id, row.id, OPEN_STATUSES],
-  );
-  const used = (counts.rows[0]?.active_cards ?? 0) + (counts.rows[0]?.other_open_requests ?? 0);
-  if (used >= policy.platformLimit) {
-    throw new ApiError(409, "card_limit_reached", `The client has reached the ${policy.platformLimit}-card platform limit.`);
-  }
 }
 
 async function loadAccountForIssue(db: DatabaseQueryable, row: IssueRequestRow) {

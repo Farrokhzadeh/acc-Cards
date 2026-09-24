@@ -312,6 +312,79 @@ async function loadCardClient(cardId: string) {
   };
 }
 
+export async function getLiveKripicardCardDetailsForTelegram(
+  cardId: string,
+  telegramUserId: string,
+  requestId: string,
+) {
+  const ownership = await getPool().query<{
+    cardholder_name: string | null;
+  }>(
+    `SELECT c.cardholder_name
+       FROM cards c
+       JOIN telegram_account_assignments taa ON taa.account_id = c.account_id
+      WHERE c.id = $1::uuid
+        AND taa.telegram_user_id = $2::uuid
+        AND c.archived_at IS NULL
+      LIMIT 1`,
+    [cardId, telegramUserId],
+  );
+  const owned = ownership.rows[0];
+  if (!owned) throw new ApiError(403, "card_not_owned", "This card is no longer available to this Telegram user.");
+
+  const { row, client } = await loadCardClient(cardId);
+  try {
+    const response = await client.cardDetails({ cardId: row.provider_card_id! });
+    const [monthRaw, yearRaw] = response.expiry.split("/");
+    const expiryMonth = Number(monthRaw);
+    const expiryYear = Number(yearRaw.length === 2 ? `20${yearRaw}` : yearRaw);
+    const normalizedStatus = normalizeCardStatus(response.status);
+    const balanceUsdCents = cents(response.balance);
+
+    await withTransaction(async (db) => {
+      await db.query(
+        `UPDATE cards
+            SET status = $2,
+                balance_usd_cents = $3,
+                balance_as_of = now(),
+                expiry_month = CASE WHEN $4::int BETWEEN 1 AND 12 THEN $4::int ELSE expiry_month END,
+                expiry_year = CASE WHEN $5::int BETWEEN 2000 AND 2200 THEN $5::int ELSE expiry_year END,
+                synced_at = now(),
+                updated_at = now()
+          WHERE id = $1::uuid`,
+        [cardId, normalizedStatus, balanceUsdCents, expiryMonth, expiryYear],
+      );
+      await db.query(
+        `UPDATE kripi_accounts
+            SET provider_capabilities = provider_capabilities || '{"cardDetails":true}'::jsonb,
+                updated_at = now()
+          WHERE id = $1::uuid`,
+        [row.account_id],
+      );
+    });
+
+    await auditTelegramCardEvent({
+      telegramUserId,
+      action: "card.provider.sensitive_reveal",
+      cardId,
+      requestId,
+      metadata: { status: normalizedStatus },
+    });
+
+    return {
+      cardNumber: response.card_number,
+      expiry: response.expiry,
+      cvv: response.cvv,
+      cardholderName: owned.cardholder_name,
+      balanceUsdCents: balanceUsdCents.toString(),
+      status: normalizedStatus,
+    };
+  } catch (error) {
+    if (error instanceof ApiError) throw error;
+    throw providerErrorToApi(error);
+  }
+}
+
 export async function getLiveKripicardCardDetails(cardId: string, session: AuthSession, request: Request, requestId: string) {
   const { row, client } = await loadCardClient(cardId);
   try {
