@@ -947,6 +947,9 @@ async function sendCardRequestDetail(client: TelegramClient, user: BotUser, chat
     `• ${escapeHtml(event.status)} · ${escapeHtml(new Date(event.createdAt).toISOString().replace("T", " ").slice(0, 16))} UTC${event.note ? ` · ${escapeHtml(event.note)}` : ""}`
   ).join("\n");
   const rows: TelegramInlineKeyboard["inline_keyboard"] = [];
+  if (detail.payment?.receiptId) {
+    rows.push([{ text: user.lang === "fa" ? "🧾 مشاهده رسید" : "🧾 View receipt", callback_data: await createCallbackToken({ userId: user.id, action: "payment.receipt", entityId: detail.payment.id }) }]);
+  }
   if (detail.payment && ["pending_receipt", "correction_needed"].includes(detail.payment.status)) {
     rows.push([{ text: "Upload payment receipt", callback_data: await createCallbackToken({ userId: user.id, action: "cardreq.upload_receipt", entityId: request.id, ttlMinutes: 20 }) }]);
   }
@@ -1081,10 +1084,14 @@ async function handleFundingReceiptMedia(client: TelegramClient, user: BotUser, 
 }
 
 async function sendFundingRequestDetail(client: TelegramClient, user: BotUser, chatId: number, requestId: string) {
-  const detail = await getTelegramFundingRequest(user.id,requestId);
+  const [detail, payment] = await Promise.all([
+    getTelegramFundingRequest(user.id,requestId),
+    getPaymentForFundingRequest(requestId),
+  ]);
   const request = detail.request;
   const timeline = detail.events.map((event)=>`• ${escapeHtml(event.status)} · ${escapeHtml(new Date(event.createdAt).toISOString().replace("T"," ").slice(0,16))} UTC${event.note?` · ${escapeHtml(event.note)}`:""}`).join("\n");
   const rows: TelegramInlineKeyboard["inline_keyboard"] = [];
+  if (payment?.receiptId) rows.push([{text:user.lang === "fa" ? "🧾 مشاهده رسید" : "🧾 View receipt",callback_data:await createCallbackToken({userId:user.id,action:"payment.receipt",entityId:payment.id})}]);
   if (["pending_receipt","correction_needed"].includes(request.status)) rows.push([{text:"Upload receipt",callback_data:await createCallbackToken({userId:user.id,action:"fundreq.upload_receipt",entityId:request.id,ttlMinutes:20})}]);
   if (["pending_receipt","pending_review","correction_needed"].includes(request.status)) rows.push([{text:"Cancel request",callback_data:await createCallbackToken({userId:user.id,action:"fundreq.cancel_existing",entityId:request.id,singleUse:true,ttlMinutes:10})}]);
   rows.push([{text:"← My requests",callback_data:await createCallbackToken({userId:user.id,action:"menu.requests"})}]);
@@ -1252,7 +1259,7 @@ async function handleCallback(client: TelegramClient, callback: z.infer<typeof c
     resolved.action === "menu.cards" || resolved.action === "menu.requests" ||
     resolved.action === "menu.add_funds" || resolved.action === "menu.request_card" ||
     resolved.action.startsWith("card.") || resolved.action.startsWith("cardreq.") ||
-    resolved.action.startsWith("fundreq.");
+    resolved.action.startsWith("fundreq.") || resolved.action.startsWith("payment.");
   if (gated && (await getPaymentStatus(user.id)) !== "complete") { await routeHome(client, user, chatId); return; }
   if (resolved.action === "menu.kyc" || resolved.action === "kyc.submit" || resolved.action === "kyc.cancel") {
     if (user.bannedAt) {
@@ -1295,6 +1302,9 @@ async function handleCallback(client: TelegramClient, callback: z.infer<typeof c
       break;
     }
       case "menu.requests": await sendRequests(client, user, chatId); break;
+      case "payment.detail": if (resolved.entity_id) await sendCustomerPaymentDetail(client, user, chatId, resolved.entity_id); break;
+      case "payment.receipt": if (resolved.entity_id) await sendCustomerPaymentReceipt(client, user, chatId, resolved.entity_id); break;
+      case "payment.upload": if (resolved.entity_id) await beginCustomerPaymentReceiptUpload(client, user, chatId, resolved.entity_id); break;
       case "menu.request_card": await beginCardRequest(client, user, chatId); break;
       case "cardreq.submit": {
         const state = await getBotState(user.id);
