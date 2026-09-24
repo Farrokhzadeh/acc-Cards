@@ -47,7 +47,7 @@ import {
   XCircle,
 } from "lucide-react";
 import { toast } from "sonner";
-import { AdminApiError, createAccount, archiveAccount, fetchDashboardSnapshot, reauthenticateAdmin, revealAccountSecrets, updateAccount, verifyAccountConnection, syncAccountCards, fetchAccountCards, type ApiCard, revealLiveCardDetails, syncCardTransactions, fetchCardTransactions, fetchTransactions, fetchTransactionNotificationIssues, reconcileTransactionNotification, setCardFrozenState, refreshCardStatus, connectOutlookMailbox, syncOutlookMailbox, disconnectOutlookMailbox, connectGmailMailbox, syncGmailMailbox, disconnectGmailMailbox, fetchEmailOAuthSetup, type EmailOAuthSetup, fetchAccountEmailMessages, classifyAccountEmail, revealParsedOtp, fetchTrustedEmailRules, createTrustedEmailRule, updateTrustedEmailRule, fetchTelegramBotStatus, configureTelegramWebhook, setTelegramBotToken, clearTelegramBotToken, fetchPaymentCard, updatePaymentCard, fetchFirstCardSettings, updateFirstCardSettings, notifyClient, fetchClientPipeline, type ClientPipelineItem, setClientBanned, fetchClientKyc, type ClientKyc, type ClientPayment, clientReceiptUrl, activateClient, fetchAccountDepositCoins, fetchAccountDepositNetworks, fetchAccountDeposits, createAccountDeposit, refreshAccountDeposit, type AccountDeposit, fetchForceJoinChannels, upsertForceJoinChannel, deleteForceJoinChannel, fetchSupportConversations, updateSupportConversation, retrySupportMessage, fetchClientSupportMessages, sendClientSupportMessage, fetchClientAssignableAccounts, fetchFundingRequests, reviewFundingRequest, executeFundingRequest, reconcileFundingRequest, resolveFundingRequest, fetchProviderWalletGate, type ProviderWalletGate, fundingReceiptDownloadUrl, fetchFundingSettings, updateFundingSettings, type ApiFundingRequest, type AssignableClientAccount, type LiveCardDetails, type StoredCardTransaction, type StoredEmailMessage, type TelegramBotStatus, fetchProviderReadiness, updateProviderReadinessCheck, type ProviderReadinessSnapshot, type TransactionNotificationIssue, type SupportConversationSummary, fetchOperationalSnapshot, updateOperationalAlert, updateRuntimeControl, type OperationalSnapshot, fetchKycSubmissions, reviewKycSubmission, kycDocumentUrl, type ApiKycSubmission } from "@/lib/admin-api";
+import { AdminApiError, createAccount, archiveAccount, fetchDashboardSnapshot, reauthenticateAdmin, revealAccountSecrets, updateAccount, verifyAccountConnection, syncAccountCards, fetchAccountCards, type ApiCard, revealLiveCardDetails, syncCardTransactions, fetchCardTransactions, fetchTransactions, fetchTransactionNotificationIssues, reconcileTransactionNotification, setCardFrozenState, refreshCardStatus, connectOutlookMailbox, syncOutlookMailbox, disconnectOutlookMailbox, connectGmailMailbox, syncGmailMailbox, disconnectGmailMailbox, fetchEmailOAuthSetup, type EmailOAuthSetup, fetchAccountEmailMessages, classifyAccountEmail, revealParsedOtp, fetchTrustedEmailRules, createTrustedEmailRule, updateTrustedEmailRule, fetchTelegramBotStatus, configureTelegramWebhook, setTelegramBotToken, clearTelegramBotToken, fetchPaymentCard, updatePaymentCard, fetchFirstCardSettings, updateFirstCardSettings, notifyClient, fetchClientPipeline, type ClientPipelineItem, setClientBanned, fetchClientKyc, type ClientKyc, type ClientPayment, clientReceiptUrl, activateClient, fetchAccountDepositCoins, fetchAccountDepositNetworks, fetchAccountDeposits, createAccountDeposit, refreshAccountDeposit, type AccountDeposit, fetchForceJoinChannels, upsertForceJoinChannel, deleteForceJoinChannel, fetchSupportConversations, updateSupportConversation, retrySupportMessage, fetchClientSupportMessages, sendClientSupportMessage, fetchClientAssignableAccounts, fetchCardRequests, reviewCardRequest, issueCardRequest, reconcileCardRequest, type ApiCardRequest, fetchFundingRequests, reviewFundingRequest, executeFundingRequest, reconcileFundingRequest, resolveFundingRequest, fetchProviderWalletGate, type ProviderWalletGate, fundingReceiptDownloadUrl, fetchFundingSettings, updateFundingSettings, type ApiFundingRequest, type AssignableClientAccount, type LiveCardDetails, type StoredCardTransaction, type StoredEmailMessage, type TelegramBotStatus, fetchProviderReadiness, updateProviderReadinessCheck, type ProviderReadinessSnapshot, type TransactionNotificationIssue, type SupportConversationSummary, fetchOperationalSnapshot, updateOperationalAlert, updateRuntimeControl, type OperationalSnapshot, fetchKycSubmissions, reviewKycSubmission, kycDocumentUrl, type ApiKycSubmission } from "@/lib/admin-api";
 import { disableAdminMfa, enableAdminMfa, fetchCurrentAdmin, logoutAdmin, setupAdminMfa, type CurrentAdmin } from "@/lib/auth-client";
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -442,6 +442,7 @@ export default function DashboardApp() {
   const [cards, setCards] = useState<ClientCard[]>([]);
   const [accountEmails, setAccountEmails] = useState<AccountEmail[]>([]);
   const [fundingRequests, setFundingRequests] = useState<FundingRequest[]>([]);
+  const [cardRequests, setCardRequests] = useState<ApiCardRequest[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [transactionNotificationIssues, setTransactionNotificationIssues] = useState<TransactionNotificationIssue[]>([]);
   const [messages, setMessages] = useState<Record<string, Message[]>>({});
@@ -464,6 +465,7 @@ export default function DashboardApp() {
   const [activeCardTransactions, setActiveCardTransactions] = useState<StoredCardTransaction[]>([]);
   const [cardStatePendingId, setCardStatePendingId] = useState<string | null>(null);
   const [fundingExecutionPendingId, setFundingExecutionPendingId] = useState<string | null>(null);
+  const [cardRequestPendingId, setCardRequestPendingId] = useState<string | null>(null);
   const [fundingReauth, setFundingReauth] = useState<{ title: string; description: string } | null>(null);
   const fundingReauthRetryRef = useRef<(() => Promise<void>) | null>(null);
   const [fundingReauthPassword, setFundingReauthPassword] = useState("");
@@ -572,6 +574,7 @@ export default function DashboardApp() {
         setClients(nextClients);
         setAccountEmails([]);
         setFundingRequests([]);
+        setCardRequests([]);
         setTransactions([]);
         setMessages({});
         setActiveChatId(nextClients[0]?.id ?? "");
@@ -605,12 +608,17 @@ export default function DashboardApp() {
     if (!backendDataLoaded || (view !== "overview" && view !== "requests")) return;
     let cancelled = false;
     const timer = window.setTimeout(() => {
-      fetchFundingRequests({ search: view === "requests" ? search : undefined, limit: 100 })
-        .then((fundingResult) => {
-          if (!cancelled) setFundingRequests(fundingResult.items.map(mapApiFundingRequest));
+      Promise.all([
+        fetchFundingRequests({ search: view === "requests" ? search : undefined, limit: 100 }),
+        fetchCardRequests({ search: view === "requests" ? search : undefined, limit: 100 }),
+      ])
+        .then(([fundingResult, cardResult]) => {
+          if (cancelled) return;
+          setFundingRequests(fundingResult.items.map(mapApiFundingRequest));
+          setCardRequests(cardResult.items);
         })
         .catch((error) => {
-          if (!cancelled) toast.error(error instanceof Error ? error.message : "Could not load funding requests.");
+          if (!cancelled) toast.error(error instanceof Error ? error.message : "Could not load requests.");
         });
     }, 180);
     return () => { cancelled = true; window.clearTimeout(timer); };
@@ -1304,6 +1312,11 @@ export default function DashboardApp() {
     setFundingRequests(result.items.map(mapApiFundingRequest));
   };
 
+  const reloadCardRequests = async () => {
+    const result = await fetchCardRequests({ search, limit: 100 });
+    setCardRequests(result.items);
+  };
+
   const queueFundingReauthentication = (title: string, description: string, retry: () => Promise<void>) => {
     fundingReauthRetryRef.current = retry;
     setFundingReauth({ title, description });
@@ -1337,6 +1350,87 @@ export default function DashboardApp() {
     return blockers.length
       ? `Provider readiness is blocking this action: ${blockers.join(", ")}. Clear those checks in Operations → Kripicard.`
       : error.message;
+  };
+
+  const reviewAdditionalCardRequest = async (request: ApiCardRequest, action: "approve" | "reject", accountId?: string, bin?: string) => {
+    if (!backendDataLoaded || cardRequestPendingId) return;
+    if (action === "approve" && (!accountId || !bin)) {
+      toast.error("Choose the internal Kripicard account and BIN before approving.");
+      return;
+    }
+    const note = action === "reject" ? (window.prompt("Optional rejection note for the customer:") ?? "") : "";
+    setCardRequestPendingId(request.id);
+    try {
+      await reviewCardRequest(request.id, {
+        action,
+        selectedAccountId: accountId ?? null,
+        selectedBin: bin ?? null,
+        note: note.trim() || null,
+      });
+      await reloadCardRequests();
+      toast.success(action === "approve" ? "Card request approved. The selected account is now assigned internally and ready for issuance." : "Card request rejected.");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Card request review failed.");
+    } finally {
+      setCardRequestPendingId(null);
+    }
+  };
+
+  const issueAdditionalCardRequest = async (request: ApiCardRequest, options: { confirmed?: boolean; allowReauthPrompt?: boolean } = {}) => {
+    if (!backendDataLoaded || cardRequestPendingId) return;
+    const confirmed = options.confirmed === true || window.confirm("Confirm that the selected Kripicard wallet has enough crypto funding for this card creation.");
+    if (!confirmed) return;
+    setCardRequestPendingId(request.id);
+    try {
+      const result = await issueCardRequest(request.id, true);
+      await reloadCardRequests();
+      if (result.status === "issued") toast.success("Card created and linked to the customer.");
+      else toast.warning("Card creation outcome is uncertain. Use Reconcile; do not create another card.");
+    } catch (error) {
+      try { await reloadCardRequests(); } catch {}
+      if (options.allowReauthPrompt !== false && error instanceof AdminApiError && error.code === "reauthentication_required") {
+        queueFundingReauthentication(
+          "Confirm live card creation",
+          "Creating this card changes provider money state. Re-enter your admin credentials, then AccAbad will retry this exact issuance action.",
+          () => issueAdditionalCardRequest(request, { confirmed: true, allowReauthPrompt: false }),
+        );
+      } else if (error instanceof AdminApiError && error.code === "mfa_required") {
+        toast.error("Enable MFA in Settings → Security before performing live card creation.");
+      } else if (error instanceof AdminApiError && error.code === "feature_disabled") {
+        toast.error("Card creation is installed but disabled. Enable the live-provider and card-creation deployment gates.");
+      } else if (error instanceof AdminApiError && error.code === "runtime_kill_switch") {
+        toast.error("Card creation is disabled by an emergency runtime control.");
+      } else if (error instanceof AdminApiError && providerGateMessage(error)) {
+        toast.error(providerGateMessage(error)!);
+      } else {
+        toast.error(error instanceof Error ? error.message : "Card creation failed.");
+      }
+    } finally {
+      setCardRequestPendingId(null);
+    }
+  };
+
+  const reconcileAdditionalCardRequest = async (request: ApiCardRequest, allowReauthPrompt = true) => {
+    if (!backendDataLoaded || cardRequestPendingId) return;
+    setCardRequestPendingId(request.id);
+    try {
+      const result = await reconcileCardRequest(request.id);
+      await reloadCardRequests();
+      if (result.status === "issued") toast.success("Card issuance reconciled and completed.");
+      else toast.warning("No unique matching card was found yet. Keep this request in reconciliation.");
+    } catch (error) {
+      if (allowReauthPrompt && error instanceof AdminApiError && error.code === "reauthentication_required") {
+        queueFundingReauthentication(
+          "Reconcile card creation",
+          "Reconciliation reads the provider state for a money-sensitive card creation. Re-enter your admin credentials to continue.",
+          () => reconcileAdditionalCardRequest(request, false),
+        );
+      } else {
+        toast.error(error instanceof Error ? error.message : "Card issuance reconciliation failed.");
+      }
+    } finally {
+      setCardRequestPendingId(null);
+    }
   };
 
   const advanceRequest = async (request: FundingRequest) => {
@@ -1709,6 +1803,8 @@ export default function DashboardApp() {
             {view === "requests" && (
               <RequestsView
                 fundingRequests={fundingRequests}
+                cardRequests={cardRequests}
+                cardRequestPendingId={cardRequestPendingId}
                 clientName={clientName}
                 search={search}
                 kycPendingCount={kycPendingCount}
@@ -1719,6 +1815,9 @@ export default function DashboardApp() {
                 issues={transactionNotificationIssues}
                 onReconcileIssue={reconcileNotificationIssue}
                 onOpenRequest={setActiveRequestId}
+                onReviewCardRequest={reviewAdditionalCardRequest}
+                onIssueCardRequest={issueAdditionalCardRequest}
+                onReconcileCardRequest={reconcileAdditionalCardRequest}
                 onOpenClient={setActiveClientId}
                 onPaymentDecision={async (clientId, action) => {
                   try {
