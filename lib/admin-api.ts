@@ -154,6 +154,10 @@ export async function syncAccountCards(id: string) {
   return apiJson<{ syncedCards: number }>(`/api/v1/accounts/${encodeURIComponent(id)}/sync`, { method: "POST", body: "{}" });
 }
 
+export async function fetchAccountCards(id: string) {
+  return apiJson<{ items: ApiCard[]; nextCursor: string | null }>(`/api/v1/accounts/${encodeURIComponent(id)}/cards?limit=100`, { method: "GET" });
+}
+
 export type LiveCardDetails = {
   cardNumber: string;
   expiry: string;
@@ -483,7 +487,7 @@ export async function refreshAccountDeposit(accountId: string, depositId: string
   return apiJson<AccountDeposit>(`/api/v1/accounts/${encodeURIComponent(accountId)}/deposits/${encodeURIComponent(depositId)}`, { method: "POST", body: "{}" });
 }
 
-export async function activateClient(id: string, input: { action: "accept" | "deny" | "create_card" | "reconcile_card" | "complete"; accountId?: string; walletFundingConfirmed?: boolean }) {
+export async function activateClient(id: string, input: { action: "accept" | "deny" | "create_card" | "attach_existing_card" | "reconcile_card" | "complete"; accountId?: string; cardId?: string; walletFundingConfirmed?: boolean }) {
   return apiJson<{ ok: true; status: string; cardId?: string | null; cardLast4?: string | null; needsReconciliation?: boolean }>(`/api/v1/clients/${encodeURIComponent(id)}/activate`, { method: "POST", body: JSON.stringify(input) });
 }
 
