@@ -1120,7 +1120,7 @@ async function handleCallback(client: TelegramClient, callback: z.infer<typeof c
         await client.sendMessage({ chatId, text: `Funding request <b>${escapeHtml(created.reference)}</b> was created with an immutable quote.
 Now upload your payment receipt as a JPEG, PNG, WebP, or PDF.
 
-No Kripicard funding has been executed.` });
+No card funding has been executed yet.` });
         break;
       }
       case "fundreq.cancel_draft":
