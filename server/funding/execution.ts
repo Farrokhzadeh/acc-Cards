@@ -10,6 +10,7 @@ import { KripicardError } from "@/server/providers/kripicard/errors";
 import type { KripicardFundCardResponse, KripicardTransaction } from "@/server/providers/kripicard/schemas";
 import { assertProviderMoneyReadiness } from "@/server/providers/kripicard/readiness";
 import { runtimeControlEnabled } from "@/server/operations/controls";
+import { syncFundingPaymentStatus } from "@/server/payments/service";
 
 const FUNDING_SAFE_RETRY_STATUSES = new Set(["accepted", "funding_failed"]);
 
@@ -292,6 +293,7 @@ async function persistCompleted(args: {
         `UPDATE funding_requests SET status='completed',funded_at=now(),updated_at=now() WHERE id=$1::uuid`,
         [args.row.id],
       );
+      await syncFundingPaymentStatus(db, args.row.id, "completed");
       if (args.postBalanceUsdCents != null) {
         await db.query(`UPDATE cards SET balance_usd_cents=$2,balance_as_of=now(),synced_at=now(),updated_at=now() WHERE id=$1::uuid`, [args.card.id, args.postBalanceUsdCents.toString()]);
       }

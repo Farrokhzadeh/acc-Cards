@@ -9,6 +9,8 @@ const listRoute = await readFile(new URL("../../app/api/v1/card-requests/route.t
 const transitionRoute = await readFile(new URL("../../app/api/v1/card-requests/[id]/transition/route.ts", import.meta.url), "utf8");
 const outbox = await readFile(new URL("../../server/telegram/outbox.ts", import.meta.url), "utf8");
 const dashboard = await readFile(new URL("../../app/dashboard-app.tsx", import.meta.url), "utf8");
+const payments = await readFile(new URL("../../server/payments/service.ts", import.meta.url), "utf8");
+const paymentReceipts = await readFile(new URL("../../server/payments/receipts.ts", import.meta.url), "utf8");
 
 test("Phase 12 adds immutable-style card request timeline records and review permissions", () => {
   assert.match(migration, /card_request_events/);
@@ -49,7 +51,21 @@ test("request submission uses approved KYC and configured minimum without requir
   assert.doesNotMatch(service, /account_assignment_required/);
 });
 
+test("additional-card requests require a customer payment receipt before admin approval", () => {
+  assert.match(service, /createCustomerPaymentInTransaction/);
+  assert.match(service, /purpose: "additional_card"/);
+  assert.match(service, /assertAcceptedPaymentForCardRequest/);
+  assert.match(bot, /card_request_receipt/);
+  assert.match(bot, /cardreq\.upload_receipt/);
+  assert.match(bot, /attachTelegramCustomerPaymentReceipt/);
+  assert.match(paymentReceipts, /pending_review/);
+  assert.match(payments, /payment_not_approved/);
+  assert.match(dashboard, /Accept payment/);
+  assert.match(dashboard, /customerPaymentReceiptUrl/);
+});
+
 test("admin approval chooses BIN and internally assigns the issuing account without a card-count limit", () => {
+  assert.match(service, /assertAcceptedPaymentForCardRequest/);
   assert.match(service, /selectedBin/);
   assert.match(service, /bin_required/);
   assert.match(service, /assignAccountInTransaction/);

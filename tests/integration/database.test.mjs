@@ -23,6 +23,7 @@ test("migrations produce the required runtime schema", async () => {
     "cards",
     "card_requests",
     "funding_requests",
+    "customer_payments",
     "email_accounts",
     "email_messages",
     "otp_deliveries",

@@ -11,6 +11,7 @@ import { assertProviderMoneyReadiness } from "@/server/providers/kripicard/readi
 import { getCardRequestBins } from "@/server/card-requests/service";
 import { requestIp } from "@/server/auth/request-meta";
 import { runtimeControlEnabled } from "@/server/operations/controls";
+import { assertAcceptedFirstCardPayment, assertAcceptedPaymentForCardRequest, markCardRequestPaymentCompleted } from "@/server/payments/service";
 
 type IssueRequestRow = {
   id: string;
@@ -169,6 +170,20 @@ async function loadAccountForIssue(db: DatabaseQueryable, row: IssueRequestRow) 
   return account;
 }
 
+async function assertAcceptedPaymentForIssuance(db: DatabaseQueryable, row: IssueRequestRow) {
+  const onboarding = await db.query<{ onboarding: boolean }>(
+    `SELECT EXISTS(
+       SELECT 1 FROM telegram_users
+        WHERE id=$1::uuid AND onboarding_card_request_id=$2::uuid
+     ) AS onboarding`,
+    [row.user_id, row.id],
+  );
+  if (onboarding.rows[0]?.onboarding) {
+    return assertAcceptedFirstCardPayment(db, row.user_id);
+  }
+  return assertAcceptedPaymentForCardRequest(db, row.id);
+}
+
 async function prepareIssuance(requestId: string, session: AuthSession, request: Request, traceId: string) {
   return withTransaction(async (db) => {
     const locked = await db.query<IssueRequestRow>(`SELECT * FROM card_requests WHERE id=$1::uuid FOR UPDATE`, [requestId]);
@@ -181,6 +196,7 @@ async function prepareIssuance(requestId: string, session: AuthSession, request:
       throw new ApiError(409, "invalid_state", `This request cannot be issued from status ${row.status}.`);
     }
 
+    await assertAcceptedPaymentForIssuance(db, row);
     await lockCapacity(db, row.user_id);
     await assertCapacity(db, row);
     const bins = await getCardRequestBins(db);
@@ -290,6 +306,7 @@ async function persistIssued(args: {
         `UPDATE card_requests SET status='issued',provider_card_id=$2,issued_at=now(),updated_at=now() WHERE id=$1::uuid`,
         [args.row.id, args.providerCard.card_id],
       );
+      await markCardRequestPaymentCompleted(db, args.row.id);
       await db.query(
         `UPDATE card_operations SET card_id=$2::uuid,status='succeeded',provider_status='issued',provider_ref=$3,provider_fee_usd_cents=$4,
             provider_response_ref=$5,safe_result=safe_result||$6::jsonb,updated_at=now() WHERE id=$1::uuid`,
@@ -361,6 +378,7 @@ export async function attachExistingCardToRequest(
     if (!row.selected_account_id) {
       throw new ApiError(409, "account_required", "Approve the request with an internal issuing account before attaching a card.");
     }
+    await assertAcceptedPaymentForCardRequest(db, row.id);
 
     const ownership = await db.query<{ ok: boolean }>(
       `SELECT true AS ok
@@ -440,6 +458,7 @@ export async function attachExistingCardToRequest(
         WHERE id=$1::uuid`,
       [row.id, card.provider_card_id],
     );
+    await markCardRequestPaymentCompleted(db, row.id);
     await event(db, {
       requestId: row.id,
       fromStatus: row.status,
