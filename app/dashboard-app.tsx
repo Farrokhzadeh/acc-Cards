@@ -48,7 +48,7 @@ import {
   XCircle,
 } from "lucide-react";
 import { toast } from "sonner";
-import { AdminApiError, createAccount, archiveAccount, fetchDashboardSnapshot, reauthenticateAdmin, revealAccountSecrets, updateAccount, verifyAccountConnection, syncAccountCards, fetchAccountCards, type ApiCard, revealLiveCardDetails, syncCardTransactions, fetchCardTransactions, fetchTransactions, fetchTransactionNotificationIssues, reconcileTransactionNotification, setCardFrozenState, refreshCardStatus, connectOutlookMailbox, syncOutlookMailbox, disconnectOutlookMailbox, connectGmailMailbox, syncGmailMailbox, disconnectGmailMailbox, fetchEmailOAuthSetup, type EmailOAuthSetup, fetchAccountEmailMessages, classifyAccountEmail, revealParsedOtp, fetchTrustedEmailRules, createTrustedEmailRule, updateTrustedEmailRule, fetchTelegramBotStatus, configureTelegramWebhook, setTelegramBotToken, clearTelegramBotToken, fetchPaymentCard, updatePaymentCard, fetchFirstCardSettings, updateFirstCardSettings, notifyClient, fetchClientPipeline, type ClientPipelineItem, setClientBanned, fetchClientKyc, type ClientKyc, type ClientPayment, clientReceiptUrl, activateClient, fetchAccountDepositCoins, fetchAccountDepositNetworks, fetchAccountDeposits, createAccountDeposit, refreshAccountDeposit, type AccountDeposit, fetchForceJoinChannels, upsertForceJoinChannel, deleteForceJoinChannel, fetchSupportConversations, updateSupportConversation, retrySupportMessage, fetchClientSupportMessages, sendClientSupportMessage, fetchClientAssignableAccounts, fetchCardRequests, reviewCardRequest, issueCardRequest, reconcileCardRequest, attachExistingCardRequest, type ApiCardRequest, fetchFundingRequests, reviewFundingRequest, executeFundingRequest, reconcileFundingRequest, resolveFundingRequest, fetchProviderWalletGate, type ProviderWalletGate, fundingReceiptDownloadUrl, fetchFundingSettings, updateFundingSettings, type ApiFundingRequest, type AssignableClientAccount, type LiveCardDetails, type StoredCardTransaction, type StoredEmailMessage, type TelegramBotStatus, fetchProviderReadiness, updateProviderReadinessCheck, type ProviderReadinessSnapshot, type TransactionNotificationIssue, type SupportConversationSummary, fetchOperationalSnapshot, updateOperationalAlert, updateRuntimeControl, type OperationalSnapshot, fetchKycSubmissions, reviewKycSubmission, kycDocumentUrl, type ApiKycSubmission } from "@/lib/admin-api";
+import { AdminApiError, createAccount, archiveAccount, fetchDashboardSnapshot, reauthenticateAdmin, revealAccountSecrets, updateAccount, verifyAccountConnection, syncAccountCards, fetchAccountCards, type ApiCard, revealLiveCardDetails, syncCardTransactions, fetchCardTransactions, fetchTransactions, fetchTransactionNotificationIssues, reconcileTransactionNotification, setCardFrozenState, refreshCardStatus, connectOutlookMailbox, syncOutlookMailbox, disconnectOutlookMailbox, connectGmailMailbox, syncGmailMailbox, disconnectGmailMailbox, fetchEmailOAuthSetup, type EmailOAuthSetup, fetchAccountEmailMessages, classifyAccountEmail, revealParsedOtp, fetchTrustedEmailRules, createTrustedEmailRule, updateTrustedEmailRule, fetchTelegramBotStatus, configureTelegramWebhook, setTelegramBotToken, clearTelegramBotToken, fetchPaymentCard, updatePaymentCard, fetchFirstCardSettings, updateFirstCardSettings, notifyClient, fetchClientPipeline, type ClientPipelineItem, setClientBanned, fetchClientKyc, type ClientKyc, type ClientPayment, clientReceiptUrl, activateClient, fetchAccountDepositCoins, fetchAccountDepositNetworks, fetchAccountDeposits, createAccountDeposit, refreshAccountDeposit, type AccountDeposit, fetchForceJoinChannels, upsertForceJoinChannel, deleteForceJoinChannel, fetchSupportConversations, updateSupportConversation, retrySupportMessage, fetchClientSupportMessages, sendClientSupportMessage, fetchClientAssignableAccounts, fetchCardRequests, reviewCardRequest, issueCardRequest, reconcileCardRequest, attachExistingCardRequest, reviewCustomerPayment, customerPaymentReceiptUrl, type ApiCardRequest, fetchFundingRequests, reviewFundingRequest, executeFundingRequest, reconcileFundingRequest, resolveFundingRequest, fetchProviderWalletGate, type ProviderWalletGate, fundingReceiptDownloadUrl, fetchFundingSettings, updateFundingSettings, type ApiFundingRequest, type AssignableClientAccount, type LiveCardDetails, type StoredCardTransaction, type StoredEmailMessage, type TelegramBotStatus, fetchProviderReadiness, updateProviderReadinessCheck, type ProviderReadinessSnapshot, type TransactionNotificationIssue, type SupportConversationSummary, fetchOperationalSnapshot, updateOperationalAlert, updateRuntimeControl, type OperationalSnapshot, fetchKycSubmissions, reviewKycSubmission, kycDocumentUrl, type ApiKycSubmission } from "@/lib/admin-api";
 import { disableAdminMfa, enableAdminMfa, fetchCurrentAdmin, logoutAdmin, setupAdminMfa, type CurrentAdmin } from "@/lib/auth-client";
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -1353,6 +1353,30 @@ export default function DashboardApp() {
       : error.message;
   };
 
+  const reviewAdditionalCardPayment = async (request: ApiCardRequest, action: "accept" | "correction" | "reject") => {
+    if (!backendDataLoaded || cardRequestPendingId || !request.payment) return;
+    const note = action === "accept"
+      ? ""
+      : (window.prompt(action === "correction" ? "Tell the customer what must be corrected:" : "Optional payment rejection note:") ?? "");
+    if (action === "correction" && !note.trim()) return;
+    setCardRequestPendingId(request.id);
+    try {
+      await reviewCustomerPayment(request.payment.id, { action, note: note.trim() || null });
+      await reloadCardRequests();
+      toast.success(
+        action === "accept"
+          ? "Payment receipt accepted. You can now approve the card request."
+          : action === "correction"
+            ? "Replacement receipt requested."
+            : "Payment rejected.",
+      );
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Payment review failed.");
+    } finally {
+      setCardRequestPendingId(null);
+    }
+  };
+
   const reviewAdditionalCardRequest = async (request: ApiCardRequest, action: "approve" | "reject", accountId?: string, bin?: string) => {
     if (!backendDataLoaded || cardRequestPendingId) return;
     if (action === "approve" && (!accountId || !bin)) {
@@ -1830,6 +1854,7 @@ export default function DashboardApp() {
                 issues={transactionNotificationIssues}
                 onReconcileIssue={reconcileNotificationIssue}
                 onOpenRequest={setActiveRequestId}
+                onReviewCardPayment={reviewAdditionalCardPayment}
                 onReviewCardRequest={reviewAdditionalCardRequest}
                 onIssueCardRequest={issueAdditionalCardRequest}
                 onReconcileCardRequest={reconcileAdditionalCardRequest}
@@ -2709,6 +2734,7 @@ function RequestsView({
   clientName,
   search,
   onOpenRequest,
+  onReviewCardPayment,
   onReviewCardRequest,
   onIssueCardRequest,
   onReconcileCardRequest,
@@ -2729,6 +2755,7 @@ function RequestsView({
   clientName: (id: string | null) => string;
   search: string;
   onOpenRequest: (id: string) => void;
+  onReviewCardPayment: (request: ApiCardRequest, action: "accept" | "correction" | "reject") => void | Promise<void>;
   onReviewCardRequest: (request: ApiCardRequest, action: "approve" | "reject", accountId?: string, bin?: string) => void | Promise<void>;
   onIssueCardRequest: (request: ApiCardRequest) => void | Promise<void>;
   onReconcileCardRequest: (request: ApiCardRequest) => void | Promise<void>;
@@ -2809,7 +2836,7 @@ function RequestsView({
                   <TableRow className="bg-[#faf9fc]">
                     <TableHead className="pl-6">Request</TableHead>
                     <TableHead>Customer</TableHead>
-                    <TableHead>Amount / email</TableHead>
+                    <TableHead>Payment</TableHead>
                     <TableHead>Internal account</TableHead>
                     <TableHead>BIN</TableHead>
                     <TableHead>Status</TableHead>
@@ -2820,14 +2847,24 @@ function RequestsView({
                   {cardPaging.pageItems.map((request) => {
                     const choice = cardChoice(request);
                     const reviewable = ["pending_review", "correction_needed"].includes(request.status);
+                    const paymentVerified = request.payment?.status === "accepted" || request.payment?.status === "completed";
+                    const paymentPendingReview = request.payment?.status === "pending_review";
                     const busy = cardRequestPendingId === request.id;
                     return <TableRow key={request.id}>
                       <TableCell className="pl-6"><span className="font-semibold text-[#353146]">{request.reference}</span><span className="mt-0.5 block text-xs text-[#9692a3]">{new Date(request.createdAt).toLocaleString()}</span></TableCell>
                       <TableCell><span className="font-semibold">{request.client.displayName ?? request.client.username ?? request.client.telegramUserId}</span><span className="block text-xs text-[#9d99aa]">{request.client.username ? `@${request.client.username.replace(/^@/, "")}` : request.client.telegramUserId}</span></TableCell>
-                      <TableCell><span className="font-semibold">{formatUsd(Number(request.initialAmountUsdCents) / 100)}</span><span className="block text-xs text-[#9d99aa]">{request.email}</span></TableCell>
+                      <TableCell>
+                        <span className="font-semibold">{formatUsd(Number(request.initialAmountUsdCents) / 100)}</span>
+                        <span className="block text-xs text-[#9d99aa]">{request.email}</span>
+                        {request.payment ? <div className="mt-1.5 space-y-1 text-xs">
+                          <div><Badge variant="outline" className={request.payment.status === "accepted" || request.payment.status === "completed" ? "border-emerald-200 bg-emerald-50 text-emerald-700" : request.payment.status === "pending_review" ? "border-amber-200 bg-amber-50 text-amber-800" : "border-slate-200 bg-slate-50 text-slate-700"}>{request.payment.status.replaceAll("_", " ")}</Badge></div>
+                          <div className="text-[#777287]">{BigInt(request.payment.customerPaysRial).toLocaleString("en-US")} IRR · {BigInt(request.payment.rateRialPerUsd).toLocaleString("en-US")} IRR/USD</div>
+                          {request.payment.receiptId && <a href={customerPaymentReceiptUrl(request.payment.id)} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 font-semibold text-[#6157e7] hover:underline"><ReceiptText className="size-3.5" />View receipt</a>}
+                        </div> : <Badge variant="outline" className="mt-1.5 border-red-200 bg-red-50 text-red-700">Payment missing</Badge>}
+                      </TableCell>
                       <TableCell>
                         <Select
-                          disabled={!reviewable || busy}
+                          disabled={!reviewable || !paymentVerified || busy}
                           value={choice.accountId}
                           onValueChange={(accountId) => setCardChoices((current) => ({ ...current, [request.id]: { ...choice, accountId } }))}
                         >
@@ -2839,7 +2876,7 @@ function RequestsView({
                       </TableCell>
                       <TableCell>
                         <Select
-                          disabled={!reviewable || busy}
+                          disabled={!reviewable || !paymentVerified || busy}
                           value={choice.bin}
                           onValueChange={(bin) => setCardChoices((current) => ({ ...current, [request.id]: { ...choice, bin } }))}
                         >
@@ -2852,9 +2889,14 @@ function RequestsView({
                       <TableCell><Badge variant="outline" className="rounded-full">{request.status.replaceAll("_", " ")}</Badge></TableCell>
                       <TableCell>
                         <div className="flex justify-end gap-2">
-                          {reviewable && <>
-                            <Button size="sm" variant="outline" className="border-red-200 text-red-700" disabled={busy} onClick={() => void onReviewCardRequest(request, "reject")}>Reject</Button>
-                            <Button size="sm" disabled={busy || !choice.accountId || !choice.bin} onClick={() => void onReviewCardRequest(request, "approve", choice.accountId, choice.bin)}>Approve</Button>
+                          {paymentPendingReview && <>
+                            <Button size="sm" variant="outline" disabled={busy} onClick={() => void onReviewCardPayment(request, "correction")}>New receipt</Button>
+                            <Button size="sm" variant="outline" className="border-red-200 text-red-700" disabled={busy} onClick={() => void onReviewCardPayment(request, "reject")}>Reject payment</Button>
+                            <Button size="sm" disabled={busy} onClick={() => void onReviewCardPayment(request, "accept")}>Accept payment</Button>
+                          </>}
+                          {reviewable && paymentVerified && <>
+                            <Button size="sm" variant="outline" className="border-red-200 text-red-700" disabled={busy} onClick={() => void onReviewCardRequest(request, "reject")}>Reject request</Button>
+                            <Button size="sm" disabled={busy || !choice.accountId || !choice.bin} onClick={() => void onReviewCardRequest(request, "approve", choice.accountId, choice.bin)}>Approve card</Button>
                           </>}
                           {["approved", "issue_failed"].includes(request.status) && <Button size="sm" disabled={busy} onClick={() => void onIssueCardRequest(request)}>Issue card</Button>}
                           {["approved", "issuing", "issue_failed", "needs_reconciliation"].includes(request.status) && <Button size="sm" variant="outline" disabled={busy || attachLoadingId === request.id} onClick={() => void openExistingCardAttach(request)}><Link2 className="size-3.5" />Attach existing</Button>}
