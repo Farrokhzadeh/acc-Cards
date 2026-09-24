@@ -54,10 +54,8 @@ export async function getCardRequestBins(db: DatabaseQueryable = getPool()): Pro
 }
 
 export async function getCardRequestPolicy(db: DatabaseQueryable = getPool()) {
-  const platformLimitRaw = await setting<number>(db, "platform_card_limit", 3);
   const minimumRaw = await setting<number>(db, "minimum_card_creation_usd_cents", 2000);
   return {
-    platformLimit: Math.max(1, Math.min(50, Number(platformLimitRaw) || 3)),
     minimumUsdCents: Math.max(1000, Number(minimumRaw) || 2000),
   };
 }
@@ -164,10 +162,6 @@ export async function createTelegramCardRequest(userId: string, draftInput: z.in
     if (draft.amountUsdCents < capacity.minimumUsdCents) {
       throw new ApiError(400, "amount_below_minimum", `The minimum initial card amount is $${(capacity.minimumUsdCents / 100).toFixed(2)}.`);
     }
-    if (capacity.usedSlots >= capacity.platformLimit) {
-      throw new ApiError(409, "card_limit_reached", `Your ${capacity.platformLimit}-card platform limit has been reached, including open card requests.`);
-    }
-
     const result = await db.query<RequestRow>(
       `INSERT INTO card_requests(reference,user_id,bin,initial_amount_usd_cents,name_on_card,email,date_of_birth,status)
        VALUES ('CR-' || nextval('card_request_reference_seq')::text,$1::uuid,$2,$3,$4,$5,$6::date,'pending_review')
@@ -277,8 +271,7 @@ export async function reviewCardRequest(args: {
         [row.user_id, args.selectedAccountId],
       );
       if (!ownership.rows[0]) throw new ApiError(409, "account_not_assigned", "That account is no longer assigned to this client. Refresh the request.");
-      const capacity = await capacitySnapshot(db, row.user_id, row.id);
-      if (capacity.usedSlots >= capacity.platformLimit) throw new ApiError(409, "card_limit_reached", `The client has reached the ${capacity.platformLimit}-card platform limit.`);
+      await capacitySnapshot(db, row.user_id, row.id);
       selectedAccountId = args.selectedAccountId;
       nextStatus = "approved";
     } else {
