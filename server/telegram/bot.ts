@@ -1407,11 +1407,12 @@ async function handleMessage(client: TelegramClient, message: z.infer<typeof mes
     });
     return;
   }
-  if (text === "/start" || text === "/menu") { await routeHome(client, user, chatId); return; }
+  if (text === "/start" || text === "/menu") {
+    await getPool().query(`DELETE FROM telegram_bot_states WHERE user_id=$1::uuid AND mode='support'`, [user.id]);
+    await routeHome(client, user, chatId);
+    return;
+  }
 
-  if (!(await assertBotAccess(client, user, chatId))) return;
-  if (await handleFundingReceiptMedia(client,user,chatId,message)) return;
-  if (text && await handleFundingRequestText(client,user,chatId,text)) return;
   if (await supportMode(user.id)) {
     try {
       const stored = await storeSupportMessage(user, message, client);
@@ -1421,6 +1422,10 @@ async function handleMessage(client: TelegramClient, message: z.infer<typeof mes
     }
     return;
   }
+
+  if (!(await assertBotAccess(client, user, chatId))) return;
+  if (await handleFundingReceiptMedia(client,user,chatId,message)) return;
+  if (text && await handleFundingRequestText(client,user,chatId,text)) return;
   await sendMainMenu(client, user, chatId);
 }
 
