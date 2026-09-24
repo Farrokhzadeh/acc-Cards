@@ -123,7 +123,7 @@ async function apiJson<T>(url: string, init?: RequestInit): Promise<T> {
   return body.data;
 }
 
-export async function createAccount(input: { label: string; loginEmail: string; password: string; apiKey: string; emailProvider: "outlook" | "gmail"; emailAddress: string }) {
+export async function createAccount(input: { label: string; loginEmail: string; password: string; apiKey: string; emailProvider: "outlook" | "gmail"; emailAddress?: string }) {
   return apiJson<{ id: string }>("/api/v1/accounts", { method: "POST", body: JSON.stringify(input) });
 }
 
