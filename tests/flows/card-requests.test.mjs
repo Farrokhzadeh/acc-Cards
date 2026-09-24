@@ -17,12 +17,14 @@ test("Phase 12 adds immutable-style card request timeline records and review per
   assert.match(migration, /card_request_reference_seq/);
 });
 
-test("Telegram does not expose the legacy additional-card request state machine", () => {
-  assert.match(bot, /Additional card requests are not available/);
-  assert.doesNotMatch(bot, /async function beginCardRequest/);
-  assert.doesNotMatch(bot, /handleCardRequestText/);
-  assert.doesNotMatch(bot, /createTelegramCardRequest/);
-  assert.doesNotMatch(bot, /card_request_confirm/);
+test("Telegram exposes a customer-only additional-card request flow without account or BIN selection", () => {
+  assert.match(bot, /async function beginCardRequest/);
+  assert.match(bot, /handleCardRequestText/);
+  assert.match(bot, /createTelegramCardRequest/);
+  assert.match(bot, /card_request_confirm/);
+  assert.match(bot, /menu\.request_card/);
+  assert.match(bot, /cardreq\.submit/);
+  assert.doesNotMatch(bot, /Additional card requests are not available/);
 });
 
 test("documented BINs and DOB-required BINs are configured without inventing a dynamic provider catalogue", () => {
@@ -38,30 +40,36 @@ test("request creation stays serialized without enforcing an automatic card-coun
   assert.doesNotMatch(service, /platform_card_limit|platformLimit|card_limit_reached/);
 });
 
-test("request submission requires an assigned account and respects configured minimum", () => {
-  assert.match(service, /assigned_accounts < 1/);
+test("request submission uses approved KYC and configured minimum without requiring a preassigned account", () => {
+  assert.match(service, /latestApprovedKyc/);
+  assert.match(service, /status='approved'/);
   assert.match(service, /minimum_card_creation_usd_cents/);
   assert.match(service, /amount_below_minimum/);
   assert.match(service, /Math\.max\(1000/);
+  assert.doesNotMatch(service, /account_assignment_required/);
 });
 
-test("admin approval rechecks assignment without enforcing a card-count limit", () => {
-  assert.match(service, /account_not_assigned/);
+test("admin approval chooses BIN and internally assigns the issuing account without a card-count limit", () => {
+  assert.match(service, /selectedBin/);
+  assert.match(service, /bin_required/);
+  assert.match(service, /assignAccountInTransaction/);
   assert.match(service, /selected_account_id/);
-  assert.match(service, /telegram_account_assignments/);
+  assert.match(service, /availableBins/);
   assert.doesNotMatch(service, /platform_card_limit|platformLimit|card_limit_reached/);
 });
 
-test("legacy card-request mutation route is closed while read-only history remains available", () => {
+test("card-request history and review routes are active and protected", () => {
   assert.match(listRoute, /card_requests\.read/);
+  assert.match(transitionRoute, /card_requests\.review/);
   assert.match(transitionRoute, /requireCsrf/);
-  assert.match(transitionRoute, /card_request_flow_disabled/);
-  assert.doesNotMatch(transitionRoute, /reviewCardRequest\(/);
+  assert.match(transitionRoute, /reviewCardRequest\(/);
+  assert.match(transitionRoute, /selectedBin/);
+  assert.doesNotMatch(transitionRoute, /card_request_flow_disabled/);
 });
 
-test("legacy card-request review service remains provider-write free", () => {
+test("card-request review remains provider-write free until the explicit issuance action", () => {
   assert.doesNotMatch(service, /createcard|fundcard|deposits\/create/i);
-  assert.doesNotMatch(bot, /createTelegramCardRequest/);
+  assert.match(bot, /createTelegramCardRequest/);
 });
 
 test("review changes are audited and notify the Telegram user through the durable outbox", () => {
@@ -71,11 +79,13 @@ test("review changes are audited and notify the Telegram user through the durabl
   assert.match(outbox, /card_request\.status_changed/);
 });
 
-test("standalone card-request flow cannot be reached from the dashboard or Telegram", () => {
-  assert.doesNotMatch(dashboard, /fetchCardRequests\(/);
-  assert.doesNotMatch(dashboard, /await reviewCardRequest/);
-  assert.doesNotMatch(dashboard, />Issue card/);
-  assert.match(dashboard, /First-card onboarding/);
-  assert.match(bot, /Additional card requests are not available/);
-  assert.match(transitionRoute, /card_request_flow_disabled/);
+test("additional-card requests are reachable from Telegram and managed from the admin request center", () => {
+  assert.match(dashboard, /fetchCardRequests\(/);
+  assert.match(dashboard, /reviewCardRequest/);
+  assert.match(dashboard, /Issue card/);
+  assert.match(dashboard, /New cards/);
+  assert.match(dashboard, /Internal account/);
+  assert.match(bot, /Request a new card/);
+  assert.match(bot, /My requests/);
+  assert.doesNotMatch(transitionRoute, /card_request_flow_disabled/);
 });
