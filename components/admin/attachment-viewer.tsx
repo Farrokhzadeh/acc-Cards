@@ -24,16 +24,26 @@ export type AdminAttachmentItem = {
 type ViewerRequest = {
   items: AdminAttachmentItem[];
   index: number;
+  sequence: number;
+};
+
+type LoadedAttachment = {
+  key: string;
+  objectUrl: string | null;
+  mimeType: string | null;
+  filename: string | null;
+  error: string | null;
 };
 
 const EVENT_NAME = "accabad:open-attachment";
+let requestSequence = 0;
 
 export function openAdminAttachment(item: AdminAttachmentItem | AdminAttachmentItem[], index = 0) {
   if (typeof window === "undefined") return;
   const items = Array.isArray(item) ? item : [item];
   if (!items.length) return;
   window.dispatchEvent(new CustomEvent<ViewerRequest>(EVENT_NAME, {
-    detail: { items, index: Math.max(0, Math.min(index, items.length - 1)) },
+    detail: { items, index: Math.max(0, Math.min(index, items.length - 1)), sequence: ++requestSequence },
   }));
 }
 
@@ -48,37 +58,34 @@ function filenameFromDisposition(value: string | null) {
 
 export function AdminAttachmentViewer() {
   const [request, setRequest] = useState<ViewerRequest | null>(null);
-  const [objectUrl, setObjectUrl] = useState<string | null>(null);
-  const [resolvedMime, setResolvedMime] = useState<string | null>(null);
-  const [resolvedFilename, setResolvedFilename] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [loaded, setLoaded] = useState<LoadedAttachment | null>(null);
   const current = request?.items[request.index] ?? null;
+  const loadKey = request && current ? `${request.sequence}:${request.index}` : null;
+  const activeLoad = loaded?.key === loadKey ? loaded : null;
+  const objectUrl = activeLoad?.objectUrl ?? null;
+  const resolvedMime = activeLoad?.mimeType ?? current?.mimeType ?? null;
+  const resolvedFilename = activeLoad?.filename ?? current?.filename ?? null;
+  const error = activeLoad?.error ?? null;
 
   useEffect(() => {
     const listener = (event: Event) => {
       const detail = (event as CustomEvent<ViewerRequest>).detail;
       if (!detail?.items?.length) return;
-      setRequest({ items: detail.items, index: Math.max(0, Math.min(detail.index ?? 0, detail.items.length - 1)) });
+      setRequest({
+        items: detail.items,
+        index: Math.max(0, Math.min(detail.index ?? 0, detail.items.length - 1)),
+        sequence: detail.sequence,
+      });
     };
     window.addEventListener(EVENT_NAME, listener);
     return () => window.removeEventListener(EVENT_NAME, listener);
   }, []);
 
   useEffect(() => {
-    if (!current) {
-      setObjectUrl(null);
-      setResolvedMime(null);
-      setResolvedFilename(null);
-      setError(null);
-      return;
-    }
+    if (!current || !loadKey) return;
 
     let cancelled = false;
     let nextObjectUrl: string | null = null;
-    setObjectUrl(null);
-    setResolvedMime(current.mimeType ?? null);
-    setResolvedFilename(current.filename ?? null);
-    setError(null);
 
     fetch(current.url, { credentials: "same-origin", cache: "no-store" })
       .then(async (response) => {
@@ -86,19 +93,30 @@ export function AdminAttachmentViewer() {
         const blob = await response.blob();
         if (cancelled) return;
         nextObjectUrl = URL.createObjectURL(blob);
-        setObjectUrl(nextObjectUrl);
-        setResolvedMime(blob.type || response.headers.get("content-type") || current.mimeType || "application/octet-stream");
-        setResolvedFilename(current.filename || filenameFromDisposition(response.headers.get("content-disposition")) || "attachment");
+        setLoaded({
+          key: loadKey,
+          objectUrl: nextObjectUrl,
+          mimeType: blob.type || response.headers.get("content-type") || current.mimeType || "application/octet-stream",
+          filename: current.filename || filenameFromDisposition(response.headers.get("content-disposition")) || "attachment",
+          error: null,
+        });
       })
       .catch((cause) => {
-        if (!cancelled) setError(cause instanceof Error ? cause.message : "Could not load attachment.");
+        if (cancelled) return;
+        setLoaded({
+          key: loadKey,
+          objectUrl: null,
+          mimeType: current.mimeType ?? null,
+          filename: current.filename ?? null,
+          error: cause instanceof Error ? cause.message : "Could not load attachment.",
+        });
       });
 
     return () => {
       cancelled = true;
       if (nextObjectUrl) URL.revokeObjectURL(nextObjectUrl);
     };
-  }, [current]);
+  }, [current, loadKey]);
 
   const kind = useMemo(() => {
     const mime = resolvedMime?.toLowerCase() ?? "";
