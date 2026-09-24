@@ -2,6 +2,7 @@
 
 import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import Image from "next/image";
+import Link from "next/link";
 import {
   Activity,
   AlertTriangle,
@@ -2166,14 +2167,16 @@ export default function DashboardApp() {
             <>
               <ClientPaymentSection key={`onboarding-${activeClientId ?? "none"}`} clientId={activeClientId} />
               <ClientKycSection key={`kyc-${activeClientId ?? "none"}`} clientId={activeClientId} />
-              <ClientFinancialHistorySection key={`payments-${activeClientId ?? "none"}`} clientId={activeClientId} />
               <SheetHeader className="border-b border-[#eceaf2] bg-white px-6 py-5">
                 <div className="flex items-center gap-3 pr-8">
                   <Avatar className="size-11"><AvatarFallback className="bg-[#eeecff] font-bold text-[#5b50d6]">{initials(activeClient.name)}</AvatarFallback></Avatar>
-                  <div>
+                  <div className="min-w-0 flex-1">
                     <SheetTitle className="text-lg">{activeClient.name}</SheetTitle>
                     <SheetDescription>{activeClient.username} · Telegram {activeClient.telegramId}</SheetDescription>
                   </div>
+                  <Link href={`/clients/${activeClient.id}`}>
+                    <Button size="sm" className="rounded-xl bg-[#6157e7] text-white hover:bg-[#554bcf]">Open full page<ChevronRight className="size-4" /></Button>
+                  </Link>
                 </div>
               </SheetHeader>
               <div className="space-y-6 px-6 py-5">
