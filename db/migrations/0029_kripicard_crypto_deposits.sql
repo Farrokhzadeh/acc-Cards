@@ -14,7 +14,7 @@ CREATE TABLE IF NOT EXISTS kripicard_deposits (
   pay_amount text NOT NULL,
   expires_at timestamptz NOT NULL,
   credited_applied boolean NOT NULL DEFAULT false,
-  created_by uuid REFERENCES admin_users(id) ON DELETE SET NULL,
+  created_by uuid REFERENCES admins(id) ON DELETE SET NULL,
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now(),
   UNIQUE(account_id, provider_deposit_id)
