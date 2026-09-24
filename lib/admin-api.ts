@@ -645,6 +645,13 @@ export async function reconcileCardRequest(id: string) {
   });
 }
 
+export async function attachExistingCardRequest(id: string, cardId: string) {
+  return apiJson<{ requestId: string; cardId: string; providerCardId: string; last4: string | null; status: "issued"; attachedExisting: true }>(
+    `/api/v1/card-requests/${encodeURIComponent(id)}/attach`,
+    { method: "POST", body: JSON.stringify({ cardId }) },
+  );
+}
+
 export type ApiFundingRequest = {
   id: string;
   reference: string;
