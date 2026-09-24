@@ -50,8 +50,8 @@ export const KYC = {
   approvedNotice: m("🎉 Your identity has been <b>approved</b>. Next, choose how much you want on your first card and make that payment.", "🎉 هویت شما <b>تأیید</b> شد. حالا مبلغی را که می‌خواهید روی اولین کارت شما باشد انتخاب کنید و همان مبلغ را پرداخت کنید."),
   rejectedNotice: m("Your identity verification was <b>rejected</b>. You can start again with /kyc.", "احراز هویت شما <b>رد</b> شد. می‌توانید با /kyc دوباره شروع کنید."),
   approvedNoAccount: m(
-    "Your identity is approved ✅. An administrator still needs to assign your account before you can request cards. Please contact them.",
-    "هویت شما تأیید شده ✅. مدیر هنوز باید حساب شما را اختصاص دهد تا بتوانید کارت درخواست کنید. لطفاً با مدیر تماس بگیرید.",
+    "Your identity is approved ✅. You can continue with your card request when prompted.",
+    "هویت شما تأیید شده ✅. هر زمان از شما خواسته شد می‌توانید فرایند کارت را ادامه دهید.",
   ),
 };
 
@@ -63,6 +63,9 @@ export const MENU = {
   verify: m("🪪 Verify identity", "🪪 احراز هویت"),
   support: m("💬 Support", "💬 پشتیبانی"),
   language: m("🌐 Language", "🌐 زبان"),
+  status: m("📍 Status", "📍 وضعیت"),
+  kycInfo: m("🪪 My KYC", "🪪 اطلاعات احراز هویت"),
+  receipt: m("🧾 Payment receipt", "🧾 رسید پرداخت"),
   payment: m("💳 Payment info", "💳 اطلاعات پرداخت"),
   paidBtn: m("💵 Choose first-card amount", "💵 انتخاب مبلغ اولین کارت"),
   back: m("← Menu", "← منو"),
@@ -121,7 +124,10 @@ export const FLOW = {
   requestsHeader: m("<b>My requests</b>\nTap a request to see its status and timeline.", "<b>درخواست‌های من</b>\nبرای وضعیت و زمان‌بندی روی یک درخواست بزنید."),
   emptyTransactions: m("No transactions yet. Once you use your card, its activity appears here.", "هنوز تراکنشی نیست. پس از استفاده از کارت، فعالیت‌ها اینجا نمایش می‌گیرد."),
   waitPayment: m("⏳ Payment received. Our team is reviewing it — please wait. We'll message you here as soon as your card is ready.", "⏳ پرداخت دریافت شد. تیم ما در حال بررسی است — لطفاً صبر کنید. به محض آماده شدن کارت، اینجا پیام می‌دهیم."),
-  waitingActivation: m("⏳ Receipt received. An administrator will verify the payment, assign a Kripicard account, create your first card with the approved amount, and then complete your onboarding. We'll notify you when the card is ready.", "⏳ رسید دریافت شد. مدیر پرداخت را بررسی می‌کند، یک حساب Kripicard اختصاص می‌دهد، اولین کارت شما را با مبلغ تأییدشده ایجاد می‌کند و سپس ثبت‌نام را تکمیل می‌کند. وقتی کارت آماده شد به شما اطلاع می‌دهیم."),
+  waitingActivation: m("⏳ Receipt received. An administrator will verify the payment and prepare your first card with the approved amount. We'll notify you when the card is ready.", "⏳ رسید دریافت شد. مدیر پرداخت را بررسی می‌کند و اولین کارت شما را با مبلغ تأییدشده آماده می‌کند. وقتی کارت آماده شد به شما اطلاع می‌دهیم."),
+  waitingMenu: m("You can use the options below while your setup is in progress.", "تا زمانی که فرایند شما در حال انجام است می‌توانید از گزینه‌های زیر استفاده کنید."),
+  noKycInfo: m("No KYC submission is available yet.", "هنوز اطلاعات احراز هویتی ثبت نشده است."),
+  noPaymentReceipt: m("No first-card payment receipt is available yet.", "هنوز رسید پرداخت اولین کارت ثبت نشده است."),
 };
 
 export const NOTIFY = {
