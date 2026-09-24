@@ -8,6 +8,8 @@ import { getLiveKripicardCardDetailsForTelegram, listStoredCardTransactions, set
 import { cancelTelegramFundingRequest, createTelegramFundingRequest, getFundingPolicy, getTelegramFundingRequest, previewFundingQuote } from "@/server/funding/service";
 import { cancelTelegramCardRequest, createTelegramCardRequest, getCardRequestPolicy, getTelegramCardRequest } from "@/server/card-requests/service";
 import { attachTelegramReceipt } from "@/server/funding/receipts";
+import { createFirstCardPayment } from "@/server/payments/service";
+import { attachTelegramCustomerPaymentReceipt } from "@/server/payments/receipts";
 import { deletePrivateSupportAttachment, readPrivateSupportAttachment, storePrivateSupportAttachment } from "@/server/support/storage";
 import { createKycSubmission, getKycStatusForUser } from "@/server/kyc/service";
 import { KYC, kycConfirmSummary, pick, MENU, COMMON, PAYMENT, FLOW } from "@/server/kyc/messages";
@@ -132,49 +134,6 @@ async function getPaymentStatus(userId: string): Promise<string | null> {
   return r.rows[0]?.payment_status ?? null;
 }
 
-async function setPaymentAmountAwaitingReceipt(userId: string, cents: number) {
-  await withTransaction(async (db) => {
-    const updated = await db.query(
-      `UPDATE telegram_users
-          SET payment_amount_usd_cents=$2,payment_declared_at=now(),updated_at=now()
-        WHERE id=$1::uuid
-          AND (payment_status IS NULL OR payment_status='denied')
-        RETURNING id`,
-      [userId, cents],
-    );
-    if (!updated.rowCount) {
-      throw new ApiError(409, "invalid_state", "This first-card payment can no longer be changed.");
-    }
-    await db.query(
-      `INSERT INTO telegram_bot_states(user_id,mode,payload,expires_at,updated_at)
-       VALUES($1::uuid,'payment_receipt','{}'::jsonb,now()+(60 * interval '1 minute'),now())
-       ON CONFLICT(user_id) DO UPDATE
-         SET mode='payment_receipt',payload='{}'::jsonb,expires_at=EXCLUDED.expires_at,updated_at=now()`,
-      [userId],
-    );
-  });
-}
-
-async function setPaymentReceiptPending(userId: string, objectKey: string, mime: string) {
-  await withTransaction(async (db) => {
-    const updated = await db.query(
-      `UPDATE telegram_users
-          SET payment_receipt_object_key=$2,payment_receipt_mime=$3,payment_receipt_at=now(),payment_status='pending',updated_at=now()
-        WHERE id=$1::uuid
-          AND (payment_status IS NULL OR payment_status='denied')
-          AND EXISTS (
-            SELECT 1 FROM telegram_bot_states
-             WHERE user_id=$1::uuid AND mode='payment_receipt' AND expires_at>now()
-          )
-        RETURNING id`,
-      [userId, objectKey, mime],
-    );
-    if (!updated.rowCount) {
-      throw new ApiError(409, "invalid_state", "This receipt session expired or the first-card payment already progressed.");
-    }
-    await db.query(`DELETE FROM telegram_bot_states WHERE user_id=$1::uuid`, [userId]);
-  });
-}
 async function handlePaymentAmountText(client: TelegramClient, user: BotUser, chatId: number, text: string): Promise<boolean> {
   const state = await getKycState(user.id);
   if (!state || state.mode !== "payment_amount") return false;
@@ -190,18 +149,22 @@ async function handlePaymentAmountText(client: TelegramClient, user: BotUser, ch
     await client.sendMessage({ chatId, text: pick(PAYMENT.notConfigured, user.lang) });
     return true;
   }
-  await setPaymentAmountAwaitingReceipt(user.id, cents);
+  const payment = await createFirstCardPayment(user.id, cents);
+  await setBotState(user.id, "payment_receipt", { paymentId: payment.id }, 60);
   const amount = (cents / 100).toFixed(2);
   const instructions = pick(PAYMENT.info, user.lang)
     .replace("{amount}", escapeHtml(amount))
     .replace("{card}", escapeHtml(pc.cardNumber))
     .replace("{holder}", escapeHtml(pc.cardHolder || "—"));
-  await client.sendMessage({ chatId, text: `${instructions}\n\n${pick(PAYMENT.askReceipt, user.lang)}` });
+  const rateLine = user.lang === "fa"
+    ? `نرخ ثبت‌شده: <b>${escapeHtml(BigInt(payment.rateRialPerUsd).toLocaleString("en-US"))}</b> ریال برای هر دلار\nمبلغ دقیق قابل پرداخت: <b>${escapeHtml(formatRialValue(payment.customerPaysRial))}</b>`
+    : `Locked rate: <b>${escapeHtml(BigInt(payment.rateRialPerUsd).toLocaleString("en-US"))}</b> rial/USD\nPay exactly: <b>${escapeHtml(formatRialValue(payment.customerPaysRial))}</b>`;
+  await client.sendMessage({ chatId, text: `${instructions}\n\n${rateLine}\n\n${pick(PAYMENT.askReceipt, user.lang)}` });
   return true;
 }
 async function handlePaymentReceiptMedia(client: TelegramClient, user: BotUser, chatId: number, message: z.infer<typeof messageSchema>): Promise<boolean> {
   const state = await getKycState(user.id);
-  if (!state || state.mode !== "payment_receipt") return false;
+  if (!state || state.mode !== "payment_receipt" || !state.payload?.paymentId) return false;
   const photo = message.photo?.at(-1);
   const document = message.document;
   const selected = document ?? photo;
@@ -210,27 +173,16 @@ async function handlePaymentReceiptMedia(client: TelegramClient, user: BotUser, 
     await client.sendMessage({ chatId, text: pick(KYC.errDocType, user.lang) });
     return true;
   }
-  const env = parseServerEnv(process.env);
-  if (selected.file_size && selected.file_size > env.SUPPORT_ATTACHMENT_MAX_BYTES) {
-    await client.sendMessage({ chatId, text: pick(KYC.errDocSize, user.lang) });
-    return true;
-  }
   try {
-    const file = await client.getFile(selected.file_id);
-    if (!file.file_path) throw new ApiError(502, "telegram_file_missing_path", "Telegram did not provide a downloadable path.");
-    const bytes = await client.downloadFile(file.file_path, env.SUPPORT_ATTACHMENT_MAX_BYTES);
-    const stored = await storePrivateSupportAttachment({
-      conversationId: user.id,
-      bytes,
+    await attachTelegramCustomerPaymentReceipt({
+      userId: user.id,
+      paymentId: state.payload.paymentId,
+      telegramFileId: selected.file_id,
+      telegramFileUniqueId: selected.file_unique_id,
       originalFilename: document?.file_name ?? `payment-receipt-${message.message_id}.jpg`,
       declaredMimeType: document?.mime_type ?? "image/jpeg",
     });
-    try {
-      await setPaymentReceiptPending(user.id, stored.objectKey, stored.detectedMimeType);
-    } catch (error) {
-      await deletePrivateSupportAttachment(stored.objectKey).catch(() => {});
-      throw error;
-    }
+    await getPool().query(`DELETE FROM telegram_bot_states WHERE user_id=$1::uuid`, [user.id]);
     await sendWaitingScreen(client, user, chatId);
   } catch (error) {
     await client.sendMessage({ chatId, text: error instanceof ApiError ? escapeHtml(error.message) : pick(KYC.errDocGeneric, user.lang) });
@@ -750,6 +702,8 @@ type CardRequestDraftPayload = {
   quoteServiceFeeBasisPoints?: number;
   quoteExpiresAt?: string;
   fundingRequestId?: string;
+  cardRequestId?: string;
+  paymentId?: string;
 };
 
 async function setBotState(userId: string, mode: string, payload: CardRequestDraftPayload = {}, ttlMinutes = 30) {
@@ -870,6 +824,10 @@ async function handleCardRequestText(client: TelegramClient, user: BotUser, chat
     await client.sendMessage({ chatId, text: "Use the Submit button above, or send /cancel." });
     return true;
   }
+  if (state.mode === "card_request_receipt") {
+    await client.sendMessage({ chatId, text: "Upload the payment receipt as a JPEG, PNG, WebP, or PDF file. Text alone cannot be used as payment evidence." });
+    return true;
+  }
   return false;
 }
 
@@ -880,15 +838,49 @@ async function sendCardRequestDetail(client: TelegramClient, user: BotUser, chat
     `• ${escapeHtml(event.status)} · ${escapeHtml(new Date(event.createdAt).toISOString().replace("T", " ").slice(0, 16))} UTC${event.note ? ` · ${escapeHtml(event.note)}` : ""}`
   ).join("\n");
   const rows: TelegramInlineKeyboard["inline_keyboard"] = [];
-  if (["pending_review", "correction_needed"].includes(request.status)) {
+  if (detail.payment && ["pending_receipt", "correction_needed"].includes(detail.payment.status)) {
+    rows.push([{ text: "Upload payment receipt", callback_data: await createCallbackToken({ userId: user.id, action: "cardreq.upload_receipt", entityId: request.id, ttlMinutes: 20 }) }]);
+  }
+  if (["pending_review", "correction_needed"].includes(request.status) && !["accepted", "completed"].includes(detail.payment?.status ?? "")) {
     rows.push([{ text: "Cancel request", callback_data: await createCallbackToken({ userId: user.id, action: "cardreq.cancel_existing", entityId: request.id, singleUse: true, ttlMinutes: 10 }) }]);
   }
   rows.push([{ text: "← My requests", callback_data: await createCallbackToken({ userId: user.id, action: "menu.requests" }) }]);
+  const paymentText = detail.payment
+    ? `\nPayment: <b>${escapeHtml(detail.payment.status)}</b>\nRate: ${escapeHtml(BigInt(detail.payment.rateRialPerUsd).toLocaleString("en-US"))} rial/USD\nPayable: <b>${escapeHtml(formatRialValue(detail.payment.customerPaysRial))}</b>`
+    : "";
   await client.sendMessage({
     chatId,
-    text: `<b>${escapeHtml(request.reference)}</b>\nType: <b>New card</b>\nStatus: <b>${escapeHtml(request.status)}</b>\nInitial amount: <b>${formatUsdCents(request.initialAmountUsdCents)}</b>\nEmail: <code>${escapeHtml(request.email)}</code>${request.adminNote ? `\nAdmin note: ${escapeHtml(request.adminNote)}` : ""}\n\n<b>Timeline</b>\n${timeline || "No timeline events."}`,
+    text: `<b>${escapeHtml(request.reference)}</b>\nType: <b>New card</b>\nStatus: <b>${escapeHtml(request.status)}</b>\nInitial amount: <b>${formatUsdCents(request.initialAmountUsdCents)}</b>\nEmail: <code>${escapeHtml(request.email)}</code>${paymentText}${request.adminNote ? `\nAdmin note: ${escapeHtml(request.adminNote)}` : ""}\n\n<b>Timeline</b>\n${timeline || "No timeline events."}`,
     replyMarkup: { inline_keyboard: rows },
   });
+}
+
+async function handleCardRequestReceiptMedia(client: TelegramClient, user: BotUser, chatId: number, message: z.infer<typeof messageSchema>) {
+  const state = await getBotState(user.id);
+  if (!state || state.mode !== "card_request_receipt" || !state.payload?.paymentId || !state.payload?.cardRequestId) return false;
+  const document = message.document;
+  const photo = message.photo?.at(-1);
+  const selected = document ?? photo;
+  if (!selected) {
+    await client.sendMessage({ chatId, text: "Upload a JPEG, PNG, WebP, or PDF payment receipt." });
+    return true;
+  }
+  if (document?.mime_type && !["application/pdf","image/jpeg","image/png","image/webp"].includes(document.mime_type)) {
+    await client.sendMessage({ chatId, text: "That document type is not accepted. Upload a PDF, JPEG, PNG, or WebP receipt." });
+    return true;
+  }
+  await attachTelegramCustomerPaymentReceipt({
+    userId: user.id,
+    paymentId: state.payload.paymentId,
+    telegramFileId: selected.file_id,
+    telegramFileUniqueId: selected.file_unique_id,
+    originalFilename: document?.file_name ?? `card-payment-${message.message_id}.jpg`,
+    declaredMimeType: document?.mime_type ?? "image/jpeg",
+  });
+  await getPool().query(`DELETE FROM telegram_bot_states WHERE user_id=$1::uuid`, [user.id]);
+  await client.sendMessage({ chatId, text: "Payment receipt received. An administrator must verify it before your card request can be approved or issued." });
+  await sendCardRequestDetail(client, user, chatId, state.payload.cardRequestId);
+  return true;
 }
 
 async function beginFundingRequest(client: TelegramClient, user: BotUser, chatId: number) {
@@ -1200,17 +1192,17 @@ async function handleCallback(client: TelegramClient, callback: z.infer<typeof c
         if (!state || state.mode !== "card_request_confirm" || !state.payload.amountUsdCents || !state.payload.email) {
           throw new ApiError(409, "draft_expired", "This card request draft expired. Start again.");
         }
+        const paymentCard = await getPaymentCard();
+        if (!paymentCard.cardNumber) throw new ApiError(409, "payment_not_configured", "Payment instructions are not configured yet. Contact support.");
         const created = await createTelegramCardRequest(user.id, {
           amountUsdCents: state.payload.amountUsdCents,
           email: state.payload.email,
         });
-        await getPool().query(`DELETE FROM telegram_bot_states WHERE user_id=$1::uuid`, [user.id]);
-        const detail = await createCallbackToken({ userId: user.id, action: "cardreq.detail", entityId: created.request.id });
-        await client.sendMessage({
-          chatId,
-          text: `Card request <b>${escapeHtml(created.request.reference)}</b> was submitted. You can track it from My requests.`,
-          replyMarkup: { inline_keyboard: [[{ text: "View request", callback_data: detail }]] },
-        });
+        await setBotState(user.id, "card_request_receipt", { cardRequestId: created.request.id, paymentId: created.payment.id }, 60);
+        const payText = user.lang === "fa"
+          ? `درخواست <b>${escapeHtml(created.request.reference)}</b> ثبت شد.\nمبلغ: <b>${formatUsdCents(created.payment.customerPaysUsdCents)}</b>\nنرخ ثبت‌شده: ${escapeHtml(BigInt(created.payment.rateRialPerUsd).toLocaleString("en-US"))} ریال/دلار\nمبلغ دقیق قابل پرداخت: <b>${escapeHtml(formatRialValue(created.payment.customerPaysRial))}</b>\nکارت پرداخت: <code>${escapeHtml(paymentCard.cardNumber)}</code>\nبه نام: <b>${escapeHtml(paymentCard.cardHolder || "—")}</b>\n\nبعد از پرداخت، رسید را همینجا ارسال کنید. تا تایید مدیر هیچ کارتی ساخته نمی‌شود.`
+          : `Card request <b>${escapeHtml(created.request.reference)}</b> was created.\nUSD basis: <b>${formatUsdCents(created.payment.customerPaysUsdCents)}</b>\nLocked rate: ${escapeHtml(BigInt(created.payment.rateRialPerUsd).toLocaleString("en-US"))} rial/USD\nPay exactly: <b>${escapeHtml(formatRialValue(created.payment.customerPaysRial))}</b>\nPayment card: <code>${escapeHtml(paymentCard.cardNumber)}</code>\nHolder: <b>${escapeHtml(paymentCard.cardHolder || "—")}</b>\n\nAfter paying, upload the receipt here. No card will be approved or issued before admin verification.`;
+        await client.sendMessage({ chatId, text: payText });
         break;
       }
       case "cardreq.cancel_draft":
@@ -1218,6 +1210,16 @@ async function handleCallback(client: TelegramClient, callback: z.infer<typeof c
         await sendMainMenu(client, user, chatId);
         break;
       case "cardreq.detail": if (resolved.entity_id) await sendCardRequestDetail(client, user, chatId, resolved.entity_id); break;
+      case "cardreq.upload_receipt": {
+        if (!resolved.entity_id) break;
+        const detail = await getTelegramCardRequest(user.id, resolved.entity_id);
+        if (!detail.payment || !["pending_receipt","correction_needed"].includes(detail.payment.status)) {
+          throw new ApiError(409, "invalid_state", "This card request is not waiting for payment evidence.");
+        }
+        await setBotState(user.id, "card_request_receipt", { cardRequestId: resolved.entity_id, paymentId: detail.payment.id }, 60);
+        await client.sendMessage({ chatId, text: `Upload payment evidence for <b>${escapeHtml(detail.request.reference)}</b> as JPEG, PNG, WebP, or PDF.` });
+        break;
+      }
       case "cardreq.cancel_existing": {
         if (!resolved.entity_id) break;
         await cancelTelegramCardRequest(user.id, resolved.entity_id);
@@ -1563,6 +1565,7 @@ async function handleMessage(client: TelegramClient, message: z.infer<typeof mes
   }
 
   if (!(await assertBotAccess(client, user, chatId))) return;
+  if (await handleCardRequestReceiptMedia(client,user,chatId,message)) return;
   if (text && await handleCardRequestText(client,user,chatId,text)) return;
   if (await handleFundingReceiptMedia(client,user,chatId,message)) return;
   if (text && await handleFundingRequestText(client,user,chatId,text)) return;
