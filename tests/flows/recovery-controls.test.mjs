@@ -49,7 +49,7 @@ test("read-only mode blocks mutations but preserves authenticated recovery contr
 test("Operations UI exposes audited runtime controls", () => {
   const ui = read("app/dashboard-app.tsx");
   const client = read("lib/admin-api.ts");
-  assert.match(ui, /Emergency controls/);
+  assert.match(ui, /Safety controls/);
   assert.match(ui, /onControlAction/);
   assert.match(client, /updateRuntimeControl/);
 });

@@ -130,7 +130,7 @@ test("first-card onboarding turns provider gates into actionable admin guidance"
   assert.match(dashboard, /runtime_kill_switch/);
   assert.match(dashboard, /provider_money_not_ready/);
   assert.match(dashboard, /LIVE_PROVIDER_WRITE_CONFIRMATION/);
-  assert.match(dashboard, /Kripicard money readiness/);
+  assert.match(dashboard, /Operations → Kripicard/);
   assert.match(dashboard, /emergency read-only mode/i);
 });
 

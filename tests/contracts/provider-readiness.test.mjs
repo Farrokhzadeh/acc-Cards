@@ -81,11 +81,13 @@ test("deposit documentation fixtures preserve exact payment instruction and term
   assert.match(schemas, /pending.*completed.*failed/s);
 });
 
-test("Settings shows the database-backed provider readiness gate instead of a static claim", () => {
+test("Operations shows the database-backed provider readiness gate", () => {
   assert.match(dashboard, /fetchProviderReadiness/);
-  assert.match(dashboard, /Kripicard money readiness/);
-  assert.match(dashboard, /Some live money operations remain blocked|Card creation contract cleared/);
-  assert.match(dashboard, /blocks live money/);
+  assert.match(dashboard, /Cards spend the provider wallet\. Crypto deposits refill that wallet/);
+  assert.match(dashboard, /Create card/);
+  assert.match(dashboard, /Fund card/);
+  assert.match(dashboard, /Crypto deposit/);
+  assert.match(dashboard, /Contract checks/);
 });
 
 test("provider contract and questionnaire explicitly preserve wallet model and unresolved edge cases", () => {
