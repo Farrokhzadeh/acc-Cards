@@ -2268,7 +2268,7 @@ export default function DashboardApp() {
                 </div>
                 <div>
                   <h3 className="mb-3 font-semibold">Receipt</h3>
-                  <button disabled={!backendDataLoaded || !activeRequest.receiptScanStatus || activeRequest.receiptScanStatus !== "clean"} onClick={() => backendDataLoaded && window.open(fundingReceiptDownloadUrl(activeRequest.id), "_blank", "noopener,noreferrer")} className="flex w-full items-center gap-3 rounded-[18px] border border-[#e8e6ef] bg-white p-4 text-left transition hover:border-[#d7d2f5] hover:bg-[#f8f6ff] disabled:cursor-not-allowed disabled:opacity-60">
+                  <button disabled={!backendDataLoaded || !activeRequest.receiptScanStatus || activeRequest.receiptScanStatus !== "clean"} onClick={() => backendDataLoaded && openAdminAttachment({ url: fundingReceiptDownloadUrl(activeRequest.id), title: `Funding receipt · ${activeRequest.reference ?? activeRequest.id}`, filename: activeRequest.receipt })} className="flex w-full items-center gap-3 rounded-[18px] border border-[#e8e6ef] bg-white p-4 text-left transition hover:border-[#d7d2f5] hover:bg-[#f8f6ff] disabled:cursor-not-allowed disabled:opacity-60">
                     <span className="grid size-10 place-items-center rounded-xl bg-slate-100 text-slate-600"><ReceiptIcon type={activeRequest.receiptType} /></span>
                     <span className="min-w-0 flex-1"><span className="block truncate text-sm font-medium">{activeRequest.receipt}</span><span className="block text-xs text-slate-500">{activeRequest.receiptScanStatus ? `Validation: ${activeRequest.receiptScanStatus}` : "No receipt uploaded"}</span></span>
                     <Eye className="size-4 text-slate-400" />
@@ -2506,9 +2506,9 @@ function KycView() {
                   <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-[#9692a3]">ID document</p>
                   {selected.hasDocument ? (
                     selected.documentMimeType?.startsWith("image/") ? (
-                      <Image unoptimized width={1200} height={800} src={kycDocumentUrl(selected.id)} alt="KYC document" className="max-h-72 w-full rounded-[16px] border border-[#ece9f2] object-contain" />
+                      <button type="button" className="block w-full cursor-zoom-in rounded-[16px]" onClick={() => openAdminAttachment({ url: kycDocumentUrl(selected.id), title: `KYC document · ${selected.fullName}`, filename: selected.documentFilename, mimeType: selected.documentMimeType })}><Image unoptimized width={1200} height={800} src={kycDocumentUrl(selected.id)} alt="KYC document" className="max-h-72 w-full rounded-[16px] border border-[#ece9f2] object-contain" /></button>
                     ) : (
-                      <a href={kycDocumentUrl(selected.id)} target="_blank" rel="noreferrer"><Button variant="outline" className="rounded-xl"><FileText className="size-4" />Open document</Button></a>
+                      <Button type="button" variant="outline" className="rounded-xl" onClick={() => openAdminAttachment({ url: kycDocumentUrl(selected.id), title: `KYC document · ${selected.fullName}`, filename: selected.documentFilename, mimeType: selected.documentMimeType })}><FileText className="size-4" />Open document</Button>
                     )
                   ) : (
                     <p className="text-sm text-[#9692a3]">No document attached.</p>
@@ -2862,7 +2862,7 @@ function RequestsView({
                         {request.payment ? <div className="mt-1.5 space-y-1 text-xs">
                           <div><Badge variant="outline" className={request.payment.status === "accepted" || request.payment.status === "completed" ? "border-emerald-200 bg-emerald-50 text-emerald-700" : request.payment.status === "pending_review" ? "border-amber-200 bg-amber-50 text-amber-800" : "border-slate-200 bg-slate-50 text-slate-700"}>{request.payment.status.replaceAll("_", " ")}</Badge></div>
                           <div className="text-[#777287]">{BigInt(request.payment.customerPaysRial).toLocaleString("en-US")} IRR · {BigInt(request.payment.rateRialPerUsd).toLocaleString("en-US")} IRR/USD</div>
-                          {request.payment.receiptId && <a href={customerPaymentReceiptUrl(request.payment.id)} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 font-semibold text-[#6157e7] hover:underline"><ReceiptText className="size-3.5" />View receipt</a>}
+                          {request.payment.receiptId && <button type="button" onClick={() => openAdminAttachment({ url: customerPaymentReceiptUrl(request.payment!.id), title: `Payment receipt · ${request.reference}`, filename: `${request.payment!.reference}-receipt` })} className="inline-flex items-center gap-1 font-semibold text-[#6157e7] hover:underline"><ReceiptText className="size-3.5" />View receipt</button>}
                         </div> : <Badge variant="outline" className="mt-1.5 border-red-200 bg-red-50 text-red-700">Payment missing</Badge>}
                       </TableCell>
                       <TableCell>
