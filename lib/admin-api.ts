@@ -409,6 +409,11 @@ export type ClientPipelineItem = {
   receiptMime: string | null;
   receiptAt: string | null;
   amountUsdCents: string | null;
+  paymentId: string | null;
+  paymentReference: string | null;
+  paymentRecordStatus: string | null;
+  rateRialPerUsd: string | null;
+  customerPaysRial: string | null;
 };
 
 export async function fetchClientPipeline() {
