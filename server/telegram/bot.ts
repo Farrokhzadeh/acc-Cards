@@ -4,7 +4,7 @@ import { getPool, withTransaction } from "@/server/database/pool";
 import { ApiError } from "@/server/http/api";
 import { randomToken, sha256Hex } from "@/server/security/crypto";
 import { TelegramClient, type TelegramInlineKeyboard } from "@/server/providers/telegram/client";
-import { listStoredCardTransactions, setKripicardCardFrozenStateForTelegram } from "@/server/providers/kripicard/service";
+import { getLiveKripicardCardDetailsForTelegram, listStoredCardTransactions, setKripicardCardFrozenStateForTelegram } from "@/server/providers/kripicard/service";
 import { cancelTelegramFundingRequest, createTelegramFundingRequest, getFundingPolicy, getTelegramFundingRequest, previewFundingQuote } from "@/server/funding/service";
 import { attachTelegramReceipt } from "@/server/funding/receipts";
 import { deletePrivateSupportAttachment, readPrivateSupportAttachment, storePrivateSupportAttachment } from "@/server/support/storage";
@@ -413,9 +413,9 @@ function withChatLog(client: TelegramClient, user: { id: string }): TelegramClie
     get(target, prop, receiver) {
       const value = Reflect.get(target, prop, receiver);
       if (prop === "sendMessage" && typeof value === "function") {
-        return async (args: { chatId: number; text: string; replyMarkup?: unknown }) => {
+        return async (args: { chatId: number; text: string; replyMarkup?: unknown; protectContent?: boolean }) => {
           const result = await (value as (a: unknown) => Promise<unknown>).call(target, args);
-          logChatMessage(user, "admin_to_client", args.text).catch(() => {});
+          if (!args.protectContent) logChatMessage(user, "admin_to_client", args.text).catch(() => {});
           return result;
         };
       }
@@ -659,6 +659,7 @@ async function sendCardDetail(client: TelegramClient, user: BotUser, chatId: num
   const card = await ownsCard(user.id, cardId);
   if (!card) throw new ApiError(403, "card_not_owned", "This card is no longer available to you.");
   const txToken = await createCallbackToken({ userId: user.id, action: "card.transactions", entityId: card.id });
+  const revealToken = await createCallbackToken({ userId: user.id, action: "card.reveal", entityId: card.id, singleUse: true, ttlMinutes: 5 });
   const stateAction = card.status === "frozen" ? "card.unfreeze" : "card.freeze";
   const stateToken = await createCallbackToken({ userId: user.id, action: stateAction, entityId: card.id, singleUse: true, ttlMinutes: 10 });
   const back = await createCallbackToken({ userId: user.id, action: "menu.cards" });
@@ -666,7 +667,23 @@ async function sendCardDetail(client: TelegramClient, user: BotUser, chatId: num
   await client.sendMessage({
     chatId,
     text: `<b>${escapeHtml(card.label || "Card")}</b>\nCard: •${escapeHtml(card.last4 ?? "????")}\nStatus: <b>${escapeHtml(card.status)}</b>\nBalance: <b>${formatUsdCents(card.balance_usd_cents)}</b>`,
-    replyMarkup: { inline_keyboard: [[{ text: "Transactions", callback_data: txToken }, { text: stateLabel, callback_data: stateToken }], [{ text: "← Cards", callback_data: back }]] },
+    replyMarkup: { inline_keyboard: [[{ text: "👁 Show full card info", callback_data: revealToken }], [{ text: "Transactions", callback_data: txToken }, { text: stateLabel, callback_data: stateToken }], [{ text: "← Cards", callback_data: back }]] },
+  });
+}
+
+async function sendFullCardInfo(client: TelegramClient, user: BotUser, chatId: number, cardId: string, requestId: string) {
+  const card = await ownsCard(user.id, cardId);
+  if (!card) throw new ApiError(403, "card_not_owned", "This card is no longer available to you.");
+
+  const details = await getLiveKripicardCardDetailsForTelegram(cardId, user.id, requestId);
+  const back = await createCallbackToken({ userId: user.id, action: "card.detail", entityId: cardId });
+  const holder = details.cardholderName?.trim() || "—";
+
+  await client.sendMessage({
+    chatId,
+    text: `<b>💳 Full card information</b>\nCard number: <code>${escapeHtml(details.cardNumber)}</code>\nExpiry: <code>${escapeHtml(details.expiry)}</code>\nCVV: <code>${escapeHtml(details.cvv)}</code>\nCardholder: <b>${escapeHtml(holder)}</b>\nBalance: <b>${formatUsdCents(details.balanceUsdCents)}</b>\nStatus: <b>${escapeHtml(details.status)}</b>\n\nKeep these card details private.`,
+    protectContent: true,
+    replyMarkup: { inline_keyboard: [[{ text: "← Card", callback_data: back }]] },
   });
 }
 
@@ -1070,6 +1087,7 @@ async function handleCallback(client: TelegramClient, callback: z.infer<typeof c
       case "menu.payment": await sendPaymentInfo(client, user, chatId); break;
       case "menu.cards": await sendCards(client, user, chatId); break;
       case "card.detail": if (resolved.entity_id) await sendCardDetail(client, user, chatId, resolved.entity_id); break;
+      case "card.reveal": if (resolved.entity_id) await sendFullCardInfo(client, user, chatId, resolved.entity_id, requestId); break;
       case "card.transactions": if (resolved.entity_id) await sendTransactions(client, user, chatId, resolved.entity_id); break;
       case "card.freeze":
       case "card.unfreeze": {
