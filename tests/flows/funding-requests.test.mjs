@@ -146,3 +146,28 @@ test("requesting correction invalidates the previously accepted receipt before r
   assert.match(service, /scan_status='rejected'/);
   assert.match(service, /receipt_not_clean/);
 });
+
+
+test("unpaid funding requests have a hard five minute receipt window", () => {
+  assert.match(service, /FUNDING_RECEIPT_WINDOW_MS = 5 \* 60_000/);
+  assert.match(service, /receiptExpiresAt = new Date\(Date\.now\(\) \+ FUNDING_RECEIPT_WINDOW_MS\)/);
+  assert.match(bot, /funding_request_receipt", \{ fundingRequestId: created\.id \}, 5/);
+});
+
+test("stale funding requests are cancelled with their unified payment and removed from active work", () => {
+  assert.match(service, /expireStaleFundingRequests/);
+  assert.match(service, /status='pending_receipt'/);
+  assert.match(service, /quote_expires_at<=now\(\)/);
+  assert.match(service, /SET status='cancelled',admin_note=\$2/);
+  assert.match(service, /syncFundingPaymentStatus\(db, row\.id, "cancelled"/);
+  assert.match(service, /Expired automatically after 5 minutes without a receipt/);
+});
+
+test("late funding receipts are rejected before Telegram downloads the file", () => {
+  const expiryCheck = receipts.indexOf("await expireStaleFundingRequests(input.userId)");
+  const telegramDownload = receipts.indexOf("await telegram.getFile");
+  assert.ok(expiryCheck >= 0);
+  assert.ok(telegramDownload > expiryCheck);
+  assert.match(receipts, /funding_request_expired/);
+  assert.match(receipts, /within 5 minutes/);
+});
