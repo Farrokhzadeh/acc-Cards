@@ -159,13 +159,7 @@ export function kycConfirmSummary(
   f: { fullName: string; dateOfBirth: string; country: string; nationalId: string; phone: string; deliveryAddress: string },
   lang: string | null | undefined,
 ): string {
-  return pick(
-    m(
-      `<b>Confirm your details</b>\nName: ${f.fullName}\nDate of birth: ${f.dateOfBirth}\nCountry: ${f.country}\nNational ID: ${f.nationalId}\nPhone: ${f.phone}\nCard delivery address: ${f.deliveryAddress}\nDocument: attached\n\nTap <b>Submit</b> to send for admin review.`,
-      `<b>تأیید اطلاعات</b>\nنام: ${f.fullName}\nتاریخ تولد: ${f.dateOfBirth}\nکشور: ${f.country}\nکد ملی: ${f.nationalId}\nتلفن: ${f.phone}\nآدرس تحویل کارت: ${f.deliveryAddress}\nمدرک: پیوست شد\n\nبرای ارسال جهت بررسی، <b>ثبت</b> را بزنید.`,
-    ),
-    lang,
-  );
+  return render(BOT.kycConfirmSummary, lang, f);
 }
 
 
@@ -281,6 +275,7 @@ export const BOT = {
   cardRequestPaymentDetail: m("\nPayment: <b>{status}</b>\nRate: {rate} rial/USD\nPayable: <b>{rial}</b>", "\nپرداخت: <b>{status}</b>\nنرخ: {rate} ریال/دلار\nمبلغ قابل پرداخت: <b>{rial}</b>"),
   adminNoteLine: m("\nAdmin note: {note}", "\nیادداشت مدیر: {note}"),
   fundingDetail: m("<b>{reference}</b>\nStatus: <b>{status}</b>\nCard: •{last4}\nCard amount: <b>{amount}</b>\nTotal USD basis: {total}\nClient pays: {rial}{adminNote}\nReceipt: {receipt}\n\n<b>Timeline</b>\n{timeline}", "<b>{reference}</b>\nوضعیت: <b>{status}</b>\nکارت: •{last4}\nمبلغ کارت: <b>{amount}</b>\nمبنای کل دلاری: {total}\nمبلغ پرداختی: {rial}{adminNote}\nرسید: {receipt}\n\n<b>تاریخچه</b>\n{timeline}"),
+  kycConfirmSummary: m("<b>Confirm your details</b>\nName: {fullName}\nDate of birth: {dateOfBirth}\nCountry: {country}\nNational ID: {nationalId}\nPhone: {phone}\nCard delivery address: {deliveryAddress}\nDocument: attached\n\nTap <b>Submit</b> to send for admin review.", "<b>تأیید اطلاعات</b>\nنام: {fullName}\nتاریخ تولد: {dateOfBirth}\nکشور: {country}\nکد ملی: {nationalId}\nتلفن: {phone}\nآدرس تحویل کارت: {deliveryAddress}\nمدرک: پیوست شد\n\nبرای ارسال جهت بررسی، <b>ثبت</b> را بزنید."),
 };
 
 export type BotTextCatalogEntry = {
