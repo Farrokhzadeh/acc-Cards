@@ -52,9 +52,9 @@ test("runtime jobs and controls are seeded", async () => {
   }
 });
 
-test("core configurable card and funding defaults exist without an automatic card-count limit", async () => {
+test("core configurable card and funding defaults exist without hidden card-purchase settings", async () => {
   const expected = [
-    "minimum_card_creation_usd_cents",
+    "payment_min_load_usd",
     "minimum_card_funding_usd_cents",
     "card_request_bins",
   ];
@@ -66,4 +66,6 @@ test("core configurable card and funding defaults exist without an automatic car
   for (const key of expected) {
     assert.equal(keys.has(key), true, `missing setting: ${key}`);
   }
+  const legacy = await pool.query("SELECT 1 FROM settings WHERE key='minimum_card_creation_usd_cents'");
+  assert.equal(legacy.rowCount, 0);
 });
