@@ -227,6 +227,8 @@ type FundingRequest = {
   adminNote?: string | null;
   serviceFeeBasisPoints?: number;
   rateRialPerUsd?: number | null;
+  quoteExpiresAt?: string | null;
+  receiptExpiresAt?: string | null;
   status: FundingStatus;
   submitted: string;
 };
@@ -368,6 +370,8 @@ function mapApiFundingRequest(request: ApiFundingRequest): FundingRequest {
     adminNote: request.adminNote,
     serviceFeeBasisPoints: request.serviceFeeBasisPoints,
     rateRialPerUsd: request.rateRialPerUsd ? Number(request.rateRialPerUsd) : null,
+    quoteExpiresAt: request.quoteExpiresAt,
+    receiptExpiresAt: request.receiptExpiresAt,
     status: request.status,
     submitted: formatApiDate(request.submittedAt),
   };
@@ -2278,6 +2282,7 @@ export default function DashboardApp() {
                   <div className="mt-5 grid grid-cols-2 gap-4 border-t border-white/10 pt-4 text-sm">
                     <div><p className="text-[#aaa5c8]">Client pays</p><p className="mt-1 font-medium text-[#c8c3ff]">{formatRial(activeRequest.rialTotal)}</p></div>
                     <div><p className="text-[#aaa5c8]">Submitted</p><p className="mt-1 font-medium">{activeRequest.submitted}</p></div>
+                    {activeRequest.receiptExpiresAt && <div className="col-span-2"><p className="text-[#aaa5c8]">Receipt deadline</p><p className="mt-1 font-medium">{formatApiDateTime(activeRequest.receiptExpiresAt)}</p></div>}
                   </div>
                 </div>
                 <div>
@@ -2287,6 +2292,7 @@ export default function DashboardApp() {
                     <div className="flex justify-between"><span className="text-slate-500">Provider fee snapshot (4% + $1)</span><span>{formatUsd(activeRequest.providerFee)}</span></div>
                     <div className="flex justify-between"><span className="text-slate-500">Service fee snapshot ({((activeRequest.serviceFeeBasisPoints ?? Math.round(serviceFee * 100)) / 100).toFixed(2)}%)</span><span>{formatUsd(activeRequest.serviceFee)}</span></div>
                     <div className="flex justify-between border-t pt-2 font-semibold"><span>Total USD basis</span><span>{formatUsd(activeRequest.amount + activeRequest.providerFee + activeRequest.serviceFee)}</span></div>
+                    {activeRequest.quoteExpiresAt && <div className="flex justify-between border-t pt-2 text-xs"><span className="text-slate-500">Original quote valid until</span><span>{formatApiDateTime(activeRequest.quoteExpiresAt)}</span></div>}
                   </div>
                 </div>
                 <div>
