@@ -63,6 +63,15 @@ export class TelegramClient {
     }));
   }
 
+  async sendPhoto(input: { chatId: number | string; bytes: Buffer; filename: string; caption?: string; protectContent?: boolean }) {
+    if (!await runtimeControlEnabled("telegram_sends")) throw new ApiError(503, "runtime_kill_switch", "Telegram sends are disabled by an emergency runtime control.");
+    return this.run(() => this.api.sendPhoto(input.chatId, new InputFile(input.bytes, input.filename), {
+      caption: input.caption,
+      parse_mode: "HTML",
+      protect_content: input.protectContent ?? false,
+    }));
+  }
+
   async sendDocument(input: { chatId: number | string; bytes: Buffer; filename: string; mimeType: string; caption?: string; protectContent?: boolean }) {
     if (!await runtimeControlEnabled("telegram_sends")) throw new ApiError(503, "runtime_kill_switch", "Telegram sends are disabled by an emergency runtime control.");
     return this.run(() => this.api.sendDocument(input.chatId, new InputFile(input.bytes, input.filename), {
