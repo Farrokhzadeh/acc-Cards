@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   ArrowLeft,
   Ban,
@@ -91,51 +91,55 @@ export default function ClientWorkspacePage({ clientId }: { clientId: string }) 
   const [supportBusy, setSupportBusy] = useState(false);
   const [actionBusy, setActionBusy] = useState(false);
 
-  const loadWorkspace = useCallback(async () => {
-    try {
-      const data = await fetchClientWorkspace(clientId);
-      setWorkspace(data);
-    } catch (error) {
-      setFatalError(error instanceof Error ? error.message : "Could not load this customer.");
-      setLoading(false);
-      return;
-    }
-
-    const [kycResult, paymentResult, messageResult] = await Promise.allSettled([
-      fetchClientKyc(clientId),
-      fetchClientPayments(clientId),
-      fetchClientSupportMessages(clientId, { limit: 500 }),
-    ]);
-
-    if (kycResult.status === "fulfilled") {
-      setKyc(kycResult.value.kyc);
-      setKycError(null);
-    } else {
-      setKyc(null);
-      setKycError(kycResult.reason instanceof Error ? kycResult.reason.message : "KYC data is unavailable.");
-    }
-
-    if (paymentResult.status === "fulfilled") {
-      setPayments(paymentResult.value.items);
-      setPaymentsError(null);
-    } else {
-      setPayments([]);
-      setPaymentsError(paymentResult.reason instanceof Error ? paymentResult.reason.message : "Payment history is unavailable.");
-    }
-
-    if (messageResult.status === "fulfilled") {
-      setMessages(messageResult.value.items);
-      setMessagesError(null);
-    } else {
-      setMessages([]);
-      setMessagesError(messageResult.reason instanceof Error ? messageResult.reason.message : "Support history is unavailable.");
-    }
-    setLoading(false);
-  }, [clientId]);
-
   useEffect(() => {
-    void loadWorkspace();
-  }, [loadWorkspace]);
+    let cancelled = false;
+
+    fetchClientWorkspace(clientId)
+      .then(async (data) => {
+        if (cancelled) return;
+        setWorkspace(data);
+
+        const [kycResult, paymentResult, messageResult] = await Promise.allSettled([
+          fetchClientKyc(clientId),
+          fetchClientPayments(clientId),
+          fetchClientSupportMessages(clientId, { limit: 500 }),
+        ]);
+        if (cancelled) return;
+
+        if (kycResult.status === "fulfilled") {
+          setKyc(kycResult.value.kyc);
+          setKycError(null);
+        } else {
+          setKyc(null);
+          setKycError(kycResult.reason instanceof Error ? kycResult.reason.message : "KYC data is unavailable.");
+        }
+
+        if (paymentResult.status === "fulfilled") {
+          setPayments(paymentResult.value.items);
+          setPaymentsError(null);
+        } else {
+          setPayments([]);
+          setPaymentsError(paymentResult.reason instanceof Error ? paymentResult.reason.message : "Payment history is unavailable.");
+        }
+
+        if (messageResult.status === "fulfilled") {
+          setMessages(messageResult.value.items);
+          setMessagesError(null);
+        } else {
+          setMessages([]);
+          setMessagesError(messageResult.reason instanceof Error ? messageResult.reason.message : "Support history is unavailable.");
+        }
+
+        setLoading(false);
+      })
+      .catch((error) => {
+        if (cancelled) return;
+        setFatalError(error instanceof Error ? error.message : "Could not load this customer.");
+        setLoading(false);
+      });
+
+    return () => { cancelled = true; };
+  }, [clientId]);
 
   const financialActivity = useMemo(() => {
     const paymentItems = payments.map((payment) => ({
