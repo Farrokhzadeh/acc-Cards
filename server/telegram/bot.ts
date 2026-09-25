@@ -648,7 +648,7 @@ async function sendCardDetail(client: TelegramClient, user: BotUser, chatId: num
   const stateLabel = card.status === "frozen" ? pick(BOT.unfreeze, user.lang) : pick(BOT.freeze, user.lang);
   await client.sendMessage({
     chatId,
-    text: `<b>${escapeHtml(card.label || "Card")}</b>\nCard: •${escapeHtml(card.last4 ?? "????")}\nStatus: <b>${escapeHtml(card.status)}</b>\nBalance: <b>${formatUsdCents(card.balance_usd_cents)}</b>`,
+    text: render(BOT.cardDetail, user.lang, { label: escapeHtml(card.label || pick(BOT.defaultCardLabel, user.lang)), last4: escapeHtml(card.last4 ?? "????"), status: escapeHtml(card.status), balance: formatUsdCents(card.balance_usd_cents) }),
     replyMarkup: { inline_keyboard: [[{ text: pick(BOT.showFullCard, user.lang), callback_data: revealToken }], [{ text: pick(BOT.transactions, user.lang), callback_data: txToken }, { text: stateLabel, callback_data: stateToken }], [{ text: pick(BOT.backCards, user.lang), callback_data: back }]] },
   });
 }
@@ -663,7 +663,7 @@ async function sendFullCardInfo(client: TelegramClient, user: BotUser, chatId: n
 
   await client.sendMessage({
     chatId,
-    text: `<b>💳 Full card information</b>\nCard number: <code>${escapeHtml(details.cardNumber)}</code>\nExpiry: <code>${escapeHtml(details.expiry)}</code>\nCVV: <code>${escapeHtml(details.cvv)}</code>\nCardholder: <b>${escapeHtml(holder)}</b>\nBalance: <b>${formatUsdCents(details.balanceUsdCents)}</b>\nStatus: <b>${escapeHtml(details.status)}</b>\n\nKeep these card details private.`,
+    text: render(BOT.fullCardInfo, user.lang, { number: escapeHtml(details.cardNumber), expiry: escapeHtml(details.expiry), cvv: escapeHtml(details.cvv), holder: escapeHtml(holder), balance: formatUsdCents(details.balanceUsdCents), status: escapeHtml(details.status) }),
     protectContent: true,
     replyMarkup: { inline_keyboard: [[{ text: pick(BOT.backCard, user.lang), callback_data: back }]] },
   });
@@ -679,7 +679,7 @@ async function sendTransactions(client: TelegramClient, user: BotUser, chatId: n
     return `• ${merchant} — ${amount} — ${escapeHtml(tx.status)}`;
   }).join("\n") : pick(FLOW.emptyTransactions, user.lang);
   const back = await createCallbackToken({ userId: user.id, action: "card.detail", entityId: cardId });
-  await client.sendMessage({ chatId, text: `<b>Recent transactions · •${escapeHtml(card.last4 ?? "????")}</b>\n${lines}`, replyMarkup: { inline_keyboard: [[{ text: "← Card", callback_data: back }]] } });
+  await client.sendMessage({ chatId, text: render(BOT.recentTransactions, user.lang, { last4: escapeHtml(card.last4 ?? "????"), items: lines }), replyMarkup: { inline_keyboard: [[{ text: pick(BOT.backCard, user.lang), callback_data: back }]] } });
 }
 
 function customerPaymentPurposeLabel(purpose: "first_card" | "additional_card" | "card_funding", lang: string | null) {
@@ -777,14 +777,14 @@ async function sendCustomerPaymentDetail(client: TelegramClient, user: BotUser, 
 
   const rows: TelegramInlineKeyboard["inline_keyboard"] = [];
   if (payment.receipt) {
-    rows.push([{ text: user.lang === "fa" ? "🧾 مشاهده رسید" : "🧾 View receipt", callback_data: await createCallbackToken({ userId: user.id, action: "payment.receipt", entityId: payment.id }) }]);
+    rows.push([{ text: pick(BOT.viewReceipt, user.lang), callback_data: await createCallbackToken({ userId: user.id, action: "payment.receipt", entityId: payment.id }) }]);
   }
   if (["pending_receipt", "correction_needed"].includes(payment.status)) {
-    rows.push([{ text: user.lang === "fa" ? "📤 ارسال رسید" : "📤 Upload receipt", callback_data: await createCallbackToken({ userId: user.id, action: "payment.upload", entityId: payment.id, ttlMinutes: 20 }) }]);
+    rows.push([{ text: pick(BOT.uploadReceipt, user.lang), callback_data: await createCallbackToken({ userId: user.id, action: "payment.upload", entityId: payment.id, ttlMinutes: 20 }) }]);
   }
-  if (payment.cardRequestId) rows.push([{ text: user.lang === "fa" ? "جزئیات درخواست کارت" : "Card request details", callback_data: await createCallbackToken({ userId: user.id, action: "cardreq.detail", entityId: payment.cardRequestId }) }]);
-  if (payment.fundingRequestId) rows.push([{ text: user.lang === "fa" ? "جزئیات افزایش موجودی" : "Funding request details", callback_data: await createCallbackToken({ userId: user.id, action: "fundreq.detail", entityId: payment.fundingRequestId }) }]);
-  rows.push([{ text: user.lang === "fa" ? "← پرداخت‌ها و درخواست‌ها" : "← Payments & requests", callback_data: await createCallbackToken({ userId: user.id, action: "menu.requests" }) }]);
+  if (payment.cardRequestId) rows.push([{ text: pick(BOT.cardRequestDetails, user.lang), callback_data: await createCallbackToken({ userId: user.id, action: "cardreq.detail", entityId: payment.cardRequestId }) }]);
+  if (payment.fundingRequestId) rows.push([{ text: pick(BOT.fundingRequestDetails, user.lang), callback_data: await createCallbackToken({ userId: user.id, action: "fundreq.detail", entityId: payment.fundingRequestId }) }]);
+  rows.push([{ text: pick(BOT.backPayments, user.lang), callback_data: await createCallbackToken({ userId: user.id, action: "menu.requests" }) }]);
 
   await client.sendMessage({ chatId, text: lines.join("\n"), replyMarkup: { inline_keyboard: rows } });
 }
@@ -1319,7 +1319,7 @@ async function handleCallback(client: TelegramClient, callback: z.infer<typeof c
       if (result.needsReconciliation) {
         await client.sendMessage({ chatId, text: pick(BOT.cardStateUncertain, user.lang) });
       } else {
-        await client.sendMessage({ chatId, text: `Card is now <b>${escapeHtml(result.status)}</b>.` });
+        await client.sendMessage({ chatId, text: render(BOT.cardStateNow, user.lang, { status: escapeHtml(result.status) }) });
       }
       await sendCardDetail(client, user, chatId, resolved.entity_id);
       break;
@@ -1359,7 +1359,7 @@ async function handleCallback(client: TelegramClient, callback: z.infer<typeof c
           throw new ApiError(409, "invalid_state", "This card request is not waiting for payment evidence.");
         }
         await setBotState(user.id, "card_request_receipt", { cardRequestId: resolved.entity_id, paymentId: detail.payment.id }, 60);
-        await client.sendMessage({ chatId, text: `Upload payment evidence for <b>${escapeHtml(detail.request.reference)}</b> as JPEG, PNG, WebP, or PDF.` });
+        await client.sendMessage({ chatId, text: render(BOT.uploadPaymentEvidence, user.lang, { reference: escapeHtml(detail.request.reference) }) });
         break;
       }
       case "cardreq.cancel_existing": {
@@ -1376,7 +1376,7 @@ async function handleCallback(client: TelegramClient, callback: z.infer<typeof c
         if (!card) throw new ApiError(403, "card_not_owned", "This card is no longer available to you.");
         const policy = await getFundingPolicy();
         await setBotState(user.id, "funding_request_amount", { cardId: resolved.entity_id });
-        await client.sendMessage({ chatId, text: `Enter the USD amount to add to card •${escapeHtml(card.last4 ?? "????")}. Minimum: <b>${formatUsdCents(String(policy.minimumUsdCents))}</b>.` });
+        await client.sendMessage({ chatId, text: render(BOT.fundingAmountPrompt, user.lang, { last4: escapeHtml(card.last4 ?? "????"), minimum: formatUsdCents(String(policy.minimumUsdCents)) }) });
         break;
       }
       case "fundreq.submit": {
@@ -1414,7 +1414,7 @@ No card funding has been executed yet.` });
       case "fundreq.cancel_existing":
         if (resolved.entity_id) {
           const cancelled = await cancelTelegramFundingRequest(user.id, resolved.entity_id);
-          await client.sendMessage({ chatId, text: `Funding request <b>${escapeHtml(cancelled.reference)}</b> was cancelled.` });
+          await client.sendMessage({ chatId, text: render(BOT.fundingCancelled, user.lang, { reference: escapeHtml(cancelled.reference) }) });
           await sendRequests(client,user,chatId);
         }
         break;
@@ -1423,7 +1423,7 @@ No card funding has been executed yet.` });
           const detail = await getTelegramFundingRequest(user.id,resolved.entity_id);
           if (!["pending_receipt","correction_needed"].includes(detail.request.status)) throw new ApiError(409,"invalid_state","This request is not waiting for receipt evidence.");
           await setBotState(user.id,"funding_request_receipt",{fundingRequestId:resolved.entity_id},60);
-          await client.sendMessage({chatId,text:`Upload replacement payment evidence for <b>${escapeHtml(detail.request.reference)}</b> as JPEG, PNG, WebP, or PDF.`});
+          await client.sendMessage({ chatId, text: render(BOT.uploadReplacementEvidence, user.lang, { reference: escapeHtml(detail.request.reference) }) });
         }
         break;
       case "fundreq.detail": if (resolved.entity_id) await sendFundingRequestDetail(client,user,chatId,resolved.entity_id); break;
