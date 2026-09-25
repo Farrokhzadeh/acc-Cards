@@ -43,7 +43,7 @@ Node 22 · TypeScript · Next.js (Vinext) + React 19 · Drizzle ORM · PostgreSQ
 | `server/` | Backend logic (auth, providers, jobs, database) |
 | `db/` | Drizzle schema + SQL migrations (applied automatically on start) |
 | `config/` | Environment schema & validation |
-| `scripts/` | env check, admin bootstrap, db migrate/seed |
+| `scripts/` | env check, admin bootstrap, and database migration tooling |
 | `components/`, `lib/`, `hooks/`, `types/` | Shared frontend code |
 
 ## Notes
@@ -51,3 +51,4 @@ Node 22 · TypeScript · Next.js (Vinext) + React 19 · Drizzle ORM · PostgreSQ
 - **No manual migrations.** The `db-migrate` compose step creates the schema on first boot and is idempotent afterward.
 - **Money operations are gated off** until you explicitly enable them in `.env` (see DOCKER-DEPLOY.md).
 - Optional integrations (Outlook/Gmail OAuth, Telegram) are disabled until you add their credentials.
+- **No demo operational records are shipped or seeded.** Accounts, clients, cards, balances, and transactions shown after deployment come from real configured data sources.
