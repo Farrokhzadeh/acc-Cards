@@ -25,6 +25,7 @@ type RequestRow = {
   email: string;
   date_of_birth: string | Date | null;
   status: CardRequestStatus;
+  origin: "customer" | "onboarding" | "admin_direct";
   admin_note: string | null;
   provider_card_id: string | null;
   reviewed_by: string | null;
@@ -149,6 +150,7 @@ function serialize(row: RequestRow) {
     email: row.email,
     dateOfBirth: normalizeDob(row.date_of_birth),
     status: row.status,
+    origin: row.origin,
     adminNote: row.admin_note,
     providerCardId: row.provider_card_id,
     reviewedBy: row.reviewed_by,
