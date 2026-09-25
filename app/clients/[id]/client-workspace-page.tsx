@@ -587,7 +587,7 @@ export default function ClientWorkspacePage({ clientId }: { clientId: string }) 
         <DialogContent className="max-h-[92vh] overflow-y-auto rounded-[24px] sm:max-w-[620px]">
           <DialogHeader>
             <DialogTitle>Create card directly</DialogTitle>
-            <DialogDescription>This is an admin operation. It does not require a customer card request or customer payment. The selected provider account will be assigned to this customer automatically if needed.</DialogDescription>
+            <DialogDescription>This is an admin operation. No customer card request or customer payment is required. The selected provider account will be assigned to this customer automatically if needed.</DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 py-2 sm:grid-cols-2">
             <div className="grid gap-2 sm:col-span-2">
