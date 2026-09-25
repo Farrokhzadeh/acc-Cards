@@ -1053,8 +1053,17 @@ async function sendFundingQuoteConfirmation(client: TelegramClient, user: BotUse
   const cancel = await createCallbackToken({ userId: user.id, action: "fundreq.cancel_draft", singleUse: true, ttlMinutes: 20 });
   await client.sendMessage({
     chatId,
-    text: `<b>Review funding quote</b>\nCard: •${escapeHtml(quote.card.last4 ?? "????")}\nCard amount: <b>${formatUsdCents(quote.amountUsdCents)}</b>\nProvider fee: ${formatUsdCents(quote.providerFeeUsdCents)}\nService fee: ${formatUsdCents(quote.serviceFeeUsdCents)}\nTotal USD basis: <b>${formatUsdCents(quote.clientPaysUsdCents)}</b>\nRate: ${escapeHtml(BigInt(quote.rialPerUsd).toLocaleString("en-US"))} rial/USD\nClient pays: <b>${escapeHtml(formatRialValue(quote.clientPaysRial))}</b>\n\nThis quote expires at ${escapeHtml(new Date(quote.expiresAt).toISOString().replace("T", " ").slice(0,16))} UTC.`,
-    replyMarkup: { inline_keyboard: [[{ text: "Submit & upload receipt", callback_data: submit }], [{ text: "Cancel", callback_data: cancel }]] },
+    text: render(BOT.fundingReviewQuote, user.lang, {
+      last4: escapeHtml(quote.card.last4 ?? "????"),
+      amount: formatUsdCents(quote.amountUsdCents),
+      providerFee: formatUsdCents(quote.providerFeeUsdCents),
+      serviceFee: formatUsdCents(quote.serviceFeeUsdCents),
+      total: formatUsdCents(quote.clientPaysUsdCents),
+      rate: escapeHtml(BigInt(quote.rialPerUsd).toLocaleString("en-US")),
+      rial: escapeHtml(formatRialValue(quote.clientPaysRial)),
+      expires: escapeHtml(new Date(quote.expiresAt).toISOString().replace("T", " ").slice(0,16)),
+    }),
+    replyMarkup: { inline_keyboard: [[{ text: pick(BOT.submitUploadReceipt, user.lang), callback_data: submit }], [{ text: pick(BOT.cancel, user.lang), callback_data: cancel }]] },
   });
 }
 
