@@ -64,10 +64,10 @@ export async function getClientWorkspace(userId: string) {
       [userId],
     ),
     db.query<{
-      id: string; reference: string; initial_amount_usd_cents: string | bigint; status: string;
+      id: string; reference: string; initial_amount_usd_cents: string | bigint; status: string; origin: string;
       admin_note: string | null; provider_card_id: string | null; created_at: Date; updated_at: Date;
     }>(
-      `SELECT id,reference,initial_amount_usd_cents,status,admin_note,provider_card_id,created_at,updated_at
+      `SELECT id,reference,initial_amount_usd_cents,status,origin,admin_note,provider_card_id,created_at,updated_at
          FROM card_requests
         WHERE user_id=$1::uuid
         ORDER BY created_at DESC,id DESC
@@ -164,6 +164,7 @@ export async function getClientWorkspace(userId: string) {
       reference: request.reference,
       amountUsdCents: String(request.initial_amount_usd_cents),
       status: request.status,
+      origin: request.origin,
       adminNote: request.admin_note,
       providerCardId: request.provider_card_id,
       createdAt: request.created_at.toISOString(),

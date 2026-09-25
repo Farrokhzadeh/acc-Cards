@@ -1163,10 +1163,14 @@ export default function DashboardApp() {
     }
   };
 
-  const openCreateCard = (...args: [accountId?: string]) => {
-    void args;
+  const openCreateCard = (accountId?: string) => {
+    const assigned = accountId ? clients.find((client) => client.accountIds.includes(accountId)) : null;
+    if (assigned) {
+      window.location.href = `/clients/${encodeURIComponent(assigned.id)}?createCard=1&accountId=${encodeURIComponent(accountId!)}`;
+      return;
+    }
     setView("clients");
-    toast.info("A customer's first card is created from the First-card onboarding panel after KYC and receipt approval.");
+    toast.info("Open the customer's full page to assign this provider account and create a card directly.");
   };
 
   const openFundCard = (...args: [cardId?: string, accountId?: string]) => {
@@ -2856,16 +2860,17 @@ function RequestsView({
                   {cardPaging.pageItems.map((request) => {
                     const choice = cardChoice(request);
                     const reviewable = ["pending_review", "correction_needed"].includes(request.status);
-                    const paymentVerified = request.payment?.status === "accepted" || request.payment?.status === "completed";
-                    const paymentPendingReview = request.payment?.status === "pending_review";
+                    const adminDirect = request.origin === "admin_direct";
+                    const paymentVerified = adminDirect || request.payment?.status === "accepted" || request.payment?.status === "completed";
+                    const paymentPendingReview = !adminDirect && request.payment?.status === "pending_review";
                     const busy = cardRequestPendingId === request.id;
                     return <TableRow key={request.id}>
-                      <TableCell className="pl-6"><span className="font-semibold text-[#353146]">{request.reference}</span><span className="mt-0.5 block text-xs text-[#9692a3]">{new Date(request.createdAt).toLocaleString()}</span></TableCell>
+                      <TableCell className="pl-6"><span className="font-semibold text-[#353146]">{request.reference}</span>{adminDirect && <Badge variant="outline" className="ml-2 border-violet-200 bg-violet-50 text-violet-700">admin direct</Badge>}<span className="mt-0.5 block text-xs text-[#9692a3]">{new Date(request.createdAt).toLocaleString()}</span></TableCell>
                       <TableCell><span className="font-semibold">{request.client.displayName ?? request.client.username ?? request.client.telegramUserId}</span><span className="block text-xs text-[#9d99aa]">{request.client.username ? `@${request.client.username.replace(/^@/, "")}` : request.client.telegramUserId}</span></TableCell>
                       <TableCell>
                         <span className="font-semibold">{formatUsd(Number(request.initialAmountUsdCents) / 100)}</span>
                         <span className="block text-xs text-[#9d99aa]">{request.email}</span>
-                        {request.payment ? <div className="mt-1.5 space-y-1 text-xs">
+                        {adminDirect ? <Badge variant="outline" className="mt-1.5 border-violet-200 bg-violet-50 text-violet-700">No customer payment required</Badge> : request.payment ? <div className="mt-1.5 space-y-1 text-xs">
                           <div><Badge variant="outline" className={request.payment.status === "accepted" || request.payment.status === "completed" ? "border-emerald-200 bg-emerald-50 text-emerald-700" : request.payment.status === "pending_review" ? "border-amber-200 bg-amber-50 text-amber-800" : "border-slate-200 bg-slate-50 text-slate-700"}>{request.payment.status.replaceAll("_", " ")}</Badge></div>
                           <div className="text-[#777287]">{BigInt(request.payment.customerPaysRial).toLocaleString("en-US")} IRR · {BigInt(request.payment.rateRialPerUsd).toLocaleString("en-US")} IRR/USD</div>
                           {request.payment.receiptId && <button type="button" onClick={() => openAdminAttachment({ url: customerPaymentReceiptUrl(request.payment!.id), title: `Payment receipt · ${request.reference}`, filename: `${request.payment!.reference}-receipt` })} className="inline-flex items-center gap-1 font-semibold text-[#6157e7] hover:underline"><ReceiptText className="size-3.5" />View receipt</button>}

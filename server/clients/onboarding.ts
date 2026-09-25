@@ -148,10 +148,10 @@ export async function ensureOnboardingCardRequest(args: {
     const result = await db.query<{ id: string; reference: string }>(
       `INSERT INTO card_requests(
          reference,user_id,preferred_account_id,selected_account_id,bin,initial_amount_usd_cents,
-         name_on_card,email,date_of_birth,status,reviewed_by,admin_note
+         name_on_card,email,date_of_birth,status,reviewed_by,admin_note,origin
        ) VALUES(
          'ONB-' || nextval('card_request_reference_seq')::text,$1::uuid,$2::uuid,$2::uuid,$3,$4,$5,$6,$7::date,
-         'approved',$8::uuid,'Created automatically from approved first-card payment'
+         'approved',$8::uuid,'Created automatically from approved first-card payment','onboarding'
        )
        RETURNING id,reference`,
       [args.userId,args.accountId,onboardingBin,amountUsdCents,approvedKyc.full_name,account.rows[0].email,configuredBin.requiresDob ? dob : null,args.adminId],

@@ -1,12 +1,14 @@
 "use client";
 
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import {
   ArrowLeft,
   Ban,
   Bell,
   CreditCard,
+  Plus,
   FileText,
   MessageSquare,
   Paperclip,
@@ -24,20 +26,31 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { Toaster } from "@/components/ui/sonner";
 import {
+  AdminApiError,
+  assignClientAccount,
+  createAdminDirectCard,
   customerPaymentReceiptUrl,
+  fetchAdminDirectCardOptions,
   fetchClientKyc,
   fetchClientPayments,
   fetchClientSupportMessages,
   fetchClientWorkspace,
   kycDocumentUrl,
   notifyClient,
+  reauthenticateAdmin,
   sendClientSupportMessage,
   setClientBanned,
+  unassignClientAccount,
+  type AdminDirectCardOptions,
   type ApiCustomerPaymentHistory,
   type ClientKyc,
   type ClientWorkspace,
@@ -77,6 +90,7 @@ function SectionError({ text }: { text: string | null }) {
 }
 
 export default function ClientWorkspacePage({ clientId }: { clientId: string }) {
+  const searchParams = useSearchParams();
   const [workspace, setWorkspace] = useState<ClientWorkspace | null>(null);
   const [kyc, setKyc] = useState<ClientKyc>(null);
   const [payments, setPayments] = useState<ApiCustomerPaymentHistory[]>([]);
@@ -90,6 +104,21 @@ export default function ClientWorkspacePage({ clientId }: { clientId: string }) 
   const [supportFile, setSupportFile] = useState<File | null>(null);
   const [supportBusy, setSupportBusy] = useState(false);
   const [actionBusy, setActionBusy] = useState(false);
+  const [directCardOpen, setDirectCardOpen] = useState(false);
+  const [directOptions, setDirectOptions] = useState<AdminDirectCardOptions | null>(null);
+  const [directBusy, setDirectBusy] = useState(false);
+  const [directAccountId, setDirectAccountId] = useState("");
+  const [directBin, setDirectBin] = useState("");
+  const [directAmount, setDirectAmount] = useState("25");
+  const [directName, setDirectName] = useState("");
+  const [directEmail, setDirectEmail] = useState("");
+  const [directDob, setDirectDob] = useState("");
+  const [walletConfirmed, setWalletConfirmed] = useState(false);
+  const [accountManagerOpen, setAccountManagerOpen] = useState(false);
+  const [reauthOpen, setReauthOpen] = useState(false);
+  const [reauthPassword, setReauthPassword] = useState("");
+  const [reauthCode, setReauthCode] = useState("");
+  const [pendingDirectRetry, setPendingDirectRetry] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -168,6 +197,7 @@ export default function ClientWorkspacePage({ clientId }: { clientId: string }) 
       at: request.createdAt,
       reference: request.reference,
       status: request.status,
+      origin: request.origin,
       amountUsdCents: request.amountUsdCents,
       cardLast4: null as string | null,
       note: request.adminNote,
@@ -178,12 +208,127 @@ export default function ClientWorkspacePage({ clientId }: { clientId: string }) 
       at: request.createdAt,
       reference: request.reference,
       status: request.status,
+      origin: null as null,
       amountUsdCents: request.amountUsdCents,
       cardLast4: request.cardLast4,
       note: null as string | null,
     }));
     return [...card, ...funding].sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime());
   }, [workspace]);
+
+  const refreshWorkspace = async () => {
+    const data = await fetchClientWorkspace(clientId);
+    setWorkspace(data);
+    return data;
+  };
+
+  const loadDirectOptions = async () => {
+    const options = await fetchAdminDirectCardOptions(clientId);
+    setDirectOptions(options);
+    const preferred = options.accounts.find((account) => account.selected) ?? options.accounts[0] ?? null;
+    setDirectAccountId((current) => current || preferred?.id || "");
+    setDirectBin((current) => current || options.bins[0]?.bin || "");
+    setDirectName((current) => current || options.defaults.nameOnCard);
+    setDirectDob((current) => current || options.defaults.dateOfBirth || "");
+    return options;
+  };
+
+  const openDirectCard = async () => {
+    setDirectCardOpen(true);
+    try {
+      await loadDirectOptions();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not load direct card options.");
+    }
+  };
+
+  const submitDirectCard = async () => {
+    if (directBusy) return;
+    const amountUsdCents = Math.round(Number(directAmount) * 100);
+    if (!directAccountId || !directBin || !directName.trim() || !directEmail.trim() || !Number.isFinite(amountUsdCents) || amountUsdCents <= 0) {
+      toast.error("Choose an account and BIN, then enter a valid amount, cardholder name, and email.");
+      return;
+    }
+    setDirectBusy(true);
+    try {
+      const result = await createAdminDirectCard(clientId, {
+        accountId: directAccountId,
+        bin: directBin,
+        amountUsdCents,
+        nameOnCard: directName.trim(),
+        email: directEmail.trim(),
+        dateOfBirth: directDob.trim() || null,
+        walletFundingConfirmed: walletConfirmed,
+      });
+      await refreshWorkspace();
+      setDirectCardOpen(false);
+      setWalletConfirmed(false);
+      toast.success(result.status === "issued" ? `Card created directly (${result.reference}).` : `Provider outcome needs reconciliation (${result.reference}).`);
+    } catch (error) {
+      if (error instanceof AdminApiError && error.code === "reauthentication_required") {
+        setPendingDirectRetry(true);
+        setReauthOpen(true);
+      } else {
+        toast.error(error instanceof Error ? error.message : "Direct card creation failed.");
+      }
+    } finally {
+      setDirectBusy(false);
+    }
+  };
+
+  const submitReauth = async () => {
+    if (!reauthPassword.trim()) return;
+    setDirectBusy(true);
+    try {
+      await reauthenticateAdmin(reauthPassword, reauthCode.trim() || undefined);
+      setReauthOpen(false);
+      setReauthPassword("");
+      setReauthCode("");
+      const shouldRetry = pendingDirectRetry;
+      setPendingDirectRetry(false);
+      setDirectBusy(false);
+      if (shouldRetry) {
+        queueMicrotask(() => { void submitDirectCard(); });
+      }
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Reauthentication failed.");
+      setDirectBusy(false);
+    }
+  };
+
+  const changeAccountAssignment = async (accountId: string, selected: boolean) => {
+    setDirectBusy(true);
+    try {
+      if (selected) await unassignClientAccount(clientId, accountId);
+      else await assignClientAccount(clientId, accountId);
+      await Promise.all([refreshWorkspace(), loadDirectOptions()]);
+      toast.success(selected ? "Provider account unassigned." : "Provider account assigned.");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Account assignment failed.");
+    } finally {
+      setDirectBusy(false);
+    }
+  };
+
+  useEffect(() => {
+    if (searchParams.get("createCard") !== "1") return;
+    const preferredAccountId = searchParams.get("accountId") ?? "";
+    let cancelled = false;
+    fetchAdminDirectCardOptions(clientId)
+      .then((options) => {
+        if (cancelled) return;
+        setDirectOptions(options);
+        setDirectAccountId(preferredAccountId || options.accounts.find((account) => account.selected)?.id || options.accounts[0]?.id || "");
+        setDirectBin(options.bins[0]?.bin || "");
+        setDirectName(options.defaults.nameOnCard);
+        setDirectDob(options.defaults.dateOfBirth || "");
+        setDirectCardOpen(true);
+      })
+      .catch((error) => {
+        if (!cancelled) toast.error(error instanceof Error ? error.message : "Could not load direct card options.");
+      });
+    return () => { cancelled = true; };
+  }, [clientId, searchParams]);
 
   const handleBan = async () => {
     if (!workspace || actionBusy) return;
@@ -256,6 +401,7 @@ export default function ClientWorkspacePage({ clientId }: { clientId: string }) 
             <p className="mt-0.5 text-sm text-[#8f8b9c]">{workspace.client.username ? `@${workspace.client.username.replace(/^@/, "")} · ` : ""}Telegram {workspace.client.telegramUserId} · joined {formatDate(workspace.client.joinedAt)}</p>
           </div>
           <div className="flex flex-wrap gap-2">
+            <Button className="rounded-xl bg-[#6157e7] text-white hover:bg-[#554bcf]" disabled={directBusy} onClick={() => void openDirectCard()}><Plus className="size-4" />Create card</Button>
             <Button variant="outline" className="rounded-xl" disabled={actionBusy} onClick={() => void handleNotify()}><Bell className="size-4" />Notify</Button>
             <Button variant="outline" className={`rounded-xl ${workspace.client.banned ? "text-emerald-700" : "text-red-700"}`} disabled={actionBusy} onClick={() => void handleBan()}><Ban className="size-4" />{workspace.client.banned ? "Unban" : "Ban"}</Button>
           </div>
@@ -284,7 +430,7 @@ export default function ClientWorkspacePage({ clientId }: { clientId: string }) 
 
             <div className="grid gap-5 xl:grid-cols-2">
               <Card className="rounded-[22px]">
-                <CardHeader><CardTitle className="text-base">Internal account assignments</CardTitle></CardHeader>
+                <CardHeader className="flex-row items-center justify-between gap-3"><CardTitle className="text-base">Internal account assignments</CardTitle><Button size="sm" variant="outline" onClick={() => { setAccountManagerOpen(true); void loadDirectOptions(); }}>Manage accounts</Button></CardHeader>
                 <CardContent className="space-y-2">
                   {workspace.accounts.map((account) => <div key={account.id} className="flex items-center justify-between gap-3 rounded-xl border bg-[#faf9fc] p-3"><div><p className="font-semibold">{account.label}</p><p className="text-xs text-[#9692a3]">{account.loginEmail} · assigned {formatDate(account.assignedAt)}</p></div>{statusBadge(account.status)}</div>)}
                   {!workspace.accounts.length && <p className="rounded-xl border border-dashed p-4 text-sm text-[#9692a3]">No internal provider account is assigned yet.</p>}
@@ -367,7 +513,7 @@ export default function ClientWorkspacePage({ clientId }: { clientId: string }) 
                   <CardContent className="flex flex-col gap-3 p-4 md:flex-row md:items-center">
                     <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-[#f3f1ff] text-[#6157e7]">{request.kind === "card" ? <CreditCard className="size-5" /> : <WalletCards className="size-5" />}</span>
                     <div className="min-w-0 flex-1">
-                      <div className="flex flex-wrap items-center gap-2"><p className="font-semibold">{request.kind === "card" ? "Card request" : "Funding request"} · {request.reference}</p>{statusBadge(request.status)}</div>
+                      <div className="flex flex-wrap items-center gap-2"><p className="font-semibold">{request.kind === "card" ? request.origin === "admin_direct" ? "Admin direct card" : request.origin === "onboarding" ? "Onboarding card" : "Card request" : "Funding request"} · {request.reference}</p>{statusBadge(request.status)}</div>
                       <p className="mt-1 text-sm">{usdFromCents(request.amountUsdCents)}{request.cardLast4 ? ` · card •${request.cardLast4}` : ""}</p>
                       <p className="mt-1 text-xs text-[#9692a3]">{formatDate(request.at)}</p>
                       {request.note && <p className="mt-1 text-xs text-[#777287]">Admin note: {request.note}</p>}
@@ -436,6 +582,77 @@ export default function ClientWorkspacePage({ clientId }: { clientId: string }) 
           </TabsContent>
         </Tabs>
       </main>
+
+      <Dialog open={directCardOpen} onOpenChange={(open) => { setDirectCardOpen(open); if (!open) setWalletConfirmed(false); }}>
+        <DialogContent className="max-h-[92vh] overflow-y-auto rounded-[24px] sm:max-w-[620px]">
+          <DialogHeader>
+            <DialogTitle>Create card directly</DialogTitle>
+            <DialogDescription>This is an admin operation. No customer card request or customer payment is required. The selected provider account will be assigned to this customer automatically if needed.</DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 py-2 sm:grid-cols-2">
+            <div className="grid gap-2 sm:col-span-2">
+              <Label>Provider account</Label>
+              <Select value={directAccountId} onValueChange={setDirectAccountId}>
+                <SelectTrigger><SelectValue placeholder="Select provider account" /></SelectTrigger>
+                <SelectContent>{directOptions?.accounts.map((account) => <SelectItem key={account.id} value={account.id}>{account.label} · {account.loginEmail}{account.selected ? " · assigned" : ""}</SelectItem>)}</SelectContent>
+              </Select>
+            </div>
+            <div className="grid gap-2">
+              <Label>BIN</Label>
+              <Select value={directBin} onValueChange={setDirectBin}>
+                <SelectTrigger><SelectValue placeholder="Select BIN" /></SelectTrigger>
+                <SelectContent>{directOptions?.bins.map((item) => <SelectItem key={item.bin} value={item.bin}>{item.bin}{item.requiresDob ? " · DOB required" : ""}</SelectItem>)}</SelectContent>
+              </Select>
+            </div>
+            <div className="grid gap-2">
+              <Label>Initial card amount (USD)</Label>
+              <Input type="number" min="0.01" step="0.01" value={directAmount} onChange={(event) => setDirectAmount(event.target.value)} />
+            </div>
+            <div className="grid gap-2">
+              <Label>Name on card</Label>
+              <Input value={directName} onChange={(event) => setDirectName(event.target.value)} />
+            </div>
+            <div className="grid gap-2">
+              <Label>Card email</Label>
+              <Input type="email" value={directEmail} onChange={(event) => setDirectEmail(event.target.value)} placeholder="customer@example.com" />
+            </div>
+            <div className="grid gap-2 sm:col-span-2">
+              <Label>Date of birth</Label>
+              <Input type="date" value={directDob} onChange={(event) => setDirectDob(event.target.value)} />
+              <p className="text-xs text-[#9692a3]">Required only for BINs marked DOB required. Latest KYC date is prefilled when available.</p>
+            </div>
+            <label className="flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm sm:col-span-2">
+              <Checkbox checked={walletConfirmed} onCheckedChange={(value) => setWalletConfirmed(value === true)} />
+              <span>I confirm the selected Kripicard account wallet has enough credited balance for this card creation.</span>
+            </label>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDirectCardOpen(false)}>Cancel</Button>
+            <Button disabled={directBusy || !walletConfirmed || !directOptions?.accounts.length || !directOptions?.bins.length} onClick={() => void submitDirectCard()}>{directBusy ? "Creating…" : "Create card now"}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={accountManagerOpen} onOpenChange={setAccountManagerOpen}>
+        <DialogContent className="max-h-[85vh] overflow-y-auto rounded-[24px] sm:max-w-[620px]">
+          <DialogHeader><DialogTitle>Manage provider accounts</DialogTitle><DialogDescription>Account assignment is an admin operation and does not depend on onboarding or a customer request. An account can belong to only one Telegram customer at a time.</DialogDescription></DialogHeader>
+          <div className="space-y-2">
+            {directOptions?.accounts.map((account) => <div key={account.id} className="flex items-center justify-between gap-3 rounded-xl border p-3"><div className="min-w-0"><p className="truncate font-semibold">{account.label}</p><p className="truncate text-xs text-[#9692a3]">{account.loginEmail}</p></div><Button size="sm" variant={account.selected ? "outline" : "default"} disabled={directBusy} onClick={() => void changeAccountAssignment(account.id, account.selected)}>{account.selected ? "Unassign" : "Assign"}</Button></div>)}
+            {!directOptions?.accounts.length && <p className="rounded-xl border border-dashed p-5 text-center text-sm text-[#9692a3]">No available provider accounts.</p>}
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={reauthOpen} onOpenChange={(open) => { if (!directBusy) setReauthOpen(open); }}>
+        <DialogContent className="rounded-[24px] sm:max-w-[430px]">
+          <DialogHeader><DialogTitle>Confirm live provider action</DialogTitle><DialogDescription>Direct card creation writes to Kripicard. Re-enter your admin credentials, then the exact card operation will continue.</DialogDescription></DialogHeader>
+          <div className="grid gap-4">
+            <div className="grid gap-2"><Label>Admin password</Label><Input type="password" autoComplete="current-password" value={reauthPassword} onChange={(event) => setReauthPassword(event.target.value)} /></div>
+            <div className="grid gap-2"><Label>MFA code <span className="font-normal text-[#9692a3]">(if enabled)</span></Label><Input inputMode="numeric" maxLength={6} value={reauthCode} onChange={(event) => setReauthCode(event.target.value.replace(/\D/g, "").slice(0,6))} /></div>
+          </div>
+          <DialogFooter><Button variant="outline" disabled={directBusy} onClick={() => setReauthOpen(false)}>Cancel</Button><Button disabled={directBusy || !reauthPassword.trim()} onClick={() => void submitReauth()}>{directBusy ? "Confirming…" : "Confirm & continue"}</Button></DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

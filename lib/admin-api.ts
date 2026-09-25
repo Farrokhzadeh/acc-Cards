@@ -503,6 +503,7 @@ export type ClientWorkspace = {
     reference: string;
     amountUsdCents: string;
     status: string;
+    origin: "customer" | "onboarding" | "admin_direct";
     adminNote: string | null;
     providerCardId: string | null;
     createdAt: string;
@@ -679,6 +680,48 @@ export async function fetchClientAssignableAccounts(clientId: string, search = "
   return apiJson<{ items: AssignableClientAccount[] }>(`/api/v1/clients/${encodeURIComponent(clientId)}/accounts?${query.toString()}`, { method: "GET" });
 }
 
+export async function assignClientAccount(clientId: string, accountId: string) {
+  return apiJson<{ accountIds: string[]; changed: boolean }>(`/api/v1/clients/${encodeURIComponent(clientId)}/accounts`, {
+    method: "POST",
+    body: JSON.stringify({ accountId }),
+  });
+}
+
+export async function unassignClientAccount(clientId: string, accountId: string) {
+  return apiJson<{ accountIds: string[]; changed: boolean }>(`/api/v1/clients/${encodeURIComponent(clientId)}/accounts`, {
+    method: "DELETE",
+    body: JSON.stringify({ accountId }),
+  });
+}
+
+export type AdminDirectCardOptions = {
+  accounts: AssignableClientAccount[];
+  bins: Array<{ bin: string; requiresDob: boolean }>;
+  defaults: {
+    nameOnCard: string;
+    dateOfBirth: string | null;
+  };
+};
+
+export async function fetchAdminDirectCardOptions(clientId: string) {
+  return apiJson<AdminDirectCardOptions>(`/api/v1/clients/${encodeURIComponent(clientId)}/cards/direct`, { method: "GET" });
+}
+
+export async function createAdminDirectCard(clientId: string, input: {
+  accountId: string;
+  bin: string;
+  amountUsdCents: number;
+  nameOnCard: string;
+  email: string;
+  dateOfBirth?: string | null;
+  walletFundingConfirmed: boolean;
+}) {
+  return apiJson<CardIssuanceResult & { reference: string; origin: "admin_direct" }>(
+    `/api/v1/clients/${encodeURIComponent(clientId)}/cards/direct`,
+    { method: "POST", body: JSON.stringify(input) },
+  );
+}
+
 export type ApiCustomerPayment = {
   id: string;
   reference: string;
@@ -741,6 +784,7 @@ export type ApiCardRequest = {
   email: string;
   dateOfBirth: string | null;
   status: "pending_review" | "approved" | "correction_needed" | "issuing" | "issue_failed" | "needs_reconciliation" | "issued" | "rejected" | "cancelled";
+  origin: "customer" | "onboarding" | "admin_direct";
   adminNote: string | null;
   providerCardId: string | null;
   createdAt: string;

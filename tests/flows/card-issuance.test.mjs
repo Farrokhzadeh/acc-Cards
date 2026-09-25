@@ -80,11 +80,11 @@ test("issuance is feature-gated, rechecks capacity and account ownership, and sn
   assert.match(issuance, /result = await client\.createCard/);
 });
 
-test("card issuance and external attachment both require an accepted customer payment", () => {
+test("customer card issuance keeps payment gates while admin-direct issuance bypasses only that prerequisite", () => {
   assert.match(issuance, /assertAcceptedPaymentForCardRequest/);
   assert.match(issuance, /markCardRequestPaymentCompleted/);
-  const checks = issuance.match(/assertAcceptedPaymentForCardRequest\(db, row\.id\)/g) ?? [];
-  assert.ok(checks.length >= 2, "expected payment gate for provider issuance and existing-card attachment");
+  assert.match(issuance, /if \(row\.origin === "admin_direct"\) return null/);
+  assert.match(issuance, /if \(row\.origin !== "admin_direct"\)/);
 });
 
 test("ambiguous provider outcomes are reconciled with cards/list and never cause an automatic second createcard", () => {

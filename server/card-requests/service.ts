@@ -25,6 +25,7 @@ type RequestRow = {
   email: string;
   date_of_birth: string | Date | null;
   status: CardRequestStatus;
+  origin: "customer" | "onboarding" | "admin_direct";
   admin_note: string | null;
   provider_card_id: string | null;
   reviewed_by: string | null;
@@ -149,6 +150,7 @@ function serialize(row: RequestRow) {
     email: row.email,
     dateOfBirth: normalizeDob(row.date_of_birth),
     status: row.status,
+    origin: row.origin,
     adminNote: row.admin_note,
     providerCardId: row.provider_card_id,
     reviewedBy: row.reviewed_by,
@@ -205,7 +207,10 @@ export async function listCardRequests(args: { search?: string; status?: string 
   const limit = Math.max(1, Math.min(100, args.limit ?? 50));
   const search = (args.search ?? "").trim().slice(0, 200);
   const values: unknown[] = [search];
-  const where: string[] = [`($1='' OR cr.reference ILIKE '%'||$1||'%' OR cr.name_on_card ILIKE '%'||$1||'%' OR cr.email ILIKE '%'||$1||'%' OR cr.bin ILIKE '%'||$1||'%' OR COALESCE(tu.display_name,'') ILIKE '%'||$1||'%' OR COALESCE(tu.username,'') ILIKE '%'||$1||'%')`];
+  const where: string[] = [
+    `cr.origin <> 'onboarding'`,
+    `($1='' OR cr.reference ILIKE '%'||$1||'%' OR cr.name_on_card ILIKE '%'||$1||'%' OR cr.email ILIKE '%'||$1||'%' OR cr.bin ILIKE '%'||$1||'%' OR COALESCE(tu.display_name,'') ILIKE '%'||$1||'%' OR COALESCE(tu.username,'') ILIKE '%'||$1||'%')`,
+  ];
   if (args.status) { values.push(args.status); where.push(`cr.status=$${values.length}`); }
   if (args.cursor) {
     const [created, id] = Buffer.from(args.cursor, "base64url").toString("utf8").split("|");
