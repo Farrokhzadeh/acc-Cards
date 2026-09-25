@@ -42,13 +42,15 @@ test("assignment writes require authenticated permission and CSRF", () => {
   assert.match(itemRoute, /requireCsrf\(request, session\)/);
 });
 
-test("standalone assignment mutation APIs are closed and onboarding owns assignment writes", () => {
-  assert.match(collectionRoute, /assignment_managed_by_onboarding/);
-  assert.match(itemRoute, /assignment_managed_by_onboarding/);
-  assert.doesNotMatch(collectionRoute, /assignAccount\(/);
-  assert.doesNotMatch(collectionRoute, /replaceClientAccounts\(/);
-  assert.doesNotMatch(itemRoute, /assignAccount\(/);
-  assert.doesNotMatch(itemRoute, /unassignAccount\(/);
+test("admins can assign and unassign provider accounts independently of onboarding", () => {
+  assert.match(collectionRoute, /assignAccount\(/);
+  assert.match(collectionRoute, /replaceClientAccounts\(/);
+  assert.match(collectionRoute, /unassignAccount\(/);
+  assert.match(collectionRoute, /unassignAllAccounts\(/);
+  assert.match(itemRoute, /assignAccount\(/);
+  assert.match(itemRoute, /unassignAccount\(/);
+  assert.doesNotMatch(collectionRoute, /assignment_managed_by_onboarding/);
+  assert.doesNotMatch(itemRoute, /assignment_managed_by_onboarding/);
   assert.match(onboarding, /assignAccountInTransaction\(/);
 });
 
@@ -59,11 +61,11 @@ test("assignment changes produce history and redacted audit records in the same 
   assert.doesNotMatch(service, /encrypted_api_key|encrypted_password/);
 });
 
-test("first-card onboarding owns account assignment atomically instead of a standalone admin picker", () => {
+test("onboarding still assigns atomically while admins also have standalone account controls", () => {
   assert.match(adminApi, /fetchClientAssignableAccounts/);
+  assert.match(adminApi, /assignClientAccount/);
+  assert.match(adminApi, /unassignClientAccount/);
   assert.match(dashboard, /Create first card/);
-  assert.doesNotMatch(dashboard, /AccountAssignmentPicker/);
-  assert.doesNotMatch(adminApi, /assignClientAccount/);
   assert.match(activateRoute, /input\.action === "create_card"/);
   assert.match(onboarding, /assignAccountInTransaction/);
   assert.match(service, /assignAccountInTransaction/);
