@@ -751,22 +751,22 @@ async function sendCustomerPaymentDetail(client: TelegramClient, user: BotUser, 
   const purpose = customerPaymentPurposeLabel(payment.purpose, user.lang);
   const lines = [
     `<b>${customerPaymentPurposeIcon(payment.purpose)} ${escapeHtml(purpose)}</b>`,
-    `${user.lang === "fa" ? "مرجع" : "Reference"}: <code>${escapeHtml(payment.requestReference ?? payment.reference)}</code>`,
-    `${user.lang === "fa" ? "مرجع پرداخت" : "Payment reference"}: <code>${escapeHtml(payment.reference)}</code>`,
-    `${user.lang === "fa" ? "وضعیت پرداخت" : "Payment status"}: <b>${escapeHtml(payment.status.replaceAll("_", " "))}</b>`,
+    `${escapeHtml(pick(BOT.reference, user.lang))}: <code>${escapeHtml(payment.requestReference ?? payment.reference)}</code>`,
+    `${escapeHtml(pick(BOT.paymentReference, user.lang))}: <code>${escapeHtml(payment.reference)}</code>`,
+    `${escapeHtml(pick(BOT.paymentStatus, user.lang))}: <b>${escapeHtml(payment.status.replaceAll("_", " "))}</b>`,
   ];
-  if (payment.requestStatus) lines.push(`${user.lang === "fa" ? "وضعیت درخواست" : "Request status"}: <b>${escapeHtml(payment.requestStatus.replaceAll("_", " "))}</b>`);
-  if (payment.cardLast4) lines.push(`${user.lang === "fa" ? "کارت" : "Card"}: •${escapeHtml(payment.cardLast4)}`);
-  lines.push(`${user.lang === "fa" ? "مبلغ کارت" : "Card amount"}: <b>${formatUsdCents(payment.amountUsdCents)}</b>`);
-  if (BigInt(payment.providerFeeUsdCents) > 0n) lines.push(`${user.lang === "fa" ? "کارمزد سرویس کارت" : "Provider fee"}: ${formatUsdCents(payment.providerFeeUsdCents)}`);
-  if (BigInt(payment.serviceFeeUsdCents) > 0n) lines.push(`${user.lang === "fa" ? "کارمزد خدمات" : "Service fee"}: ${formatUsdCents(payment.serviceFeeUsdCents)}`);
-  lines.push(`${user.lang === "fa" ? "مبنای کل دلاری" : "Total USD basis"}: <b>${formatUsdCents(payment.customerPaysUsdCents)}</b>`);
-  lines.push(`${user.lang === "fa" ? "نرخ ثبت‌شده" : "Locked rate"}: ${escapeHtml(BigInt(payment.rateRialPerUsd).toLocaleString("en-US"))} ${user.lang === "fa" ? "ریال/دلار" : "rial/USD"}`);
-  lines.push(`${user.lang === "fa" ? "مبلغ دقیق ریالی" : "Exact rial amount"}: <b>${escapeHtml(formatRialValue(payment.customerPaysRial))}</b>`);
-  lines.push(`${user.lang === "fa" ? "رسید" : "Receipt"}: ${payment.receipt ? escapeHtml(payment.receipt.scanStatus ?? "stored") : user.lang === "fa" ? "ثبت نشده" : "not uploaded"}`);
-  lines.push(`${user.lang === "fa" ? "ایجاد" : "Created"}: ${escapeHtml(new Date(payment.createdAt).toISOString().replace("T", " ").slice(0, 16))} UTC`);
-  if (payment.reviewedAt) lines.push(`${user.lang === "fa" ? "بررسی" : "Reviewed"}: ${escapeHtml(new Date(payment.reviewedAt).toISOString().replace("T", " ").slice(0, 16))} UTC`);
-  if (payment.adminNote) lines.push(`${user.lang === "fa" ? "یادداشت مدیر" : "Admin note"}: ${escapeHtml(payment.adminNote)}`);
+  if (payment.requestStatus) lines.push(`${escapeHtml(pick(BOT.requestStatus, user.lang))}: <b>${escapeHtml(payment.requestStatus.replaceAll("_", " "))}</b>`);
+  if (payment.cardLast4) lines.push(`${escapeHtml(pick(BOT.card, user.lang))}: •${escapeHtml(payment.cardLast4)}`);
+  lines.push(`${escapeHtml(pick(BOT.cardAmount, user.lang))}: <b>${formatUsdCents(payment.amountUsdCents)}</b>`);
+  if (BigInt(payment.providerFeeUsdCents) > 0n) lines.push(`${escapeHtml(pick(BOT.providerFee, user.lang))}: ${formatUsdCents(payment.providerFeeUsdCents)}`);
+  if (BigInt(payment.serviceFeeUsdCents) > 0n) lines.push(`${escapeHtml(pick(BOT.serviceFee, user.lang))}: ${formatUsdCents(payment.serviceFeeUsdCents)}`);
+  lines.push(`${escapeHtml(pick(BOT.totalUsdBasis, user.lang))}: <b>${formatUsdCents(payment.customerPaysUsdCents)}</b>`);
+  lines.push(`${escapeHtml(pick(BOT.lockedRate, user.lang))}: ${escapeHtml(BigInt(payment.rateRialPerUsd).toLocaleString("en-US"))} ${escapeHtml(pick(BOT.rialPerUsd, user.lang))}`);
+  lines.push(`${escapeHtml(pick(BOT.exactRialAmount, user.lang))}: <b>${escapeHtml(formatRialValue(payment.customerPaysRial))}</b>`);
+  lines.push(`${escapeHtml(pick(BOT.receipt, user.lang))}: ${payment.receipt ? escapeHtml(payment.receipt.scanStatus ?? pick(BOT.stored, user.lang)) : escapeHtml(pick(BOT.notUploaded, user.lang))}`);
+  lines.push(`${escapeHtml(pick(BOT.created, user.lang))}: ${escapeHtml(new Date(payment.createdAt).toISOString().replace("T", " ").slice(0, 16))} UTC`);
+  if (payment.reviewedAt) lines.push(`${escapeHtml(pick(BOT.reviewed, user.lang))}: ${escapeHtml(new Date(payment.reviewedAt).toISOString().replace("T", " ").slice(0, 16))} UTC`);
+  if (payment.adminNote) lines.push(`${escapeHtml(pick(BOT.adminNote, user.lang))}: ${escapeHtml(payment.adminNote)}`);
 
   const rows: TelegramInlineKeyboard["inline_keyboard"] = [];
   if (payment.receipt) {
