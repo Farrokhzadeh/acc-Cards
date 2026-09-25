@@ -12,10 +12,11 @@ import { createFirstCardPayment, getCustomerPaymentHistoryDetail, getPaymentForF
 import { attachTelegramCustomerPaymentReceipt, getCustomerPaymentReceiptForTelegram } from "@/server/payments/receipts";
 import { deletePrivateSupportAttachment, storePrivateSupportAttachment } from "@/server/support/storage";
 import { createKycSubmission, getKycStatusForUser } from "@/server/kyc/service";
-import { KYC, kycConfirmSummary, pick, MENU, COMMON, PAYMENT, FLOW } from "@/server/kyc/messages";
+import { KYC, kycConfirmSummary, pick, render, MENU, COMMON, PAYMENT, FLOW, BOT } from "@/server/kyc/messages";
 import { getPaymentCard } from "@/server/settings/payment-card";
 import { getFirstCardSettings } from "@/server/settings/first-card";
 import { getTelegramClient } from "@/server/telegram/credentials";
+import { imageForRenderedBotText, refreshBotTextRuntime } from "@/server/telegram/text-management";
 
 const telegramUserSchema = z.object({
   id: z.number().int().positive(),
@@ -379,12 +380,21 @@ export async function logChatMessage(user: { id: string }, direction: "client_to
     [conversationId],
   );
 }
-function withChatLog(client: TelegramClient, user: { id: string }): TelegramClient {
+function withChatLog(client: TelegramClient, user: { id: string; lang: string | null }): TelegramClient {
   return new Proxy(client, {
     get(target, prop, receiver) {
       const value = Reflect.get(target, prop, receiver);
       if (prop === "sendMessage" && typeof value === "function") {
         return async (args: { chatId: number; text: string; replyMarkup?: unknown; protectContent?: boolean }) => {
+          const image = await imageForRenderedBotText(args.text, user.lang).catch(() => null);
+          if (image) {
+            await target.sendPhoto({
+              chatId: args.chatId,
+              bytes: image.bytes,
+              filename: image.filename,
+              protectContent: args.protectContent,
+            });
+          }
           const result = await (value as (a: unknown) => Promise<unknown>).call(target, args);
           if (!args.protectContent) logChatMessage(user, "admin_to_client", args.text).catch(() => {});
           return result;
@@ -1781,6 +1791,7 @@ export async function processTelegramUpdate(updateInput: unknown, payloadHash: s
       return { ok: true, ignored: true };
     }
     const user = await upsertTelegramUser(actor);
+    await refreshBotTextRuntime();
     const client = withChatLog(await getTelegramClient(), user);
     await getPool().query(`UPDATE conversations SET unread_client_count=0, last_client_ack_at=now(), updated_at=now() WHERE user_id=$1::uuid AND unread_client_count > 0`, [user.id]);
     if (update.callback_query) await handleCallback(client, update.callback_query, user, requestId);
