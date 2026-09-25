@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import {
   ArrowLeft,
@@ -89,6 +90,7 @@ function SectionError({ text }: { text: string | null }) {
 }
 
 export default function ClientWorkspacePage({ clientId }: { clientId: string }) {
+  const searchParams = useSearchParams();
   const [workspace, setWorkspace] = useState<ClientWorkspace | null>(null);
   const [kyc, setKyc] = useState<ClientKyc>(null);
   const [payments, setPayments] = useState<ApiCustomerPaymentHistory[]>([]);
@@ -305,6 +307,26 @@ export default function ClientWorkspacePage({ clientId }: { clientId: string }) 
       setDirectBusy(false);
     }
   };
+
+  useEffect(() => {
+    if (searchParams.get("createCard") !== "1") return;
+    const preferredAccountId = searchParams.get("accountId") ?? "";
+    let cancelled = false;
+    fetchAdminDirectCardOptions(clientId)
+      .then((options) => {
+        if (cancelled) return;
+        setDirectOptions(options);
+        setDirectAccountId(preferredAccountId || options.accounts.find((account) => account.selected)?.id || options.accounts[0]?.id || "");
+        setDirectBin(options.bins[0]?.bin || "");
+        setDirectName(options.defaults.nameOnCard);
+        setDirectDob(options.defaults.dateOfBirth || "");
+        setDirectCardOpen(true);
+      })
+      .catch((error) => {
+        if (!cancelled) toast.error(error instanceof Error ? error.message : "Could not load direct card options.");
+      });
+    return () => { cancelled = true; };
+  }, [clientId, searchParams]);
 
   const handleBan = async () => {
     if (!workspace || actionBusy) return;
