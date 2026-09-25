@@ -816,7 +816,7 @@ async function beginCustomerPaymentReceiptUpload(client: TelegramClient, user: B
   } else {
     throw new ApiError(409, "invalid_state", "This payment cannot accept a replacement receipt.");
   }
-  await client.sendMessage({ chatId, text: user.lang === "fa" ? "رسید پرداخت را به صورت JPEG، PNG، WebP یا PDF ارسال کنید." : "Upload the payment receipt as JPEG, PNG, WebP, or PDF." });
+  await client.sendMessage({ chatId, text: pick(BOT.paymentReceiptUpload, user.lang) });
 }
 
 type CardRequestDraftPayload = {
@@ -928,14 +928,14 @@ async function handleCardRequestText(client: TelegramClient, user: BotUser, chat
     }
     draft.amountUsdCents = cents;
     await setBotState(user.id, "card_request_email", draft, 20);
-    await client.sendMessage({ chatId, text: user.lang === "fa" ? "ایمیل موردنظر برای کارت را وارد کنید:" : "Enter the email address to use for the new card:" });
+    await client.sendMessage({ chatId, text: pick(BOT.askCardEmail, user.lang) });
     return true;
   }
 
   if (state.mode === "card_request_email") {
     const parsed = z.string().trim().email().max(320).safeParse(value);
     if (!parsed.success) {
-      await client.sendMessage({ chatId, text: user.lang === "fa" ? "یک ایمیل معتبر وارد کنید." : "Enter a valid email address." });
+      await client.sendMessage({ chatId, text: pick(BOT.invalidCardEmail, user.lang) });
       return true;
     }
     draft.email = parsed.data;
@@ -953,11 +953,11 @@ async function handleCardRequestText(client: TelegramClient, user: BotUser, chat
   }
 
   if (state.mode === "card_request_confirm") {
-    await client.sendMessage({ chatId, text: "Use the Submit button above, or send /cancel." });
+    await client.sendMessage({ chatId, text: pick(BOT.useSubmit, user.lang) });
     return true;
   }
   if (state.mode === "card_request_receipt") {
-    await client.sendMessage({ chatId, text: "Upload the payment receipt as a JPEG, PNG, WebP, or PDF file. Text alone cannot be used as payment evidence." });
+    await client.sendMessage({ chatId, text: pick(BOT.receiptEvidenceRequired, user.lang) });
     return true;
   }
   return false;
@@ -997,11 +997,11 @@ async function handleCardRequestReceiptMedia(client: TelegramClient, user: BotUs
   const photo = message.photo?.at(-1);
   const selected = document ?? photo;
   if (!selected) {
-    await client.sendMessage({ chatId, text: "Upload a JPEG, PNG, WebP, or PDF payment receipt." });
+    await client.sendMessage({ chatId, text: pick(BOT.uploadReceiptFile, user.lang) });
     return true;
   }
   if (document?.mime_type && !["application/pdf","image/jpeg","image/png","image/webp"].includes(document.mime_type)) {
-    await client.sendMessage({ chatId, text: "That document type is not accepted. Upload a PDF, JPEG, PNG, or WebP receipt." });
+    await client.sendMessage({ chatId, text: pick(BOT.invalidReceiptType, user.lang) });
     return true;
   }
   await attachTelegramCustomerPaymentReceipt({
@@ -1013,7 +1013,7 @@ async function handleCardRequestReceiptMedia(client: TelegramClient, user: BotUs
     declaredMimeType: document?.mime_type ?? "image/jpeg",
   });
   await getPool().query(`DELETE FROM telegram_bot_states WHERE user_id=$1::uuid`, [user.id]);
-  await client.sendMessage({ chatId, text: "Payment receipt received. An administrator must verify it before your card request can be approved or issued." });
+  await client.sendMessage({ chatId, text: pick(BOT.cardPaymentReceiptReceived, user.lang) });
   await sendCardRequestDetail(client, user, chatId, state.payload.cardRequestId);
   return true;
 }
@@ -1030,7 +1030,7 @@ async function beginFundingRequest(client: TelegramClient, user: BotUser, chatId
     rows.push([{ text: `${card.label || "Card"} •${card.last4 ?? "????"}`, callback_data: token }]);
   }
   rows.push([{ text: "Cancel", callback_data: await createCallbackToken({ userId: user.id, action: "menu.home" }) }]);
-  await client.sendMessage({ chatId, text: "<b>Funding request</b>\nChoose the card you want to fund.", replyMarkup: { inline_keyboard: rows } });
+  await client.sendMessage({ chatId, text: pick(BOT.fundingChooseCard, user.lang), replyMarkup: { inline_keyboard: rows } });
 }
 
 async function sendFundingQuoteConfirmation(client: TelegramClient, user: BotUser, chatId: number, draft: CardRequestDraftPayload) {
@@ -1069,11 +1069,11 @@ async function handleFundingRequestText(client: TelegramClient, user: BotUser, c
     return true;
   }
   if (state.mode === "funding_request_confirm") {
-    await client.sendMessage({ chatId, text: "Use the Submit & upload receipt button above, or send /cancel." });
+    await client.sendMessage({ chatId, text: pick(BOT.useSubmitUpload, user.lang) });
     return true;
   }
   if (state.mode === "funding_request_receipt") {
-    await client.sendMessage({ chatId, text: "Upload the receipt as a JPEG, PNG, WebP, or PDF file. Text alone cannot be used as payment evidence. Send /cancel to cancel the request." });
+    await client.sendMessage({ chatId, text: pick(BOT.fundingReceiptRequired, user.lang) });
     return true;
   }
   return false;
@@ -1086,7 +1086,7 @@ async function handleFundingReceiptMedia(client: TelegramClient, user: BotUser, 
   const photo = message.photo?.at(-1);
   const selected = document ?? photo;
   if (!selected) {
-    await client.sendMessage({ chatId, text: "Upload a JPEG, PNG, WebP, or PDF receipt file." });
+    await client.sendMessage({ chatId, text: pick(BOT.uploadReceiptFile, user.lang) });
     return true;
   }
   if (document?.mime_type && !["application/pdf","image/jpeg","image/png","image/webp"].includes(document.mime_type)) {
@@ -1133,7 +1133,7 @@ async function beginSupport(client: TelegramClient, user: BotUser, chatId: numbe
      ON CONFLICT (user_id) DO UPDATE SET mode='support', payload='{}'::jsonb, expires_at=EXCLUDED.expires_at, updated_at=now()`,
     [user.id, env.TELEGRAM_SUPPORT_MODE_MINUTES],
   );
-  await client.sendMessage({ chatId, text: "Send your support message now. It will appear in AccAbad Admin. Send /cancel when you're finished." });
+  await client.sendMessage({ chatId, text: pick(BOT.supportPrompt, user.lang) });
 }
 
 async function supportMode(userId: string) {
@@ -1294,7 +1294,7 @@ async function handleCallback(client: TelegramClient, callback: z.infer<typeof c
       else if (resolved.action === "kyc.submit") await submitKyc(client, user, chatId);
       else await cancelKyc(client, user, chatId);
     } catch (error) {
-      const message = error instanceof ApiError ? error.message : "This action could not be completed right now.";
+    const message = error instanceof ApiError ? error.message : pick(BOT.actionFailed, user.lang);
       await client.sendMessage({ chatId, text: escapeHtml(message) });
       await auditTelegramEvent({ userId: user.id, action: "telegram.kyc.failed", entityType: "kyc_submission", requestId, metadata: { action: resolved.action, errorCode: error instanceof ApiError ? error.code : "internal_error" } });
     }
@@ -1317,7 +1317,7 @@ async function handleCallback(client: TelegramClient, callback: z.infer<typeof c
       const action = resolved.action === "card.freeze" ? "freeze" : "unfreeze";
       const result = await setKripicardCardFrozenStateForTelegram(resolved.entity_id, action, user.id, requestId);
       if (result.needsReconciliation) {
-        await client.sendMessage({ chatId, text: "The card-state result is uncertain. An administrator must reconcile it before another change can be attempted." });
+        await client.sendMessage({ chatId, text: pick(BOT.cardStateUncertain, user.lang) });
       } else {
         await client.sendMessage({ chatId, text: `Card is now <b>${escapeHtml(result.status)}</b>.` });
       }
@@ -1365,7 +1365,7 @@ async function handleCallback(client: TelegramClient, callback: z.infer<typeof c
       case "cardreq.cancel_existing": {
         if (!resolved.entity_id) break;
         await cancelTelegramCardRequest(user.id, resolved.entity_id);
-        await client.sendMessage({ chatId, text: "Card request cancelled." });
+        await client.sendMessage({ chatId, text: pick(BOT.cardRequestCancelled, user.lang) });
         await sendRequests(client, user, chatId);
         break;
       }
@@ -1408,7 +1408,7 @@ No card funding has been executed yet.` });
       }
       case "fundreq.cancel_draft":
         await getPool().query(`DELETE FROM telegram_bot_states WHERE user_id=$1::uuid`, [user.id]);
-        await client.sendMessage({ chatId, text: "Funding request draft cancelled." });
+        await client.sendMessage({ chatId, text: pick(BOT.fundingDraftCancelled, user.lang) });
         await sendMainMenu(client, user, chatId);
         break;
       case "fundreq.cancel_existing":
@@ -1428,7 +1428,7 @@ No card funding has been executed yet.` });
         break;
       case "fundreq.detail": if (resolved.entity_id) await sendFundingRequestDetail(client,user,chatId,resolved.entity_id); break;
       case "support.start": await beginSupport(client, user, chatId); break;
-      default: await client.sendMessage({ chatId, text: "This action is no longer available. Use /start to reopen the menu." });
+      default: await client.sendMessage({ chatId, text: pick(BOT.actionExpired, user.lang) });
   }  } catch (error) {
     const message = error instanceof ApiError ? error.message : "This action could not be completed right now.";
     await client.sendMessage({ chatId, text: escapeHtml(message) });
@@ -1661,7 +1661,7 @@ async function sendKycConfirm(client: TelegramClient, user: BotUser, chatId: num
   await client.sendMessage({
     chatId,
     text,
-    replyMarkup: { inline_keyboard: [[{ text: "✅ Submit / ثبت", callback_data: submit }], [{ text: "❌ Cancel / لغو", callback_data: cancel }]] },
+    replyMarkup: { inline_keyboard: [[{ text: pick(BOT.kycSubmit, user.lang), callback_data: submit }], [{ text: pick(BOT.kycCancel, user.lang), callback_data: cancel }]] },
   });
 }
 
@@ -1741,7 +1741,7 @@ async function handleMessage(client: TelegramClient, message: z.infer<typeof mes
   if (text === "/help") {
     await client.sendMessage({
       chatId,
-      text: "<b>AccAbad commands</b>\n/start or /menu — main menu\n/kyc — identity verification\n/support — contact support\n/lang — language\n/cancel — cancel the current flow",
+      text: pick(BOT.help, user.lang),
     });
     return;
   }
@@ -1756,7 +1756,7 @@ async function handleMessage(client: TelegramClient, message: z.infer<typeof mes
       const stored = await storeSupportMessage(user, message, client);
       await client.sendMessage({ chatId, text: stored.duplicate ? "Support already received this message." : `Your message${stored.attachment ? " and attachment" : ""} was sent to support. Send another message, or /cancel to return to the menu.` });
     } catch (error) {
-      await client.sendMessage({ chatId, text: error instanceof ApiError ? escapeHtml(error.message) : "The support message could not be stored. Please try again." });
+      await client.sendMessage({ chatId, text: error instanceof ApiError ? escapeHtml(error.message) : pick(BOT.supportFailed, user.lang) });
     }
     return;
   }
