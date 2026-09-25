@@ -197,6 +197,7 @@ export default function ClientWorkspacePage({ clientId }: { clientId: string }) 
       at: request.createdAt,
       reference: request.reference,
       status: request.status,
+      origin: request.origin,
       amountUsdCents: request.amountUsdCents,
       cardLast4: null as string | null,
       note: request.adminNote,
@@ -207,6 +208,7 @@ export default function ClientWorkspacePage({ clientId }: { clientId: string }) 
       at: request.createdAt,
       reference: request.reference,
       status: request.status,
+      origin: null as null,
       amountUsdCents: request.amountUsdCents,
       cardLast4: request.cardLast4,
       note: null as string | null,
@@ -511,7 +513,7 @@ export default function ClientWorkspacePage({ clientId }: { clientId: string }) 
                   <CardContent className="flex flex-col gap-3 p-4 md:flex-row md:items-center">
                     <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-[#f3f1ff] text-[#6157e7]">{request.kind === "card" ? <CreditCard className="size-5" /> : <WalletCards className="size-5" />}</span>
                     <div className="min-w-0 flex-1">
-                      <div className="flex flex-wrap items-center gap-2"><p className="font-semibold">{request.kind === "card" ? "Card request" : "Funding request"} · {request.reference}</p>{statusBadge(request.status)}</div>
+                      <div className="flex flex-wrap items-center gap-2"><p className="font-semibold">{request.kind === "card" ? request.origin === "admin_direct" ? "Admin direct card" : request.origin === "onboarding" ? "Onboarding card" : "Card request" : "Funding request"} · {request.reference}</p>{statusBadge(request.status)}</div>
                       <p className="mt-1 text-sm">{usdFromCents(request.amountUsdCents)}{request.cardLast4 ? ` · card •${request.cardLast4}` : ""}</p>
                       <p className="mt-1 text-xs text-[#9692a3]">{formatDate(request.at)}</p>
                       {request.note && <p className="mt-1 text-xs text-[#777287]">Admin note: {request.note}</p>}
