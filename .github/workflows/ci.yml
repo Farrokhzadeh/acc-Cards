@@ -28,7 +28,6 @@ jobs:
     env:
       APP_ENV: staging
       APP_BASE_URL: https://staging.example.invalid
-      APP_VERSION: ci
       ENABLE_LIVE_PROVIDER_WRITES: "false"
       APP_ENCRYPTION_KEY: "AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE="
       ADMIN_SESSION_HOURS: "12"
