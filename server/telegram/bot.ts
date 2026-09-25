@@ -240,15 +240,13 @@ async function firstCardProgress(userId: string) {
 }
 
 function customerPaymentStatus(status: string | null, lang: string | null) {
-  const label =
-    status === "pending" ? { en: "Payment receipt under review ⏳", fa: "رسید پرداخت در حال بررسی است ⏳" }
-    : status === "accepted" ? { en: "Payment approved; your card is waiting to be prepared ✅", fa: "پرداخت تأیید شده و کارت شما در انتظار آماده‌سازی است ✅" }
-    : status === "card_creating" || status === "card_reconciliation" ? { en: "Your card is being prepared ⏳", fa: "کارت شما در حال آماده‌سازی است ⏳" }
-    : status === "card_ready" ? { en: "Your card is ready and onboarding is being finalized ✅", fa: "کارت شما آماده است و فرایند نهایی می‌شود ✅" }
-    : status === "complete" ? { en: "Your first card is active ✅", fa: "اولین کارت شما فعال است ✅" }
-    : status === "denied" ? { en: "Payment receipt was denied ❌", fa: "رسید پرداخت رد شده است ❌" }
-    : { en: "Waiting for your first-card payment", fa: "در انتظار پرداخت اولین کارت" };
-  return pick(label, lang);
+  if (status === "pending") return pick(BOT.onboardingPending, lang);
+  if (status === "accepted") return pick(BOT.onboardingAccepted, lang);
+  if (status === "card_creating" || status === "card_reconciliation") return pick(BOT.onboardingPreparing, lang);
+  if (status === "card_ready") return pick(BOT.onboardingReady, lang);
+  if (status === "complete") return pick(BOT.onboardingComplete, lang);
+  if (status === "denied") return pick(BOT.onboardingDenied, lang);
+  return pick(BOT.onboardingWaitingPayment, lang);
 }
 
 async function sendSetupStatus(client: TelegramClient, user: BotUser, chatId: number) {
@@ -265,9 +263,9 @@ async function sendSetupStatus(client: TelegramClient, user: BotUser, chatId: nu
   ];
   if (kycStatus === "approved") {
     lines.push(`💳 <b>${escapeHtml(customerPaymentStatus(progress.payment_status, user.lang))}</b>`);
-    if (amount) lines.push(`${user.lang === "fa" ? "مبلغ اولین کارت" : "First-card amount"}: <b>${escapeHtml(amount)}</b>`);
+    if (amount) lines.push(`${escapeHtml(pick(BOT.firstCardAmountLabel, user.lang))}: <b>${escapeHtml(amount)}</b>`);
     if (progress.payment_receipt_at) {
-      lines.push(`${user.lang === "fa" ? "رسید ثبت شد" : "Receipt submitted"}: ${escapeHtml(progress.payment_receipt_at.toISOString().replace("T", " ").slice(0, 16))} UTC`);
+      lines.push(`${escapeHtml(pick(BOT.receiptSubmittedLabel, user.lang))}: ${escapeHtml(progress.payment_receipt_at.toISOString().replace("T", " ").slice(0, 16))} UTC`);
     }
   }
   await client.sendMessage({
@@ -279,18 +277,9 @@ async function sendSetupStatus(client: TelegramClient, user: BotUser, chatId: nu
 
 async function sendKycInfo(client: TelegramClient, user: BotUser, chatId: number) {
   const result = await getPool().query<{
-    full_name: string;
-    date_of_birth: Date | string | null;
-    country: string;
-    national_id: string;
-    phone: string;
-    delivery_country: string | null;
-    delivery_province: string | null;
-    delivery_city: string | null;
-    delivery_address_line: string | null;
-    delivery_postal_code: string | null;
-    status: string;
-    submitted_at: Date;
+    full_name: string; date_of_birth: Date | string | null; country: string; national_id: string; phone: string;
+    delivery_country: string | null; delivery_province: string | null; delivery_city: string | null;
+    delivery_address_line: string | null; delivery_postal_code: string | null; status: string; submitted_at: Date;
     document_object_key: string | null;
   }>(
     `SELECT full_name,date_of_birth,country,national_id,phone,delivery_country,delivery_province,delivery_city,delivery_address_line,delivery_postal_code,status,submitted_at,document_object_key
@@ -307,15 +296,19 @@ async function sendKycInfo(client: TelegramClient, user: BotUser, chatId: number
   }
   const dob = row.date_of_birth instanceof Date ? row.date_of_birth.toISOString().slice(0, 10) : String(row.date_of_birth ?? "—").slice(0, 10);
   const deliveryAddress = [
-    row.delivery_address_line,
-    row.delivery_city,
-    row.delivery_province,
-    row.delivery_country,
+    row.delivery_address_line, row.delivery_city, row.delivery_province, row.delivery_country,
     row.delivery_postal_code ? `Postal/ZIP ${row.delivery_postal_code}` : null,
   ].filter(Boolean).join(", ") || "—";
-  const text = user.lang === "fa"
-    ? `<b>🪪 اطلاعات احراز هویت</b>\nنام: <b>${escapeHtml(row.full_name)}</b>\nتاریخ تولد: ${escapeHtml(dob)}\nکشور: ${escapeHtml(row.country)}\nکد ملی / گذرنامه: <code>${escapeHtml(row.national_id)}</code>\nتلفن: <code>${escapeHtml(row.phone)}</code>\nآدرس تحویل کارت: ${escapeHtml(deliveryAddress)}\nوضعیت: <b>${escapeHtml(row.status)}</b>\nمدرک: ${row.document_object_key ? "ثبت شده ✅" : "ثبت نشده"}`
-    : `<b>🪪 My KYC</b>\nName: <b>${escapeHtml(row.full_name)}</b>\nDate of birth: ${escapeHtml(dob)}\nCountry: ${escapeHtml(row.country)}\nNational ID / passport: <code>${escapeHtml(row.national_id)}</code>\nPhone: <code>${escapeHtml(row.phone)}</code>\nCard delivery address: ${escapeHtml(deliveryAddress)}\nStatus: <b>${escapeHtml(row.status)}</b>\nDocument: ${row.document_object_key ? "submitted ✅" : "not submitted"}`;
+  const text = render(BOT.kycDetails, user.lang, {
+    name: escapeHtml(row.full_name),
+    dob: escapeHtml(dob),
+    country: escapeHtml(row.country),
+    nationalId: escapeHtml(row.national_id),
+    phone: escapeHtml(row.phone),
+    address: escapeHtml(deliveryAddress),
+    status: escapeHtml(row.status),
+    document: pick(row.document_object_key ? BOT.documentSubmitted : BOT.documentNotSubmitted, user.lang),
+  });
   const progress = await firstCardProgress(user.id);
   await client.sendMessage({ chatId, text, protectContent: true, replyMarkup: await waitingKeyboard(user, Boolean(progress.payment_receipt_object_key)) });
 }
@@ -334,7 +327,7 @@ async function sendPaymentReceipt(client: TelegramClient, user: BotUser, chatId:
       bytes: receipt.bytes,
       filename: `first-card-payment-receipt.${ext}`,
       mimeType: receipt.mimeType,
-      caption: user.lang === "fa" ? "🧾 رسید پرداخت اولین کارت شما" : "🧾 Your first-card payment receipt",
+      caption: pick(BOT.firstCardReceiptCaption, user.lang),
       protectContent: true,
     });
   } catch {
