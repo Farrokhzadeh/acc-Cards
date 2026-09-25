@@ -57,7 +57,8 @@ export const updateAccountInput = z.object({
 });
 
 export async function createKripiAccount(input: z.infer<typeof createAccountInput>, session: AuthSession, request: Request, requestId: string) {
-  return withTransaction(async (db) => {
+  try {
+    return await withTransaction(async (db) => {
     const apiKeyHint = `••••••••${input.apiKey.slice(-4)}`;
     const result = await db.query<{ id: string }>(
       `INSERT INTO kripi_accounts(label, login_email, encrypted_password, encrypted_api_key, api_key_hint, status, created_by, updated_by)
@@ -76,12 +77,19 @@ export async function createKripiAccount(input: z.infer<typeof createAccountInpu
        VALUES ('admin', $1::uuid, 'account.create', 'kripi_account', $2, $3::jsonb, $4::inet, $5)`,
       [session.principal.id, id, JSON.stringify({ label: input.label, loginEmail: input.loginEmail.toLowerCase(), emailProvider: input.emailProvider }), requestIp(request), requestId],
     );
-    return id;
-  });
+      return id;
+    });
+  } catch (error) {
+    if ((error as { code?: string }).code === "23505") {
+      throw new ApiError(409, "mailbox_already_connected", "That mailbox is already connected to another provider account.");
+    }
+    throw error;
+  }
 }
 
 export async function updateKripiAccount(id: string, input: z.infer<typeof updateAccountInput>, session: AuthSession, request: Request, requestId: string) {
-  await withTransaction(async (db) => {
+  try {
+    await withTransaction(async (db) => {
     const fields: string[] = [];
     const values: unknown[] = [];
     const set = (sql: string, value: unknown) => {
@@ -165,7 +173,13 @@ export async function updateKripiAccount(id: string, input: z.infer<typeof updat
        VALUES ('admin', $1::uuid, 'account.update', 'kripi_account', $2, $3::jsonb, $4::inet, $5)`,
       [session.principal.id, id, JSON.stringify({ changedFields: Object.keys(input) }), requestIp(request), requestId],
     );
-  });
+    });
+  } catch (error) {
+    if ((error as { code?: string }).code === "23505") {
+      throw new ApiError(409, "mailbox_already_connected", "That mailbox is already connected to another provider account.");
+    }
+    throw error;
+  }
 }
 
 export async function revealKripiAccountSecrets(id: string, session: AuthSession, request: Request, requestId: string) {
