@@ -24,6 +24,7 @@ test("Microsoft OAuth requests delegated mail access plus offline refresh access
   assert.match(microsoftClient, /User\.Read/);
   assert.match(microsoftClient, /code_challenge_method/);
   assert.match(microsoftClient, /S256/);
+  assert.match(microsoftClient, /prompt.*select_account/);
 });
 
 test("OAuth and delta state are encrypted and mailbox tokens never reach the browser", () => {
@@ -41,9 +42,11 @@ test("Outlook synchronization stores message metadata and provider preview rathe
 });
 
 
-test("Outlook OAuth binds the authorized Microsoft identity to the configured mailbox", () => {
+test("Outlook OAuth binds each provider account to its own authorized Microsoft identity", () => {
   assert.match(microsoftService, /microsoft_mailbox_mismatch/);
-  assert.match(microsoftService, /providerIdentityEmail !== configuredConnection\.email_address/);
+  assert.match(microsoftService, /configuredMailbox && providerIdentityEmail !== configuredMailbox/);
+  assert.match(microsoftService, /email_address = \$5/);
+  assert.match(microsoftService, /microsoft_mailbox_already_connected/);
 });
 test("revoked Microsoft authorization moves the connector to reauth_required", () => {
   assert.match(microsoftService, /connection_status = 'reauth_required'/);
