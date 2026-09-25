@@ -3,7 +3,7 @@ import { getPool, withTransaction } from "@/server/database/pool";
 import { ApiError } from "@/server/http/api";
 import { getTelegramClient } from "@/server/telegram/credentials";
 import { deletePrivateReceipt, storePrivateReceipt, readPrivateReceipt } from "@/server/receipts/storage";
-import { markReceiptAttachedInTransaction } from "@/server/funding/service";
+import { expireStaleFundingRequests, markReceiptAttachedInTransaction } from "@/server/funding/service";
 
 export async function attachTelegramReceipt(input: {
   userId: string;
@@ -14,10 +14,14 @@ export async function attachTelegramReceipt(input: {
   declaredMimeType?: string | null;
 }) {
   const env = parseServerEnv(process.env);
-  const request = await getPool().query<{ id: string; status: string }>(
-    `SELECT id,status FROM funding_requests WHERE id=$1::uuid AND user_id=$2::uuid`, [input.requestId,input.userId],
+  await expireStaleFundingRequests(input.userId);
+  const request = await getPool().query<{ id: string; status: string; admin_note: string | null }>(
+    `SELECT id,status,admin_note FROM funding_requests WHERE id=$1::uuid AND user_id=$2::uuid`, [input.requestId,input.userId],
   );
   if (!request.rows[0]) throw new ApiError(404,"not_found","Funding request not found.");
+  if (request.rows[0].status === "cancelled" && request.rows[0].admin_note === "Expired automatically after 5 minutes without a receipt.") {
+    throw new ApiError(409,"funding_request_expired","This funding request expired because no receipt was submitted within 5 minutes. Start a new funding request.");
+  }
   if (!["pending_receipt","correction_needed"].includes(request.rows[0].status)) throw new ApiError(409,"invalid_state","This request is not waiting for receipt evidence.");
 
   const telegram = await getTelegramClient();
