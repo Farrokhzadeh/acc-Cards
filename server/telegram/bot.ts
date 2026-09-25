@@ -157,9 +157,10 @@ async function handlePaymentAmountText(client: TelegramClient, user: BotUser, ch
     .replace("{amount}", escapeHtml(amount))
     .replace("{card}", escapeHtml(pc.cardNumber))
     .replace("{holder}", escapeHtml(pc.cardHolder || "—"));
-  const rateLine = user.lang === "fa"
-    ? `نرخ ثبت‌شده: <b>${escapeHtml(BigInt(payment.rateRialPerUsd).toLocaleString("en-US"))}</b> ریال برای هر دلار\nمبلغ دقیق قابل پرداخت: <b>${escapeHtml(formatRialValue(payment.customerPaysRial))}</b>`
-    : `Locked rate: <b>${escapeHtml(BigInt(payment.rateRialPerUsd).toLocaleString("en-US"))}</b> rial/USD\nPay exactly: <b>${escapeHtml(formatRialValue(payment.customerPaysRial))}</b>`;
+  const rateLine = render(BOT.firstCardRate, user.lang, {
+    rate: escapeHtml(BigInt(payment.rateRialPerUsd).toLocaleString("en-US")),
+    rial: escapeHtml(formatRialValue(payment.customerPaysRial)),
+  });
   await client.sendMessage({ chatId, text: `${instructions}\n\n${rateLine}\n\n${pick(PAYMENT.askReceipt, user.lang)}` });
   return true;
 }
