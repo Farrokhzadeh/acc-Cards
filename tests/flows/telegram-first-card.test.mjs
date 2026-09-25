@@ -4,6 +4,7 @@ import test from "node:test";
 
 const migration = await readFile(new URL("../../db/migrations/0009_telegram_bot.sql", import.meta.url), "utf8");
 const bot = await readFile(new URL("../../server/telegram/bot.ts", import.meta.url), "utf8");
+const botMessages = await readFile(new URL("../../server/kyc/messages.ts", import.meta.url), "utf8");
 const telegramClient = await readFile(new URL("../../server/providers/telegram/client.ts", import.meta.url), "utf8");
 const webhookRoute = await readFile(new URL("../../app/api/telegram/webhook/route.ts", import.meta.url), "utf8");
 const outbox = await readFile(new URL("../../server/telegram/outbox.ts", import.meta.url), "utf8");
@@ -78,7 +79,7 @@ test("support remains usable before first-card onboarding completes", () => {
 
 test("Telegram reveals full card details only for the current owner and does not persist protected card data", () => {
   assert.match(bot, /card\.reveal/);
-  assert.match(bot, /Show full card info/);
+  assert.match(botMessages, /Show full card info/);
   assert.match(bot, /getLiveKripicardCardDetailsForTelegram/);
   assert.match(bot, /protectContent: true/);
   assert.match(bot, /if \(!args\.protectContent\) logChatMessage/);
@@ -145,7 +146,7 @@ test("first-card receipts use the shared payment ledger and private receipt stor
 test("first-card payment snapshots the exchange rate before receipt collection", () => {
   assert.match(bot, /createFirstCardPayment/);
   assert.match(bot, /"payment_receipt", \{ paymentId: payment\.id \}/);
-  assert.match(bot, /Locked rate/);
+  assert.match(botMessages, /Locked rate/);
   assert.match(payments, /currentPaymentRate/);
   assert.match(payments, /rate_rial_per_usd/);
   assert.match(payments, /customer_pays_rial/);
