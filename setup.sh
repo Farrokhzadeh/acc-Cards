@@ -40,6 +40,20 @@ ENABLE_KRIPICARD_CARD_STATE_WRITES=false
 ENABLE_KRIPICARD_CARD_CREATION=false
 ENABLE_KRIPICARD_CARD_FUNDING=false
 
+KRIPICARD_BASE_URL=https://appapi.kripicard.com
+KRIPICARD_PORTAL_URL=https://app.kripicard.com
+
+MICROSOFT_OAUTH_CLIENT_ID=
+MICROSOFT_OAUTH_CLIENT_SECRET=
+MICROSOFT_OAUTH_TENANT=consumers
+
+GOOGLE_OAUTH_CLIENT_ID=
+GOOGLE_OAUTH_CLIENT_SECRET=
+GOOGLE_GMAIL_TIMEOUT_MS=10000
+
+TELEGRAM_BOT_TOKEN=
+TELEGRAM_WEBHOOK_SECRET=
+
 ACCABAD_DATA_DIR=./runtime-data
 ACCABAD_BIND_IP=127.0.0.1
 ACCABAD_PORT=3000
@@ -63,3 +77,9 @@ echo "       -e BOOTSTRAP_ADMIN_EMAIL='you@example.com' \\"
 echo "       -e BOOTSTRAP_ADMIN_PASSWORD='a-strong-password-12+' \\"
 echo "       admin-bootstrap"
 echo "  3) open http://localhost:3000"
+echo
+echo "[setup] Optional integrations are already listed in .env:"
+echo "  - Microsoft Outlook/Hotmail: MICROSOFT_OAUTH_CLIENT_ID / MICROSOFT_OAUTH_CLIENT_SECRET"
+echo "  - Gmail: GOOGLE_OAUTH_CLIENT_ID / GOOGLE_OAUTH_CLIENT_SECRET"
+echo "  - Telegram: TELEGRAM_BOT_TOKEN / TELEGRAM_WEBHOOK_SECRET"
+echo "After changing integration credentials, recreate the app and worker containers."
