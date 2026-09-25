@@ -92,8 +92,6 @@ export default function ClientWorkspacePage({ clientId }: { clientId: string }) 
   const [actionBusy, setActionBusy] = useState(false);
 
   const loadWorkspace = useCallback(async () => {
-    setLoading(true);
-    setFatalError(null);
     try {
       const data = await fetchClientWorkspace(clientId);
       setWorkspace(data);
