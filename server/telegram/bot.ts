@@ -624,7 +624,7 @@ async function sendCards(client: TelegramClient, user: BotUser, chatId: number) 
   const rows: TelegramInlineKeyboard["inline_keyboard"] = [];
   for (const card of cards) {
     const token = await createCallbackToken({ userId: user.id, action: "card.detail", entityId: card.id });
-    rows.push([{ text: `${card.status === "frozen" ? "❄️" : "💳"} ${card.label || "Card"} •${card.last4 ?? "????"}`, callback_data: token }]);
+    rows.push([{ text: `${card.status === "frozen" ? "❄️" : "💳"} ${card.label || pick(BOT.defaultCardLabel, user.lang)} •${card.last4 ?? "????"}`, callback_data: token }]);
   }
   rows.push([{ text: pick(MENU.back, user.lang), callback_data: await createCallbackToken({ userId: user.id, action: "menu.home" }) }]);
   await client.sendMessage({ chatId, text: pick(FLOW.cardsHeader, user.lang), replyMarkup: { inline_keyboard: rows } });
@@ -1263,7 +1263,7 @@ async function handleCallback(client: TelegramClient, callback: z.infer<typeof c
   try {
     resolved = await resolveCallbackToken(token, user.id);
   } catch (error) {
-    await client.answerCallbackQuery(callback.id, error instanceof ApiError ? error.message : "This button is unavailable.", true);
+    await client.answerCallbackQuery(callback.id, error instanceof ApiError ? error.message : pick(BOT.callbackUnavailable, user.lang), true);
     return;
   }
   await client.answerCallbackQuery(callback.id);
@@ -1277,7 +1277,7 @@ async function handleCallback(client: TelegramClient, callback: z.infer<typeof c
     const lang = resolved.action === "lang.fa" ? "fa" : "en";
     await setUserLang(user.id, lang);
     user.lang = lang;
-    await client.sendMessage({ chatId, text: lang === "fa" ? COMMON.langSetFa.fa : COMMON.langSetEn.en });
+    await client.sendMessage({ chatId, text: pick(lang === "fa" ? COMMON.langSetFa : COMMON.langSetEn, lang) });
     await routeHome(client, user, chatId);
     return;
   }
@@ -1366,9 +1366,14 @@ async function handleCallback(client: TelegramClient, callback: z.infer<typeof c
           email: state.payload.email,
         });
         await setBotState(user.id, "card_request_receipt", { cardRequestId: created.request.id, paymentId: created.payment.id }, 60);
-        const payText = user.lang === "fa"
-          ? `درخواست <b>${escapeHtml(created.request.reference)}</b> ثبت شد.\nمبلغ: <b>${formatUsdCents(created.payment.customerPaysUsdCents)}</b>\nنرخ ثبت‌شده: ${escapeHtml(BigInt(created.payment.rateRialPerUsd).toLocaleString("en-US"))} ریال/دلار\nمبلغ دقیق قابل پرداخت: <b>${escapeHtml(formatRialValue(created.payment.customerPaysRial))}</b>\nکارت پرداخت: <code>${escapeHtml(paymentCard.cardNumber)}</code>\nبه نام: <b>${escapeHtml(paymentCard.cardHolder || "—")}</b>\n\nبعد از پرداخت، رسید را همینجا ارسال کنید. تا تایید مدیر هیچ کارتی ساخته نمی‌شود.`
-          : `Card request <b>${escapeHtml(created.request.reference)}</b> was created.\nUSD basis: <b>${formatUsdCents(created.payment.customerPaysUsdCents)}</b>\nLocked rate: ${escapeHtml(BigInt(created.payment.rateRialPerUsd).toLocaleString("en-US"))} rial/USD\nPay exactly: <b>${escapeHtml(formatRialValue(created.payment.customerPaysRial))}</b>\nPayment card: <code>${escapeHtml(paymentCard.cardNumber)}</code>\nHolder: <b>${escapeHtml(paymentCard.cardHolder || "—")}</b>\n\nAfter paying, upload the receipt here. No card will be approved or issued before admin verification.`;
+        const payText = render(BOT.cardRequestPayment, user.lang, {
+          reference: escapeHtml(created.request.reference),
+          usd: formatUsdCents(created.payment.customerPaysUsdCents),
+          rate: escapeHtml(BigInt(created.payment.rateRialPerUsd).toLocaleString("en-US")),
+          rial: escapeHtml(formatRialValue(created.payment.customerPaysRial)),
+          card: escapeHtml(paymentCard.cardNumber),
+          holder: escapeHtml(paymentCard.cardHolder || "—"),
+        });
         await client.sendMessage({ chatId, text: payText });
         break;
       }
@@ -1425,10 +1430,7 @@ async function handleCallback(client: TelegramClient, callback: z.infer<typeof c
           },
         });
         await setBotState(user.id, "funding_request_receipt", { fundingRequestId: created.id }, 60);
-        await client.sendMessage({ chatId, text: `Funding request <b>${escapeHtml(created.reference)}</b> was created with an immutable quote.
-Now upload your payment receipt as a JPEG, PNG, WebP, or PDF.
-
-No card funding has been executed yet.` });
+        await client.sendMessage({ chatId, text: render(BOT.fundingCreated, user.lang, { reference: escapeHtml(created.reference) }) });
         break;
       }
       case "fundreq.cancel_draft":
@@ -1455,7 +1457,7 @@ No card funding has been executed yet.` });
       case "support.start": await beginSupport(client, user, chatId); break;
       default: await client.sendMessage({ chatId, text: pick(BOT.actionExpired, user.lang) });
   }  } catch (error) {
-    const message = error instanceof ApiError ? error.message : "This action could not be completed right now.";
+    const message = error instanceof ApiError ? error.message : pick(BOT.actionFailed, user.lang);
     await client.sendMessage({ chatId, text: escapeHtml(message) });
     await auditTelegramEvent({ userId: user.id, action: "telegram.callback.failed", entityType: "telegram_callback", entityId: resolved.id, requestId, metadata: { action: resolved.action, errorCode: error instanceof ApiError ? error.code : "internal_error" } });
   }
@@ -1779,7 +1781,7 @@ async function handleMessage(client: TelegramClient, message: z.infer<typeof mes
   if (await supportMode(user.id)) {
     try {
       const stored = await storeSupportMessage(user, message, client);
-      await client.sendMessage({ chatId, text: stored.duplicate ? "Support already received this message." : `Your message${stored.attachment ? " and attachment" : ""} was sent to support. Send another message, or /cancel to return to the menu.` });
+      await client.sendMessage({ chatId, text: stored.duplicate ? pick(BOT.supportDuplicate, user.lang) : render(BOT.supportSent, user.lang, { attachment: stored.attachment ? pick(BOT.supportAttachmentSuffix, user.lang) : "" }) });
     } catch (error) {
       await client.sendMessage({ chatId, text: error instanceof ApiError ? escapeHtml(error.message) : pick(BOT.supportFailed, user.lang) });
     }
