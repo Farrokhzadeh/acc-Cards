@@ -16,7 +16,6 @@ else
   cat > .env <<EOF
 APP_ENV=staging
 APP_BASE_URL=${APP_BASE_URL:-http://localhost:3000}
-APP_VERSION=phase24
 HOST=0.0.0.0
 PORT=3000
 LOG_LEVEL=info
