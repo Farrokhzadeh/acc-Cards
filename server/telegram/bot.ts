@@ -962,21 +962,35 @@ async function sendCardRequestDetail(client: TelegramClient, user: BotUser, chat
   ).join("\n");
   const rows: TelegramInlineKeyboard["inline_keyboard"] = [];
   if (detail.payment?.receiptId) {
-    rows.push([{ text: user.lang === "fa" ? "🧾 مشاهده رسید" : "🧾 View receipt", callback_data: await createCallbackToken({ userId: user.id, action: "payment.receipt", entityId: detail.payment.id }) }]);
+    rows.push([{ text: pick(BOT.viewReceipt, user.lang), callback_data: await createCallbackToken({ userId: user.id, action: "payment.receipt", entityId: detail.payment.id }) }]);
   }
   if (detail.payment && ["pending_receipt", "correction_needed"].includes(detail.payment.status)) {
-    rows.push([{ text: "Upload payment receipt", callback_data: await createCallbackToken({ userId: user.id, action: "cardreq.upload_receipt", entityId: request.id, ttlMinutes: 20 }) }]);
+    rows.push([{ text: pick(BOT.uploadPaymentReceiptButton, user.lang), callback_data: await createCallbackToken({ userId: user.id, action: "cardreq.upload_receipt", entityId: request.id, ttlMinutes: 20 }) }]);
   }
   if (["pending_review", "correction_needed"].includes(request.status) && !["accepted", "completed"].includes(detail.payment?.status ?? "")) {
-    rows.push([{ text: "Cancel request", callback_data: await createCallbackToken({ userId: user.id, action: "cardreq.cancel_existing", entityId: request.id, singleUse: true, ttlMinutes: 10 }) }]);
+    rows.push([{ text: pick(BOT.cancelRequest, user.lang), callback_data: await createCallbackToken({ userId: user.id, action: "cardreq.cancel_existing", entityId: request.id, singleUse: true, ttlMinutes: 10 }) }]);
   }
-  rows.push([{ text: "← My requests", callback_data: await createCallbackToken({ userId: user.id, action: "menu.requests" }) }]);
+  rows.push([{ text: pick(BOT.backRequests, user.lang), callback_data: await createCallbackToken({ userId: user.id, action: "menu.requests" }) }]);
   const paymentText = detail.payment
-    ? `\nPayment: <b>${escapeHtml(detail.payment.status)}</b>\nRate: ${escapeHtml(BigInt(detail.payment.rateRialPerUsd).toLocaleString("en-US"))} rial/USD\nPayable: <b>${escapeHtml(formatRialValue(detail.payment.customerPaysRial))}</b>`
+    ? render(BOT.cardRequestPaymentDetail, user.lang, {
+        status: escapeHtml(detail.payment.status),
+        rate: escapeHtml(BigInt(detail.payment.rateRialPerUsd).toLocaleString("en-US")),
+        rial: escapeHtml(formatRialValue(detail.payment.customerPaysRial)),
+      })
     : "";
+  const adminNote = request.adminNote ? render(BOT.adminNoteLine, user.lang, { note: escapeHtml(request.adminNote) }) : "";
   await client.sendMessage({
     chatId,
-    text: `<b>${escapeHtml(request.reference)}</b>\nType: <b>New card</b>\nStatus: <b>${escapeHtml(request.status)}</b>\nInitial amount: <b>${formatUsdCents(request.initialAmountUsdCents)}</b>\nEmail: <code>${escapeHtml(request.email)}</code>${paymentText}${request.adminNote ? `\nAdmin note: ${escapeHtml(request.adminNote)}` : ""}\n\n<b>Timeline</b>\n${timeline || "No timeline events."}`,
+    text: render(BOT.cardRequestDetail, user.lang, {
+      reference: escapeHtml(request.reference),
+      type: escapeHtml(pick(BOT.newCardType, user.lang)),
+      status: escapeHtml(request.status),
+      amount: formatUsdCents(request.initialAmountUsdCents),
+      email: escapeHtml(request.email),
+      payment: paymentText,
+      adminNote,
+      timeline: timeline || escapeHtml(pick(BOT.noTimelineEvents, user.lang)),
+    }),
     replyMarkup: { inline_keyboard: rows },
   });
 }
