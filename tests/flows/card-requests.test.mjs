@@ -12,6 +12,7 @@ const outbox = await readFile(new URL("../../server/telegram/outbox.ts", import.
 const dashboard = await readFile(new URL("../../app/dashboard-app.tsx", import.meta.url), "utf8");
 const payments = await readFile(new URL("../../server/payments/service.ts", import.meta.url), "utf8");
 const paymentReceipts = await readFile(new URL("../../server/payments/receipts.ts", import.meta.url), "utf8");
+const purchaseMinimumMigration = await readFile(new URL("../../db/migrations/0037_unify_card_purchase_minimum.sql", import.meta.url), "utf8");
 
 test("Phase 12 adds immutable-style card request timeline records and review permissions", () => {
   assert.match(migration, /card_request_events/);
@@ -43,13 +44,18 @@ test("request creation stays serialized without enforcing an automatic card-coun
   assert.doesNotMatch(service, /platform_card_limit|platformLimit|card_limit_reached/);
 });
 
-test("request submission uses approved KYC and configured minimum without requiring a preassigned account", () => {
+test("request submission uses approved KYC and the visible card-purchase minimum without requiring a preassigned account", () => {
   assert.match(service, /latestApprovedKyc/);
   assert.match(service, /status='approved'/);
-  assert.match(service, /minimum_card_creation_usd_cents/);
+  assert.match(service, /payment_min_load_usd/);
+  assert.match(service, /setting<number>\(db, "payment_min_load_usd", 25\)/);
   assert.match(service, /amount_below_minimum/);
-  assert.match(service, /Math\.max\(1000/);
+  assert.doesNotMatch(service, /minimum_card_creation_usd_cents/);
   assert.doesNotMatch(service, /account_assignment_required/);
+  assert.match(purchaseMinimumMigration, /'payment_min_load_usd', '25'::jsonb/);
+  assert.match(purchaseMinimumMigration, /DELETE FROM settings\s+WHERE key = 'minimum_card_creation_usd_cents'/);
+  assert.match(dashboard, /Card purchase minimum/);
+  assert.match(dashboard, /first card or requests an additional card/);
 });
 
 test("additional-card requests require a customer payment receipt before admin approval", () => {
