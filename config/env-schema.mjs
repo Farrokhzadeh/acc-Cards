@@ -18,7 +18,6 @@ const schema = z
   .object({
     APP_ENV: z.enum(["development", "staging", "production"]).default("development"),
     APP_BASE_URL: z.string().url(),
-    APP_VERSION: z.string().min(1).default("phase24"),
     HOST: z.string().min(1).default("0.0.0.0"),
     PORT: z.coerce.number().int().min(1).max(65535).default(3000),
     LOG_LEVEL: z.enum(["debug", "info", "warn", "error"]).default("info"),
@@ -225,11 +224,14 @@ const schema = z
           message: "Production requires fail-closed ClamAV scanning for private uploads.",
         });
       }
-      if (!env.PRODUCTION_ROLLOUT_BLOCKED && env.PRODUCTION_ROLLOUT_AUTHORIZATION !== "PHASE24_RELEASE_AUTHORIZED") {
+      if (
+        !env.PRODUCTION_ROLLOUT_BLOCKED &&
+        !["ACCABAD_PRODUCTION_RELEASE_AUTHORIZED", "PHASE24_RELEASE_AUTHORIZED"].includes(env.PRODUCTION_ROLLOUT_AUTHORIZATION ?? "")
+      ) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
           path: ["PRODUCTION_ROLLOUT_AUTHORIZATION"],
-          message: "Unblocking production requires PRODUCTION_ROLLOUT_AUTHORIZATION=PHASE24_RELEASE_AUTHORIZED.",
+          message: "Unblocking production requires PRODUCTION_ROLLOUT_AUTHORIZATION=ACCABAD_PRODUCTION_RELEASE_AUTHORIZED.",
         });
       }
     }
