@@ -33,9 +33,10 @@ test("transaction summaries come from stored transactions", () => {
   assert.doesNotMatch(dashboard, /formatUsd\(9\.99\)/);
 });
 
-test("connected inbox input is optional and falls back to the login email", () => {
-  assert.match(dashboard, /accountForm\.mailbox\.trim\(\) \|\| accountForm\.owner\.trim\(\)/);
+test("connected inbox input is optional and OAuth can discover the mailbox identity", () => {
+  assert.doesNotMatch(dashboard, /accountForm\.mailbox\.trim\(\) \|\| accountForm\.owner\.trim\(\)/);
   assert.match(dashboard, /Connected inbox address/);
   assert.match(dashboard, /optional/);
-  assert.match(dashboard, /Each account stores its own encrypted OAuth refresh token/);
+  assert.match(dashboard, /Leave blank and click Connect/);
+  assert.match(dashboard, /every connected account stores its own encrypted refresh token/);
 });
