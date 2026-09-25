@@ -396,7 +396,7 @@ export default function ClientWorkspacePage({ clientId }: { clientId: string }) 
                     <div><p className="text-xs text-[#9692a3]">Province / state</p><p className="mt-1 font-semibold">{kyc.deliveryProvince ?? "—"}</p></div>
                     <div><p className="text-xs text-[#9692a3]">City</p><p className="mt-1 font-semibold">{kyc.deliveryCity ?? "—"}</p></div>
                     <div><p className="text-xs text-[#9692a3]">Postal / ZIP</p><p className="mt-1 font-semibold">{kyc.deliveryPostalCode ?? "—"}</p></div>
-                    <div className="md:col-span-2 xl:col-span-3"><p className="text-xs text-[#9692a3]">Card delivery address</p><p className="mt-1 font-semibold">{kyc.deliveryAddressLine ?? "—"}</p><p className="mt-1 text-xs text-[#9692a3]">Collected so the customer's card can be sent to this address.</p></div>
+                    <div className="md:col-span-2 xl:col-span-3"><p className="text-xs text-[#9692a3]">Card delivery address</p><p className="mt-1 font-semibold">{kyc.deliveryAddressLine ?? "—"}</p><p className="mt-1 text-xs text-[#9692a3]">Collected so the customer’s card can be sent to this address.</p></div>
                   </div>
                   {kyc.reviewNote && <div className="rounded-xl bg-[#faf9fc] p-3 text-sm">Review note: {kyc.reviewNote}</div>}
                   {kyc.hasDocument && <Button variant="outline" onClick={() => openAdminAttachment({ url: kycDocumentUrl(kyc.id), title: `KYC document · ${kyc.fullName}`, filename: "kyc-document", mimeType: kyc.documentMimeType })}><FileText className="size-4" />View document</Button>}
