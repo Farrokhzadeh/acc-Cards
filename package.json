@@ -20,7 +20,6 @@
     "verify": "npm run env:check && npm run lint && npm run typecheck && npm test && npm run build",
     "db:migrate": "docker compose run --rm db-migrate",
     "db:status": "docker compose exec -T postgres sh -lc 'psql -X -U \"$POSTGRES_USER\" -d \"$POSTGRES_DB\" -c \"TABLE schema_migrations ORDER BY applied_at;\"'",
-    "db:seed-demo": "bash scripts/db/seed-demo.sh",
     "admin:bootstrap": "node scripts/admin/bootstrap.mjs",
     "build:worker": "vite build --config vite.worker.config.ts",
     "worker": "npm run env:check && node dist-worker/worker.mjs",
