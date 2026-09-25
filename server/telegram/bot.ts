@@ -1032,9 +1032,9 @@ async function beginFundingRequest(client: TelegramClient, user: BotUser, chatId
   const rows: TelegramInlineKeyboard["inline_keyboard"] = [];
   for (const card of cards) {
     const token = await createCallbackToken({ userId: user.id, action: "fundreq.card", entityId: card.id, ttlMinutes: 20 });
-    rows.push([{ text: `${card.label || "Card"} •${card.last4 ?? "????"}`, callback_data: token }]);
+    rows.push([{ text: `${card.label || pick(BOT.defaultCardLabel, user.lang)} •${card.last4 ?? "????"}`, callback_data: token }]);
   }
-  rows.push([{ text: "Cancel", callback_data: await createCallbackToken({ userId: user.id, action: "menu.home" }) }]);
+  rows.push([{ text: pick(BOT.cancel, user.lang), callback_data: await createCallbackToken({ userId: user.id, action: "menu.home" }) }]);
   await client.sendMessage({ chatId, text: pick(BOT.fundingChooseCard, user.lang), replyMarkup: { inline_keyboard: rows } });
 }
 
