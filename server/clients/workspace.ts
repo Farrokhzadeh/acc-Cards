@@ -85,7 +85,7 @@ export async function getClientWorkspace(userId: string) {
          FROM funding_requests fr
          JOIN cards c ON c.id=fr.card_id
         WHERE fr.user_id=$1::uuid
-          AND NOT (fr.status='cancelled' AND fr.admin_note='Expired automatically after 5 minutes without a receipt.')
+          AND NOT (fr.status='cancelled' AND COALESCE(fr.admin_note,'')='Expired automatically after 5 minutes without a receipt.')
         ORDER BY fr.submitted_at DESC,fr.id DESC
         LIMIT 100`,
       [userId],
