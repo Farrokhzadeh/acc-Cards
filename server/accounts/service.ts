@@ -6,12 +6,20 @@ import { auditAdminEvent } from "@/server/auth/service";
 import { requestIp } from "@/server/auth/request-meta";
 import type { AuthSession } from "@/server/auth/types";
 
-const emailConnectionFields = {
-  emailProvider: z.enum(["outlook", "gmail"]),
-  emailAddress: z.string().trim().email().max(320),
-};
+const emailProviderSchema = z.enum(["outlook", "gmail"]);
+const emailAddressSchema = z.string().trim().email().max(320);
 
-function validateProviderMailbox(value: { emailProvider?: "outlook" | "gmail"; emailAddress?: string }, ctx: z.RefinementCtx) {
+function optionalMailbox(value: unknown) {
+  if (typeof value === "string" && value.trim() === "") return undefined;
+  return value;
+}
+
+function nullableMailbox(value: unknown) {
+  if (typeof value === "string" && value.trim() === "") return null;
+  return value;
+}
+
+function validateProviderMailbox(value: { emailProvider?: "outlook" | "gmail"; emailAddress?: string | null }, ctx: z.RefinementCtx) {
   if (!value.emailProvider || !value.emailAddress) return;
   const domain = value.emailAddress.trim().toLowerCase().split("@").at(-1) ?? "";
   if (value.emailProvider === "gmail" && domain !== "gmail.com") {
@@ -27,7 +35,8 @@ export const createAccountInput = z.object({
   loginEmail: z.string().trim().email().max(320),
   password: z.string().min(1).max(500),
   apiKey: z.string().min(1).max(2000),
-  ...emailConnectionFields,
+  emailProvider: emailProviderSchema,
+  emailAddress: z.preprocess(optionalMailbox, emailAddressSchema.optional()),
 }).superRefine(validateProviderMailbox);
 
 export const updateAccountInput = z.object({
@@ -35,14 +44,14 @@ export const updateAccountInput = z.object({
   loginEmail: z.string().trim().email().max(320).optional(),
   password: z.string().min(1).max(500).optional(),
   apiKey: z.string().min(1).max(2000).optional(),
-  emailProvider: emailConnectionFields.emailProvider.optional(),
-  emailAddress: emailConnectionFields.emailAddress.optional(),
+  emailProvider: emailProviderSchema.optional(),
+  emailAddress: z.preprocess(nullableMailbox, emailAddressSchema.nullable().optional()),
 }).superRefine((value, ctx) => {
   if (Object.keys(value).length === 0) {
     ctx.addIssue({ code: z.ZodIssueCode.custom, message: "At least one field must be supplied." });
   }
-  if ((value.emailProvider && !value.emailAddress) || (!value.emailProvider && value.emailAddress)) {
-    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["emailAddress"], message: "emailProvider and emailAddress must be supplied together." });
+  if ((value.emailProvider !== undefined) !== (value.emailAddress !== undefined)) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["emailAddress"], message: "When changing mailbox settings, supply both emailProvider and emailAddress. emailAddress may be null." });
   }
   validateProviderMailbox(value, ctx);
 });
@@ -60,7 +69,7 @@ export async function createKripiAccount(input: z.infer<typeof createAccountInpu
     await db.query(
       `INSERT INTO email_accounts(account_id, provider, email_address, connection_status)
        VALUES ($1::uuid, $2, $3, 'not_connected')`,
-      [id, input.emailProvider, input.emailAddress.toLowerCase()],
+      [id, input.emailProvider, input.emailAddress?.toLowerCase() ?? null],
     );
     await db.query(
       `INSERT INTO audit_logs(actor_type, actor_id, action, entity_type, entity_id, metadata_redacted, ip, request_id)
@@ -99,7 +108,7 @@ export async function updateKripiAccount(id: string, input: z.infer<typeof updat
     );
     if (!result.rowCount) throw new ApiError(404, "not_found", "Account not found.");
 
-    if (input.emailProvider && input.emailAddress) {
+    if (input.emailProvider !== undefined && input.emailAddress !== undefined) {
       await db.query(
         `INSERT INTO email_accounts(account_id, provider, email_address, connection_status, updated_at)
          VALUES ($1::uuid, $2, $3, 'not_connected', now())
@@ -147,7 +156,7 @@ export async function updateKripiAccount(id: string, input: z.infer<typeof updat
              ELSE email_accounts.last_error_message
            END,
            updated_at = now()`,
-        [id, input.emailProvider, input.emailAddress.toLowerCase()],
+        [id, input.emailProvider, input.emailAddress?.toLowerCase() ?? null],
       );
     }
 
