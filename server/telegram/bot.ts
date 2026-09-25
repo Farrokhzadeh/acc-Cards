@@ -698,6 +698,7 @@ async function sendRequests(client: TelegramClient, user: BotUser, chatId: numbe
       `SELECT cr.id,cr.reference,cr.status,cr.created_at
          FROM card_requests cr
         WHERE cr.user_id=$1::uuid
+          AND cr.origin <> 'admin_direct'
           AND NOT EXISTS (SELECT 1 FROM customer_payments cp WHERE cp.card_request_id=cr.id)
           AND NOT EXISTS (SELECT 1 FROM telegram_users tu WHERE tu.id=cr.user_id AND tu.onboarding_card_request_id=cr.id)
         ORDER BY cr.created_at DESC
