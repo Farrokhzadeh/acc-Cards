@@ -7,6 +7,7 @@ import {
   Ban,
   Bell,
   CreditCard,
+  Plus,
   FileText,
   MessageSquare,
   Paperclip,
@@ -24,20 +25,31 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { Toaster } from "@/components/ui/sonner";
 import {
+  AdminApiError,
+  assignClientAccount,
+  createAdminDirectCard,
   customerPaymentReceiptUrl,
+  fetchAdminDirectCardOptions,
   fetchClientKyc,
   fetchClientPayments,
   fetchClientSupportMessages,
   fetchClientWorkspace,
   kycDocumentUrl,
   notifyClient,
+  reauthenticateAdmin,
   sendClientSupportMessage,
   setClientBanned,
+  unassignClientAccount,
+  type AdminDirectCardOptions,
   type ApiCustomerPaymentHistory,
   type ClientKyc,
   type ClientWorkspace,
@@ -90,6 +102,21 @@ export default function ClientWorkspacePage({ clientId }: { clientId: string }) 
   const [supportFile, setSupportFile] = useState<File | null>(null);
   const [supportBusy, setSupportBusy] = useState(false);
   const [actionBusy, setActionBusy] = useState(false);
+  const [directCardOpen, setDirectCardOpen] = useState(false);
+  const [directOptions, setDirectOptions] = useState<AdminDirectCardOptions | null>(null);
+  const [directBusy, setDirectBusy] = useState(false);
+  const [directAccountId, setDirectAccountId] = useState("");
+  const [directBin, setDirectBin] = useState("");
+  const [directAmount, setDirectAmount] = useState("25");
+  const [directName, setDirectName] = useState("");
+  const [directEmail, setDirectEmail] = useState("");
+  const [directDob, setDirectDob] = useState("");
+  const [walletConfirmed, setWalletConfirmed] = useState(false);
+  const [accountManagerOpen, setAccountManagerOpen] = useState(false);
+  const [reauthOpen, setReauthOpen] = useState(false);
+  const [reauthPassword, setReauthPassword] = useState("");
+  const [reauthCode, setReauthCode] = useState("");
+  const [pendingDirectRetry, setPendingDirectRetry] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -184,6 +211,100 @@ export default function ClientWorkspacePage({ clientId }: { clientId: string }) 
     }));
     return [...card, ...funding].sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime());
   }, [workspace]);
+
+  const refreshWorkspace = async () => {
+    const data = await fetchClientWorkspace(clientId);
+    setWorkspace(data);
+    return data;
+  };
+
+  const loadDirectOptions = async () => {
+    const options = await fetchAdminDirectCardOptions(clientId);
+    setDirectOptions(options);
+    const preferred = options.accounts.find((account) => account.selected) ?? options.accounts[0] ?? null;
+    setDirectAccountId((current) => current || preferred?.id || "");
+    setDirectBin((current) => current || options.bins[0]?.bin || "");
+    setDirectName((current) => current || options.defaults.nameOnCard);
+    setDirectDob((current) => current || options.defaults.dateOfBirth || "");
+    if (!directEmail && preferred?.loginEmail) setDirectEmail(preferred.loginEmail);
+    return options;
+  };
+
+  const openDirectCard = async () => {
+    setDirectCardOpen(true);
+    try {
+      await loadDirectOptions();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not load direct card options.");
+    }
+  };
+
+  const submitDirectCard = async () => {
+    if (directBusy) return;
+    const amountUsdCents = Math.round(Number(directAmount) * 100);
+    if (!directAccountId || !directBin || !directName.trim() || !directEmail.trim() || !Number.isFinite(amountUsdCents) || amountUsdCents <= 0) {
+      toast.error("Choose an account and BIN, then enter a valid amount, cardholder name, and email.");
+      return;
+    }
+    setDirectBusy(true);
+    try {
+      const result = await createAdminDirectCard(clientId, {
+        accountId: directAccountId,
+        bin: directBin,
+        amountUsdCents,
+        nameOnCard: directName.trim(),
+        email: directEmail.trim(),
+        dateOfBirth: directDob.trim() || null,
+        walletFundingConfirmed: walletConfirmed,
+      });
+      await refreshWorkspace();
+      setDirectCardOpen(false);
+      setWalletConfirmed(false);
+      toast.success(result.status === "issued" ? `Card created directly (${result.reference}).` : `Provider outcome needs reconciliation (${result.reference}).`);
+    } catch (error) {
+      if (error instanceof AdminApiError && error.code === "reauthentication_required") {
+        setPendingDirectRetry(true);
+        setReauthOpen(true);
+      } else {
+        toast.error(error instanceof Error ? error.message : "Direct card creation failed.");
+      }
+    } finally {
+      setDirectBusy(false);
+    }
+  };
+
+  const submitReauth = async () => {
+    if (!reauthPassword.trim()) return;
+    setDirectBusy(true);
+    try {
+      await reauthenticateAdmin(reauthPassword, reauthCode.trim() || undefined);
+      setReauthOpen(false);
+      setReauthPassword("");
+      setReauthCode("");
+      if (pendingDirectRetry) {
+        setPendingDirectRetry(false);
+        await submitDirectCard();
+      }
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Reauthentication failed.");
+    } finally {
+      setDirectBusy(false);
+    }
+  };
+
+  const changeAccountAssignment = async (accountId: string, selected: boolean) => {
+    setDirectBusy(true);
+    try {
+      if (selected) await unassignClientAccount(clientId, accountId);
+      else await assignClientAccount(clientId, accountId);
+      await Promise.all([refreshWorkspace(), loadDirectOptions()]);
+      toast.success(selected ? "Provider account unassigned." : "Provider account assigned.");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Account assignment failed.");
+    } finally {
+      setDirectBusy(false);
+    }
+  };
 
   const handleBan = async () => {
     if (!workspace || actionBusy) return;
