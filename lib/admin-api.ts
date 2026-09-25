@@ -1106,3 +1106,54 @@ export async function reviewKycSubmission(
 export function kycDocumentUrl(id: string): string {
   return `/api/v1/kyc/${encodeURIComponent(id)}/document`;
 }
+
+
+export type BotTextItem = {
+  key: string;
+  section: string;
+  name: string;
+  defaultEn: string;
+  defaultFa: string;
+  enText: string;
+  faText: string;
+  overridden: boolean;
+  hasImage: boolean;
+  imageMimeType: string | null;
+  imageFilename: string | null;
+  updatedAt: string | null;
+};
+
+export async function fetchBotTexts() {
+  return apiJson<{ items: BotTextItem[] }>("/api/v1/telegram/texts", { method: "GET" });
+}
+
+export async function updateBotText(key: string, input: { enText: string; faText: string }) {
+  return apiJson<{ key: string }>(`/api/v1/telegram/texts/${encodeURIComponent(key)}`, {
+    method: "PUT",
+    body: JSON.stringify(input),
+  });
+}
+
+export async function resetBotText(key: string) {
+  return apiJson<{ key: string }>(`/api/v1/telegram/texts/${encodeURIComponent(key)}`, {
+    method: "DELETE",
+    body: "{}",
+  });
+}
+
+export async function uploadBotTextImage(key: string, image: File) {
+  const form = new FormData();
+  form.set("image", image);
+  return apiFormData<{ key: string }>(`/api/v1/telegram/texts/${encodeURIComponent(key)}/image`, form);
+}
+
+export async function removeBotTextImage(key: string) {
+  return apiJson<{ key: string }>(`/api/v1/telegram/texts/${encodeURIComponent(key)}/image`, {
+    method: "DELETE",
+    body: "{}",
+  });
+}
+
+export function botTextImageUrl(key: string) {
+  return `/api/v1/telegram/texts/${encodeURIComponent(key)}/image`;
+}

@@ -49,7 +49,7 @@ import {
   XCircle,
 } from "lucide-react";
 import { toast } from "sonner";
-import { AdminApiError, createAccount, archiveAccount, fetchDashboardSnapshot, reauthenticateAdmin, revealAccountSecrets, updateAccount, verifyAccountConnection, syncAccountCards, fetchAccountCards, type ApiCard, revealLiveCardDetails, syncCardTransactions, fetchCardTransactions, fetchTransactions, fetchTransactionNotificationIssues, reconcileTransactionNotification, setCardFrozenState, refreshCardStatus, connectOutlookMailbox, syncOutlookMailbox, disconnectOutlookMailbox, connectGmailMailbox, syncGmailMailbox, disconnectGmailMailbox, fetchEmailOAuthSetup, type EmailOAuthSetup, fetchAccountEmailMessages, classifyAccountEmail, revealParsedOtp, fetchTrustedEmailRules, createTrustedEmailRule, updateTrustedEmailRule, fetchTelegramBotStatus, configureTelegramWebhook, setTelegramBotToken, clearTelegramBotToken, fetchPaymentCard, updatePaymentCard, fetchFirstCardSettings, updateFirstCardSettings, notifyClient, fetchClientPipeline, type ClientPipelineItem, setClientBanned, fetchClientKyc, type ClientKyc, type ClientPayment, clientReceiptUrl, activateClient, fetchAccountDepositCoins, fetchAccountDepositNetworks, fetchAccountDeposits, createAccountDeposit, refreshAccountDeposit, type AccountDeposit, fetchForceJoinChannels, upsertForceJoinChannel, deleteForceJoinChannel, fetchSupportConversations, updateSupportConversation, retrySupportMessage, fetchClientSupportMessages, sendClientSupportMessage, fetchClientAssignableAccounts, fetchCardRequests, reviewCardRequest, issueCardRequest, reconcileCardRequest, attachExistingCardRequest, reviewCustomerPayment, customerPaymentReceiptUrl, type ApiCardRequest, fetchFundingRequests, reviewFundingRequest, executeFundingRequest, reconcileFundingRequest, resolveFundingRequest, fetchProviderWalletGate, type ProviderWalletGate, fundingReceiptDownloadUrl, fetchFundingSettings, updateFundingSettings, type ApiFundingRequest, type AssignableClientAccount, type LiveCardDetails, type StoredCardTransaction, type StoredEmailMessage, type TelegramBotStatus, fetchProviderReadiness, updateProviderReadinessCheck, type ProviderReadinessSnapshot, type TransactionNotificationIssue, type SupportConversationSummary, fetchOperationalSnapshot, updateOperationalAlert, updateRuntimeControl, type OperationalSnapshot, fetchKycSubmissions, reviewKycSubmission, kycDocumentUrl, type ApiKycSubmission } from "@/lib/admin-api";
+import { AdminApiError, createAccount, archiveAccount, fetchDashboardSnapshot, reauthenticateAdmin, revealAccountSecrets, updateAccount, verifyAccountConnection, syncAccountCards, fetchAccountCards, type ApiCard, revealLiveCardDetails, syncCardTransactions, fetchCardTransactions, fetchTransactions, fetchTransactionNotificationIssues, reconcileTransactionNotification, setCardFrozenState, refreshCardStatus, connectOutlookMailbox, syncOutlookMailbox, disconnectOutlookMailbox, connectGmailMailbox, syncGmailMailbox, disconnectGmailMailbox, fetchEmailOAuthSetup, type EmailOAuthSetup, fetchAccountEmailMessages, classifyAccountEmail, revealParsedOtp, fetchTrustedEmailRules, createTrustedEmailRule, updateTrustedEmailRule, fetchTelegramBotStatus, configureTelegramWebhook, setTelegramBotToken, clearTelegramBotToken, fetchPaymentCard, updatePaymentCard, fetchFirstCardSettings, updateFirstCardSettings, notifyClient, fetchClientPipeline, type ClientPipelineItem, setClientBanned, fetchClientKyc, type ClientKyc, type ClientPayment, clientReceiptUrl, activateClient, fetchAccountDepositCoins, fetchAccountDepositNetworks, fetchAccountDeposits, createAccountDeposit, refreshAccountDeposit, type AccountDeposit, fetchForceJoinChannels, upsertForceJoinChannel, deleteForceJoinChannel, fetchSupportConversations, updateSupportConversation, retrySupportMessage, fetchClientSupportMessages, sendClientSupportMessage, fetchClientAssignableAccounts, fetchCardRequests, reviewCardRequest, issueCardRequest, reconcileCardRequest, attachExistingCardRequest, reviewCustomerPayment, customerPaymentReceiptUrl, type ApiCardRequest, fetchFundingRequests, reviewFundingRequest, executeFundingRequest, reconcileFundingRequest, resolveFundingRequest, fetchProviderWalletGate, type ProviderWalletGate, fundingReceiptDownloadUrl, fetchFundingSettings, updateFundingSettings, type ApiFundingRequest, type AssignableClientAccount, type LiveCardDetails, type StoredCardTransaction, type StoredEmailMessage, type TelegramBotStatus, fetchProviderReadiness, updateProviderReadinessCheck, type ProviderReadinessSnapshot, type TransactionNotificationIssue, type SupportConversationSummary, fetchOperationalSnapshot, updateOperationalAlert, updateRuntimeControl, type OperationalSnapshot, fetchKycSubmissions, reviewKycSubmission, kycDocumentUrl, type ApiKycSubmission, fetchBotTexts, updateBotText, resetBotText, uploadBotTextImage, removeBotTextImage, botTextImageUrl, type BotTextItem } from "@/lib/admin-api";
 import { disableAdminMfa, enableAdminMfa, fetchCurrentAdmin, logoutAdmin, setupAdminMfa, type CurrentAdmin } from "@/lib/auth-client";
 
 import { AdminAttachmentViewer, openAdminAttachment } from "@/components/admin/attachment-viewer";
@@ -141,6 +141,7 @@ type View =
   | "clients"
   | "requests"
   | "inbox"
+  | "bot-texts"
   | "operations"
   | "settings";
 
@@ -283,6 +284,7 @@ const navItems: { view: View; label: string; icon: typeof LayoutDashboard; badge
   { view: "clients", label: "Clients", icon: Users },
   { view: "requests", label: "Requests", icon: ReceiptText },
   { view: "inbox", label: "Inbox", icon: MessagesSquare },
+  { view: "bot-texts", label: "Bot texts", icon: FileText },
   { view: "operations", label: "Operations", icon: Activity },
   { view: "settings", label: "Settings", icon: Settings2 },
 ];
@@ -293,6 +295,7 @@ const viewCopy: Record<View, { title: string; description: string }> = {
   clients: { title: "Telegram clients", description: "Account assignments, cards, access, and activity." },
   requests: { title: "Requests", description: "Review add-funds requests, KYC, and transaction issues." },
   inbox: { title: "Client inbox", description: "Handle Telegram support without leaving the console." },
+  "bot-texts": { title: "Bot texts", description: "Edit English/Farsi Telegram copy and optional message images." },
   operations: { title: "Operations", description: "Audit, worker health, sync lag, and operational alerts." },
   settings: { title: "Settings", description: "Pricing, exchange rate, bot access, and 3DS routing." },
 };
@@ -1695,7 +1698,7 @@ export default function DashboardApp() {
   const badgeFor = (view: View): number => (view === "requests" ? pendingRequestCount : view === "inbox" ? unreadInboxCount : 0);
 
   useEffect(() => {
-    const valid: View[] = ["overview", "accounts", "clients", "requests", "inbox", "operations", "settings"];
+    const valid: View[] = ["overview", "accounts", "clients", "requests", "inbox", "bot-texts", "operations", "settings"];
     const applyHash = () => {
       const hash = window.location.hash.replace(/^#/, "") as View;
       if (valid.includes(hash)) setView(hash);
@@ -1878,6 +1881,8 @@ export default function DashboardApp() {
                 }}
               />
             )}
+            {view === "bot-texts" && <BotTextsView search={search} />}
+
             {view === "operations" && (
               <OperationsView snapshot={operationalSnapshot} onControlAction={async (key, enabled) => {
                 const reason = window.prompt(`${enabled ? "Enable" : "Disable"} this runtime control. Enter an audit reason:`);
@@ -3187,6 +3192,156 @@ function OperationsView({ snapshot, onAlertAction, onControlAction }: { snapshot
     <details className="group overflow-hidden rounded-2xl border bg-white"><summary className="flex cursor-pointer list-none items-center justify-between p-5 font-semibold">Safety controls <ChevronRight className="size-4 transition group-open:rotate-90" /></summary><div className="grid gap-3 border-t p-5 lg:grid-cols-2">{snapshot.controls.map((control) => { const readOnly = control.key === "read_only_mode"; const healthy = readOnly ? !control.effectiveEnabled : control.effectiveEnabled; return <div key={control.key} className="flex items-start justify-between gap-3 rounded-xl border p-4"><div><div className="flex flex-wrap items-center gap-2"><p className="text-sm font-semibold">{control.label}</p><Badge variant="outline" className={healthy ? "border-emerald-200 text-emerald-700" : "border-red-200 text-red-700"}>{control.effectiveEnabled ? "enabled" : "disabled"}</Badge></div><p className="mt-1 text-xs text-[#777287]">{control.description}</p></div>{snapshot.canManageControls && <Button size="sm" variant="outline" disabled={readOnly && control.deploymentForced} onClick={() => void onControlAction(control.key, !control.runtimeEnabled)}>{control.runtimeEnabled ? "Disable" : "Enable"}</Button>}</div>; })}</div></details>
     <details className="group overflow-hidden rounded-2xl border bg-white"><summary className="flex cursor-pointer list-none items-center justify-between p-5 font-semibold">Advanced diagnostics <ChevronRight className="size-4 transition group-open:rotate-90" /></summary><div className="space-y-6 border-t p-5"><section><h3 className="text-sm font-semibold">Signals</h3><div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">{metrics.map(([label, value]) => <div key={label} className="rounded-xl border p-3"><p className="text-xs text-[#9692a3]">{label}</p><p className={`mt-1 text-xl font-semibold ${value ? "text-amber-700" : ""}`}>{value}</p></div>)}</div></section><section><h3 className="text-sm font-semibold">Scheduled workers</h3><div className="mt-3 overflow-x-auto"><Table><TableHeader><TableRow><TableHead>Job</TableHead><TableHead>Status</TableHead><TableHead>Failures</TableHead><TableHead>Lag</TableHead><TableHead>Last success</TableHead></TableRow></TableHeader><TableBody>{snapshot.jobs.map((job) => <TableRow key={job.jobKey}><TableCell className="font-medium">{job.jobKey}</TableCell><TableCell><Badge variant="outline">{job.status}</Badge></TableCell><TableCell>{job.consecutiveFailures}/{job.maxAttempts}</TableCell><TableCell>{job.lagSeconds}s</TableCell><TableCell>{job.lastSucceededAt ? new Date(job.lastSucceededAt).toLocaleString() : "Never"}</TableCell></TableRow>)}</TableBody></Table></div></section><section><h3 className="text-sm font-semibold">Recent audit activity</h3><div className="mt-3 space-y-2">{snapshot.recentAudit.slice(0, 20).map((item) => <div key={item.id} className="flex items-start justify-between gap-4 rounded-xl border p-3"><div><p className="text-sm font-medium">{item.action}</p><p className="text-xs text-[#9692a3]">{item.actorType} · {item.entityType}{item.entityId ? ` · ${item.entityId}` : ""}</p></div><span className="shrink-0 text-xs text-[#9692a3]">{new Date(item.createdAt).toLocaleString()}</span></div>)}</div></section></div></details>
   </div>;
+}
+
+
+function BotTextsView({ search }: { search: string }) {
+  const [items, setItems] = useState<BotTextItem[]>([]);
+  const [activeKey, setActiveKey] = useState<string | null>(null);
+  const [draft, setDraft] = useState({ enText: "", faText: "" });
+  const [busy, setBusy] = useState(false);
+
+  const load = async (keepKey?: string | null) => {
+    const result = await fetchBotTexts();
+    setItems(result.items);
+    const nextKey = keepKey ?? activeKey ?? result.items[0]?.key ?? null;
+    setActiveKey(nextKey);
+    const selected = result.items.find((item) => item.key === nextKey);
+    if (selected) setDraft({ enText: selected.enText, faText: selected.faText });
+  };
+
+  useEffect(() => {
+    let cancelled = false;
+    fetchBotTexts()
+      .then((result) => {
+        if (cancelled) return;
+        setItems(result.items);
+        const first = result.items[0] ?? null;
+        setActiveKey(first?.key ?? null);
+        if (first) setDraft({ enText: first.enText, faText: first.faText });
+      })
+      .catch((error) => { if (!cancelled) toast.error(error instanceof Error ? error.message : "Could not load bot texts."); });
+    return () => { cancelled = true; };
+  }, []);
+
+  const needle = search.trim().toLowerCase();
+  const filtered = items.filter((item) => !needle || `${item.key} ${item.enText} ${item.faText}`.toLowerCase().includes(needle));
+  const selected = items.find((item) => item.key === activeKey) ?? null;
+
+  const select = (item: BotTextItem) => {
+    setActiveKey(item.key);
+    setDraft({ enText: item.enText, faText: item.faText });
+  };
+
+  const save = async () => {
+    if (!selected || !draft.enText.trim() || !draft.faText.trim()) return;
+    setBusy(true);
+    try {
+      await updateBotText(selected.key, { enText: draft.enText, faText: draft.faText });
+      await load(selected.key);
+      toast.success("Bot text saved. New Telegram messages will use it immediately.");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not save bot text.");
+    } finally { setBusy(false); }
+  };
+
+  const reset = async () => {
+    if (!selected) return;
+    setBusy(true);
+    try {
+      await resetBotText(selected.key);
+      await load(selected.key);
+      toast.success("Text restored to the built-in default.");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not reset bot text.");
+    } finally { setBusy(false); }
+  };
+
+  const uploadImage = async (file: File | null) => {
+    if (!selected || !file) return;
+    setBusy(true);
+    try {
+      await uploadBotTextImage(selected.key, file);
+      await load(selected.key);
+      toast.success("Image attached. The bot will send it before this message.");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not upload image.");
+    } finally { setBusy(false); }
+  };
+
+  const removeImage = async () => {
+    if (!selected) return;
+    setBusy(true);
+    try {
+      await removeBotTextImage(selected.key);
+      await load(selected.key);
+      toast.success("Message image removed.");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not remove image.");
+    } finally { setBusy(false); }
+  };
+
+  return (
+    <div className="grid gap-5 xl:grid-cols-[360px_minmax(0,1fr)]">
+      <Card className="surface-card rounded-[24px]">
+        <CardHeader>
+          <CardTitle>Translation keys</CardTitle>
+          <p className="text-sm text-[#8f8b9c]">Android-style keys. Search by key or either language.</p>
+        </CardHeader>
+        <CardContent className="max-h-[72vh] space-y-2 overflow-y-auto">
+          {filtered.map((item) => (
+            <button key={item.key} type="button" onClick={() => select(item)} className={`w-full rounded-xl border p-3 text-left transition ${activeKey === item.key ? "border-[#8179e8] bg-[#f1efff]" : "border-[#ebe9f1] bg-white hover:bg-[#faf9fc]"}`}>
+              <div className="flex items-center justify-between gap-2">
+                <code className="text-xs font-semibold text-[#5146ca]">{item.key}</code>
+                <div className="flex gap-1">{item.overridden && <Badge variant="outline" className="text-[10px]">edited</Badge>}{item.hasImage && <Badge variant="outline" className="text-[10px]">image</Badge>}</div>
+              </div>
+              <p className="mt-2 line-clamp-2 text-xs text-[#777287]">{item.enText}</p>
+            </button>
+          ))}
+          {filtered.length === 0 && <p className="rounded-xl border border-dashed p-4 text-sm text-[#8f8b9c]">No matching bot text.</p>}
+        </CardContent>
+      </Card>
+
+      {selected ? <Card className="surface-card rounded-[24px]">
+        <CardHeader>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div><CardTitle>{selected.key}</CardTitle><p className="mt-1 text-sm text-[#8f8b9c]">Keep placeholders such as <code>{"{amount}"}</code> unchanged. HTML used by Telegram is supported.</p></div>
+            <Badge variant="outline">{selected.section}</Badge>
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-5">
+          <div className="grid gap-4 lg:grid-cols-2">
+            <div className="grid gap-2">
+              <Label>English</Label>
+              <Textarea value={draft.enText} onChange={(event) => setDraft((current) => ({ ...current, enText: event.target.value }))} className="min-h-[220px] font-mono text-sm" />
+              <details className="text-xs text-[#8f8b9c]"><summary className="cursor-pointer">Built-in default</summary><pre className="mt-2 whitespace-pre-wrap rounded-lg bg-slate-50 p-2">{selected.defaultEn}</pre></details>
+            </div>
+            <div className="grid gap-2">
+              <Label>فارسی</Label>
+              <Textarea dir="rtl" value={draft.faText} onChange={(event) => setDraft((current) => ({ ...current, faText: event.target.value }))} className="min-h-[220px] font-mono text-sm" />
+              <details className="text-xs text-[#8f8b9c]"><summary className="cursor-pointer">متن پیش‌فرض</summary><pre dir="rtl" className="mt-2 whitespace-pre-wrap rounded-lg bg-slate-50 p-2">{selected.defaultFa}</pre></details>
+            </div>
+          </div>
+
+          <div className="rounded-2xl border border-[#ebe9f1] bg-[#faf9fc] p-4">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div><p className="font-semibold text-[#353146]">Optional message image</p><p className="mt-1 text-xs text-[#777287]">JPEG, PNG, or WebP up to 5 MB. If present, Telegram sends the image immediately before this text.</p></div>
+              <label className="inline-flex cursor-pointer items-center gap-2 rounded-xl border bg-white px-3 py-2 text-sm font-medium"><Paperclip className="size-4" />Choose image<input type="file" accept="image/jpeg,image/png,image/webp" className="hidden" disabled={busy} onChange={(event) => void uploadImage(event.target.files?.[0] ?? null)} /></label>
+            </div>
+            {selected.hasImage && <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center">
+              <Image src={botTextImageUrl(selected.key)} alt="" width={240} height={150} unoptimized className="max-h-[150px] w-auto rounded-xl border object-contain" />
+              <div className="min-w-0"><p className="truncate text-sm font-medium">{selected.imageFilename ?? "Bot message image"}</p><p className="text-xs text-[#8f8b9c]">{selected.imageMimeType}</p><Button type="button" variant="outline" size="sm" className="mt-2 rounded-xl border-red-200 text-red-700" disabled={busy} onClick={() => void removeImage()}><Trash2 className="size-4" />Remove image</Button></div>
+            </div>}
+          </div>
+
+          <div className="flex flex-wrap gap-2">
+            <Button disabled={busy || !draft.enText.trim() || !draft.faText.trim()} onClick={() => void save()} className="rounded-xl bg-[#6157e7] text-white hover:bg-[#554bcf]"><Check className="size-4" />Save text</Button>
+            <Button variant="outline" disabled={busy} onClick={() => void reset()} className="rounded-xl"><RefreshCw className="size-4" />Reset text</Button>
+          </div>
+        </CardContent>
+      </Card> : <Card className="surface-card rounded-[24px]"><CardContent className="p-8 text-sm text-[#8f8b9c]">Select a translation key.</CardContent></Card>}
+    </div>
+  );
 }
 
 function SettingsView({ serviceFee, exchangeRate, minimumFunding, botToken, showToken, telegramStatus, channels, newChannel, onServiceFee, onExchangeRate, onMinimumFunding, onSavePricing, onBotToken, onSaveBotToken, onClearBotToken, onShowToken, onConfigureWebhook, onNewChannel, onAddChannel, onRemoveChannel }: { serviceFee: number; exchangeRate: number; minimumFunding: number; botToken: string; showToken: boolean; telegramStatus: TelegramBotStatus | null; channels: string[]; newChannel: string; onServiceFee: (value: number) => void; onExchangeRate: (value: number) => void; onMinimumFunding: (value: number) => void; onSavePricing: () => void | Promise<void>; onBotToken: (value: string) => void; onSaveBotToken: () => void | Promise<void>; onClearBotToken: () => void | Promise<void>; onShowToken: (value: boolean) => void; onConfigureWebhook: () => void | Promise<void>; onNewChannel: (value: string) => void; onAddChannel: () => void | Promise<void>; onRemoveChannel: (channel: string) => void | Promise<void> }) {

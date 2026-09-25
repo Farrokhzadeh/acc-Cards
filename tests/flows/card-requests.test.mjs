@@ -5,6 +5,7 @@ import test from "node:test";
 const migration = await readFile(new URL("../../db/migrations/0011_card_request_workflow.sql", import.meta.url), "utf8");
 const service = await readFile(new URL("../../server/card-requests/service.ts", import.meta.url), "utf8");
 const bot = await readFile(new URL("../../server/telegram/bot.ts", import.meta.url), "utf8");
+const botMessages = await readFile(new URL("../../server/kyc/messages.ts", import.meta.url), "utf8");
 const listRoute = await readFile(new URL("../../app/api/v1/card-requests/route.ts", import.meta.url), "utf8");
 const transitionRoute = await readFile(new URL("../../app/api/v1/card-requests/[id]/transition/route.ts", import.meta.url), "utf8");
 const outbox = await readFile(new URL("../../server/telegram/outbox.ts", import.meta.url), "utf8");
@@ -101,7 +102,7 @@ test("additional-card requests are reachable from Telegram and managed from the 
   assert.match(dashboard, /Issue card/);
   assert.match(dashboard, /New cards/);
   assert.match(dashboard, /Internal account/);
-  assert.match(bot, /Request a new card/);
-  assert.match(bot, /My requests/);
+  assert.match(botMessages, /Request a new card/);
+  assert.match(botMessages, /My requests/);
   assert.doesNotMatch(transitionRoute, /card_request_flow_disabled/);
 });

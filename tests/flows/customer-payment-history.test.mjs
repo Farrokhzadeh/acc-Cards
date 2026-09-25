@@ -31,8 +31,8 @@ test("Telegram payments and requests history includes all payment purposes and h
   assert.match(bot, /additional_card/);
   assert.match(bot, /card_funding/);
   assert.match(bot, /onboarding_card_request_id=cr\.id/);
-  assert.match(bot, /Locked rate/);
-  assert.match(bot, /Exact rial amount/);
+  assert.match(messages, /Locked rate/);
+  assert.match(messages, /Exact rial amount/);
 });
 
 test("Telegram receipt viewing is payment-owned, protected, and reusable across all payment purposes", () => {
