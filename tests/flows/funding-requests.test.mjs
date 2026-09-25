@@ -17,6 +17,7 @@ const outbox = await readFile(new URL("../../server/telegram/outbox.ts", import.
 const dashboard = await readFile(new URL("../../app/dashboard-app.tsx", import.meta.url), "utf8");
 const payments = await readFile(new URL("../../server/payments/service.ts", import.meta.url), "utf8");
 const paymentMigration = await readFile(new URL("../../db/migrations/0030_customer_payments.sql", import.meta.url), "utf8");
+const receiptDeadlineMigration = await readFile(new URL("../../db/migrations/0036_funding_receipt_deadline.sql", import.meta.url), "utf8");
 
 
 test("Phase 13 adds funding quote snapshots and receipt workflow states", () => {
@@ -157,7 +158,7 @@ test("unpaid funding requests have a hard five minute receipt window", () => {
 test("stale funding requests are cancelled with their unified payment and removed from active work", () => {
   assert.match(service, /expireStaleFundingRequests/);
   assert.match(service, /status='pending_receipt'/);
-  assert.match(service, /quote_expires_at<=now\(\)/);
+  assert.match(service, /receipt_expires_at<=now\(\)/);
   assert.match(service, /SET status='cancelled',admin_note=\$2/);
   assert.match(service, /syncFundingPaymentStatus\(db, row\.id, "cancelled"/);
   assert.match(service, /Expired automatically after 5 minutes without a receipt/);
@@ -170,4 +171,18 @@ test("late funding receipts are rejected before Telegram downloads the file", ()
   assert.ok(telegramDownload > expiryCheck);
   assert.match(receipts, /funding_request_expired/);
   assert.match(receipts, /within 5 minutes/);
+});
+
+
+test("funding quote validity and receipt deadline are stored separately", () => {
+  assert.match(receiptDeadlineMigration, /ADD COLUMN IF NOT EXISTS receipt_expires_at timestamptz/);
+  assert.match(receiptDeadlineMigration, /status = 'pending_receipt'/);
+  assert.match(receiptDeadlineMigration, /SET receipt_expires_at = quote_expires_at/);
+  assert.match(receiptDeadlineMigration, /funding_requests_pending_receipt_deadline_idx/);
+  assert.match(service, /quote_expires_at,receipt_expires_at/);
+  assert.match(service, /quoteExpiresAt,receiptExpiresAt/);
+  assert.match(service, /quoteExpiresAt: row\.quote_expires_at/);
+  assert.match(service, /receiptExpiresAt: row\.receipt_expires_at/);
+  assert.match(dashboard, /Receipt deadline/);
+  assert.match(dashboard, /Original quote valid until/);
 });
