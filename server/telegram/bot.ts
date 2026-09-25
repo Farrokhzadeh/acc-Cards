@@ -483,11 +483,11 @@ async function sendJoinGate(client: TelegramClient, user: BotUser, chatId: numbe
   const rows: TelegramInlineKeyboard["inline_keyboard"] = [];
   for (const channel of missing) {
     const url = channel.inviteUrl || (channel.chatId.startsWith("@") ? `https://t.me/${channel.chatId.slice(1)}` : null);
-    if (url) rows.push([{ text: `Join ${channel.title}`, url }]);
+    if (url) rows.push([{ text: render(BOT.joinChannel, user.lang, { channel: channel.title }), url }]);
   }
   const retry = await createCallbackToken({ userId: user.id, action: "membership.retry" });
-  rows.push([{ text: "✅ I've joined — check again", callback_data: retry }]);
-  await client.sendMessage({ chatId, text: "To use AccAbad, join the required channel(s) below and then check again.", replyMarkup: { inline_keyboard: rows } });
+  rows.push([{ text: pick(BOT.joinRetry, user.lang), callback_data: retry }]);
+  await client.sendMessage({ chatId, text: pick(BOT.joinGate, user.lang), replyMarkup: { inline_keyboard: rows } });
 }
 
 async function mainKeyboard(userId: string, lang: string | null): Promise<TelegramInlineKeyboard> {
@@ -565,7 +565,7 @@ async function sendMainMenu(client: TelegramClient, user: BotUser, chatId: numbe
 
 async function assertBotAccess(client: TelegramClient, user: BotUser, chatId: number) {
   if (user.bannedAt) {
-    await client.sendMessage({ chatId, text: "Your AccAbad access is currently disabled. Contact an administrator." });
+    await client.sendMessage({ chatId, text: pick(KYC.accessDisabled, user.lang) });
     return false;
   }
   const membership = await checkMembership(client, user);
@@ -645,11 +645,11 @@ async function sendCardDetail(client: TelegramClient, user: BotUser, chatId: num
   const stateAction = card.status === "frozen" ? "card.unfreeze" : "card.freeze";
   const stateToken = await createCallbackToken({ userId: user.id, action: stateAction, entityId: card.id, singleUse: true, ttlMinutes: 10 });
   const back = await createCallbackToken({ userId: user.id, action: "menu.cards" });
-  const stateLabel = card.status === "frozen" ? "🔓 Unfreeze" : "❄️ Freeze";
+  const stateLabel = card.status === "frozen" ? pick(BOT.unfreeze, user.lang) : pick(BOT.freeze, user.lang);
   await client.sendMessage({
     chatId,
     text: `<b>${escapeHtml(card.label || "Card")}</b>\nCard: •${escapeHtml(card.last4 ?? "????")}\nStatus: <b>${escapeHtml(card.status)}</b>\nBalance: <b>${formatUsdCents(card.balance_usd_cents)}</b>`,
-    replyMarkup: { inline_keyboard: [[{ text: "👁 Show full card info", callback_data: revealToken }], [{ text: "Transactions", callback_data: txToken }, { text: stateLabel, callback_data: stateToken }], [{ text: "← Cards", callback_data: back }]] },
+    replyMarkup: { inline_keyboard: [[{ text: pick(BOT.showFullCard, user.lang), callback_data: revealToken }], [{ text: pick(BOT.transactions, user.lang), callback_data: txToken }, { text: stateLabel, callback_data: stateToken }], [{ text: pick(BOT.backCards, user.lang), callback_data: back }]] },
   });
 }
 
@@ -665,7 +665,7 @@ async function sendFullCardInfo(client: TelegramClient, user: BotUser, chatId: n
     chatId,
     text: `<b>💳 Full card information</b>\nCard number: <code>${escapeHtml(details.cardNumber)}</code>\nExpiry: <code>${escapeHtml(details.expiry)}</code>\nCVV: <code>${escapeHtml(details.cvv)}</code>\nCardholder: <b>${escapeHtml(holder)}</b>\nBalance: <b>${formatUsdCents(details.balanceUsdCents)}</b>\nStatus: <b>${escapeHtml(details.status)}</b>\n\nKeep these card details private.`,
     protectContent: true,
-    replyMarkup: { inline_keyboard: [[{ text: "← Card", callback_data: back }]] },
+    replyMarkup: { inline_keyboard: [[{ text: pick(BOT.backCard, user.lang), callback_data: back }]] },
   });
 }
 
@@ -683,9 +683,9 @@ async function sendTransactions(client: TelegramClient, user: BotUser, chatId: n
 }
 
 function customerPaymentPurposeLabel(purpose: "first_card" | "additional_card" | "card_funding", lang: string | null) {
-  if (purpose === "first_card") return lang === "fa" ? "اولین کارت" : "First card";
-  if (purpose === "additional_card") return lang === "fa" ? "کارت جدید" : "New card";
-  return lang === "fa" ? "افزایش موجودی کارت" : "Card funding";
+  if (purpose === "first_card") return pick(BOT.firstCardPurpose, lang);
+  if (purpose === "additional_card") return pick(BOT.newCardPurpose, lang);
+  return pick(BOT.fundingPurpose, lang);
 }
 
 function customerPaymentPurposeIcon(purpose: "first_card" | "additional_card" | "card_funding") {
