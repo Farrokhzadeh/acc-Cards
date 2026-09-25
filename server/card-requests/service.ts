@@ -68,9 +68,9 @@ export async function getCardRequestBins(db: DatabaseQueryable = getPool()): Pro
 }
 
 export async function getCardRequestPolicy(db: DatabaseQueryable = getPool()) {
-  const minimumRaw = await setting<number>(db, "minimum_card_creation_usd_cents", 2000);
+  const minimumUsd = Number(await setting<number>(db, "payment_min_load_usd", 25)) || 25;
   return {
-    minimumUsdCents: Math.max(1000, Number(minimumRaw) || 2000),
+    minimumUsdCents: Math.max(100, Math.round(minimumUsd * 100)),
   };
 }
 
