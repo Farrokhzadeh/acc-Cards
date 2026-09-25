@@ -503,6 +503,7 @@ export type ClientWorkspace = {
     reference: string;
     amountUsdCents: string;
     status: string;
+    origin: "customer" | "onboarding" | "admin_direct";
     adminNote: string | null;
     providerCardId: string | null;
     createdAt: string;
