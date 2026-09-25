@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowLeft,
   Ban,
@@ -103,6 +103,8 @@ export default function ClientWorkspacePage({ clientId }: { clientId: string }) 
   const [supportDraft, setSupportDraft] = useState("");
   const [supportFile, setSupportFile] = useState<File | null>(null);
   const [supportBusy, setSupportBusy] = useState(false);
+  const [activeTab, setActiveTab] = useState("overview");
+  const supportScrollRef = useRef<HTMLDivElement | null>(null);
   const [actionBusy, setActionBusy] = useState(false);
   const [directCardOpen, setDirectCardOpen] = useState(false);
   const [directOptions, setDirectOptions] = useState<AdminDirectCardOptions | null>(null);
@@ -191,6 +193,11 @@ export default function ClientWorkspacePage({ clientId }: { clientId: string }) 
   }, [payments, workspace?.transactions]);
 
   const requests = useMemo(() => {
+    const paymentByRequest = new Map<string, ApiCustomerPaymentHistory>();
+    for (const payment of payments) {
+      if (payment.cardRequestId) paymentByRequest.set(`card:${payment.cardRequestId}`, payment);
+      if (payment.fundingRequestId) paymentByRequest.set(`funding:${payment.fundingRequestId}`, payment);
+    }
     const card = (workspace?.cardRequests ?? []).map((request) => ({
       id: `card:${request.id}`,
       kind: "card" as const,
@@ -201,6 +208,7 @@ export default function ClientWorkspacePage({ clientId }: { clientId: string }) 
       amountUsdCents: request.amountUsdCents,
       cardLast4: null as string | null,
       note: request.adminNote,
+      payment: paymentByRequest.get(`card:${request.id}`) ?? null,
     }));
     const funding = (workspace?.fundingRequests ?? []).map((request) => ({
       id: `funding:${request.id}`,
@@ -212,9 +220,15 @@ export default function ClientWorkspacePage({ clientId }: { clientId: string }) 
       amountUsdCents: request.amountUsdCents,
       cardLast4: request.cardLast4,
       note: null as string | null,
+      payment: paymentByRequest.get(`funding:${request.id}`) ?? null,
     }));
     return [...card, ...funding].sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime());
-  }, [workspace]);
+  }, [workspace, payments]);
+
+  const unlinkedReceiptPayments = useMemo(
+    () => payments.filter((payment) => payment.receipt && !payment.cardRequestId && !payment.fundingRequestId),
+    [payments],
+  );
 
   const refreshWorkspace = async () => {
     const data = await fetchClientWorkspace(clientId);
@@ -357,6 +371,15 @@ export default function ClientWorkspacePage({ clientId }: { clientId: string }) 
     }
   };
 
+  useEffect(() => {
+    if (activeTab !== "support") return;
+    const frame = window.requestAnimationFrame(() => {
+      const container = supportScrollRef.current;
+      if (container) container.scrollTop = container.scrollHeight;
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [activeTab, messages]);
+
   const handleSupportSend = async () => {
     if (supportBusy || (!supportDraft.trim() && !supportFile)) return;
     setSupportBusy(true);
@@ -379,7 +402,7 @@ export default function ClientWorkspacePage({ clientId }: { clientId: string }) 
   }
 
   if (fatalError || !workspace) {
-    return <div className="min-h-screen bg-[#f7f7fb] p-6"><div className="mx-auto max-w-xl rounded-2xl border bg-white p-6 shadow-sm"><h1 className="text-lg font-semibold">Customer unavailable</h1><p className="mt-2 text-sm text-slate-500">{fatalError ?? "Customer not found."}</p><Link href="/#clients" className="mt-4 inline-flex items-center gap-2 text-sm font-semibold text-[#6157e7]"><ArrowLeft className="size-4" />Back to clients</Link></div></div>;
+    return <div className="min-h-screen bg-[#f7f7fb] p-6"><div className="mx-auto max-w-xl rounded-2xl border bg-white p-6 shadow-sm"><h1 className="text-lg font-semibold">Customer unavailable</h1><p className="mt-2 text-sm text-slate-500">{fatalError ?? "Customer not found."}</p><Link href="/?view=clients" className="mt-4 inline-flex items-center gap-2 text-sm font-semibold text-[#6157e7]"><ArrowLeft className="size-4" />Back to clients</Link></div></div>;
   }
 
   const clientName = workspace.client.displayName || workspace.client.username || `Telegram ${workspace.client.telegramUserId}`;
@@ -390,7 +413,7 @@ export default function ClientWorkspacePage({ clientId }: { clientId: string }) 
       <Toaster />
       <header className="sticky top-0 z-20 border-b border-[#e9e7ef] bg-[#f7f7fb]/90 backdrop-blur-xl">
         <div className="mx-auto flex max-w-[1500px] items-center gap-4 px-4 py-4 md:px-8">
-          <Button asChild variant="outline" size="sm" className="rounded-xl"><Link href="/#clients"><ArrowLeft className="size-4" />Clients</Link></Button>
+          <Button asChild variant="outline" size="sm" className="rounded-xl"><Link href="/?view=clients"><ArrowLeft className="size-4" />Clients</Link></Button>
           <Avatar className="size-11"><AvatarFallback className="bg-[#eeecff] font-bold text-[#5b50d6]">{initials(clientName)}</AvatarFallback></Avatar>
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-2">
@@ -409,7 +432,7 @@ export default function ClientWorkspacePage({ clientId }: { clientId: string }) 
       </header>
 
       <main className="mx-auto max-w-[1500px] px-4 py-6 md:px-8">
-        <Tabs defaultValue="overview">
+        <Tabs value={activeTab} onValueChange={setActiveTab}>
           <TabsList className="mb-5 h-auto flex-wrap justify-start rounded-[16px] border bg-white p-1.5 shadow-sm">
             <TabsTrigger value="overview">Overview</TabsTrigger>
             <TabsTrigger value="cards">Cards <Badge variant="outline" className="ml-1.5 rounded-full">{workspace.cards.length}</Badge></TabsTrigger>
@@ -517,10 +540,23 @@ export default function ClientWorkspacePage({ clientId }: { clientId: string }) 
                       <p className="mt-1 text-xs text-[#9692a3]">{formatDate(request.at)}</p>
                       {request.note && <p className="mt-1 text-xs text-[#777287]">Admin note: {request.note}</p>}
                     </div>
+                    {request.payment?.receipt && <Button variant="outline" size="sm" onClick={() => openAdminAttachment({ url: customerPaymentReceiptUrl(request.payment!.id), title: `Payment receipt · ${request.reference}`, filename: `${request.payment!.reference}-receipt`, mimeType: request.payment!.receipt?.mimeType })}><Paperclip className="size-4" />Receipt</Button>}
                   </CardContent>
                 </Card>
               ))}
-              {!requests.length && <Card className="rounded-[22px]"><CardContent className="p-8 text-center text-sm text-[#9692a3]">No card or funding requests yet.</CardContent></Card>}
+              {unlinkedReceiptPayments.map((payment) => (
+                <Card key={`receipt:${payment.id}`} className="rounded-[20px] border-dashed">
+                  <CardContent className="flex flex-col gap-3 p-4 md:flex-row md:items-center">
+                    <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-[#eeecff] text-[#6157e7]"><ReceiptText className="size-5" /></span>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-2"><p className="font-semibold">{payment.purpose === "first_card" ? "First-card payment receipt" : "Customer payment receipt"}</p>{statusBadge(payment.status)}</div>
+                      <p className="mt-1 text-xs text-[#9692a3]">{payment.reference} · {formatDate(payment.createdAt)}</p>
+                    </div>
+                    <Button variant="outline" size="sm" onClick={() => openAdminAttachment({ url: customerPaymentReceiptUrl(payment.id), title: `Payment receipt · ${payment.reference}`, filename: `${payment.reference}-receipt`, mimeType: payment.receipt?.mimeType })}><Paperclip className="size-4" />Receipt</Button>
+                  </CardContent>
+                </Card>
+              ))}
+              {!requests.length && !unlinkedReceiptPayments.length && <Card className="rounded-[22px]"><CardContent className="p-8 text-center text-sm text-[#9692a3]">No card or funding requests yet.</CardContent></Card>}
             </div>
           </TabsContent>
 
@@ -552,15 +588,15 @@ export default function ClientWorkspacePage({ clientId }: { clientId: string }) 
 
           <TabsContent value="support">
             <SectionError text={messagesError} />
-            <Card className="rounded-[22px]">
-              <CardHeader><CardTitle className="flex items-center gap-2 text-base"><MessageSquare className="size-5" />Telegram support conversation</CardTitle></CardHeader>
-              <CardContent className="space-y-4">
-                <div className="max-h-[520px] space-y-3 overflow-y-auto rounded-[18px] bg-[#faf9fc] p-4">
+            <Card className="overflow-hidden rounded-[22px]">
+              <CardHeader className="border-b"><CardTitle className="flex items-center gap-2 text-base"><MessageSquare className="size-5" />Telegram support conversation</CardTitle></CardHeader>
+              <CardContent className="flex h-[calc(100dvh-250px)] min-h-[320px] max-h-[720px] flex-col p-0">
+                <div ref={supportScrollRef} className="min-h-0 flex-1 space-y-3 overflow-y-auto bg-[#faf9fc] p-4">
                   {messages.map((message) => <div key={message.id} className={message.direction === "admin_to_client" ? "ml-auto max-w-[80%]" : "mr-auto max-w-[80%]"}><div className={`rounded-[16px] p-3 text-sm ${message.direction === "admin_to_client" ? "bg-[#6157e7] text-white" : "border bg-white"}`}><p className="whitespace-pre-wrap">{message.text}</p>{message.attachment && <button type="button" onClick={() => openAdminAttachment({ url: message.attachment!.downloadUrl, title: `Support attachment · ${message.attachment!.filename}`, filename: message.attachment!.filename, mimeType: message.attachment!.mimeType })} className="mt-2 inline-flex items-center gap-1.5 text-xs font-semibold underline"><Paperclip className="size-3.5" />{message.attachment.filename}</button>}</div><p className="mt-1 text-xs text-[#9692a3]">{formatDate(message.createdAt)} · {message.status}</p></div>)}
                   {!messages.length && <p className="py-8 text-center text-sm text-[#9692a3]">No support messages yet.</p>}
                 </div>
-                <div className="space-y-2">
-                  <Textarea value={supportDraft} onChange={(event) => setSupportDraft(event.target.value)} placeholder="Message this customer in Telegram…" className="min-h-24" />
+                <div className="shrink-0 space-y-2 border-t bg-white p-4">
+                  <Textarea value={supportDraft} onChange={(event) => setSupportDraft(event.target.value)} placeholder="Message this customer in Telegram…" className="min-h-20 resize-none" />
                   <div className="flex flex-wrap items-center justify-between gap-3">
                     <label className="inline-flex cursor-pointer items-center gap-2 text-sm text-[#6157e7]"><Paperclip className="size-4" />{supportFile ? supportFile.name : "Attach file"}<Input type="file" className="hidden" onChange={(event) => setSupportFile(event.target.files?.[0] ?? null)} /></label>
                     <Button disabled={supportBusy || (!supportDraft.trim() && !supportFile)} onClick={() => void handleSupportSend()}><Send className="size-4" />{supportBusy ? "Sending…" : "Send"}</Button>

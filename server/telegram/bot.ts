@@ -5,7 +5,7 @@ import { ApiError } from "@/server/http/api";
 import { randomToken, sha256Hex } from "@/server/security/crypto";
 import { TelegramClient, type TelegramInlineKeyboard } from "@/server/providers/telegram/client";
 import { getLiveKripicardCardDetailsForTelegram, listStoredCardTransactions, setKripicardCardFrozenStateForTelegram } from "@/server/providers/kripicard/service";
-import { cancelTelegramFundingRequest, createTelegramFundingRequest, getFundingPolicy, getTelegramFundingRequest, previewFundingQuote } from "@/server/funding/service";
+import { cancelTelegramFundingRequest, createTelegramFundingRequest, expireStaleFundingRequests, getFundingPolicy, getTelegramFundingRequest, previewFundingQuote } from "@/server/funding/service";
 import { cancelTelegramCardRequest, createTelegramCardRequest, getCardRequestPolicy, getTelegramCardRequest } from "@/server/card-requests/service";
 import { attachTelegramReceipt } from "@/server/funding/receipts";
 import { createFirstCardPayment, getCustomerPaymentHistoryDetail, getPaymentForFundingRequest, listCustomerPaymentsForUser } from "@/server/payments/service";
@@ -687,6 +687,7 @@ function customerPaymentPurposeIcon(purpose: "first_card" | "additional_card" | 
 }
 
 async function sendRequests(client: TelegramClient, user: BotUser, chatId: number) {
+  await expireStaleFundingRequests(user.id);
   const [payments, funding, cards] = await Promise.all([
     listCustomerPaymentsForUser(user.id, 20),
     getPool().query<{ id: string; reference: string; status: string; submitted_at: Date }>(
@@ -1108,17 +1109,26 @@ async function handleFundingReceiptMedia(client: TelegramClient, user: BotUser, 
     await client.sendMessage({ chatId, text: pick(BOT.invalidReceiptType, user.lang) });
     return true;
   }
-  const attached = await attachTelegramReceipt({
-    userId: user.id,
-    requestId: state.payload.fundingRequestId,
-    telegramFileId: selected.file_id,
-    telegramFileUniqueId: selected.file_unique_id,
-    originalFilename: document?.file_name ?? `telegram-receipt-${message.message_id}.jpg`,
-    declaredMimeType: document?.mime_type ?? "image/jpeg",
-  });
-  await getPool().query(`DELETE FROM telegram_bot_states WHERE user_id=$1::uuid`,[user.id]);
-  await client.sendMessage({ chatId, text: `${render(BOT.receiptReceived, user.lang, { reference: escapeHtml(attached.request.reference) })}\n${pick(FLOW.waitPayment, user.lang)}` });
-  return true;
+  try {
+    const attached = await attachTelegramReceipt({
+      userId: user.id,
+      requestId: state.payload.fundingRequestId,
+      telegramFileId: selected.file_id,
+      telegramFileUniqueId: selected.file_unique_id,
+      originalFilename: document?.file_name ?? `telegram-receipt-${message.message_id}.jpg`,
+      declaredMimeType: document?.mime_type ?? "image/jpeg",
+    });
+    await getPool().query(`DELETE FROM telegram_bot_states WHERE user_id=$1::uuid`,[user.id]);
+    await client.sendMessage({ chatId, text: `${render(BOT.receiptReceived, user.lang, { reference: escapeHtml(attached.request.reference) })}\n${pick(FLOW.waitPayment, user.lang)}` });
+    return true;
+  } catch (error) {
+    if (error instanceof ApiError && error.code === "funding_request_expired") {
+      await getPool().query(`DELETE FROM telegram_bot_states WHERE user_id=$1::uuid`,[user.id]);
+      await client.sendMessage({ chatId, text: escapeHtml(error.message) });
+      return true;
+    }
+    throw error;
+  }
 }
 
 async function sendFundingRequestDetail(client: TelegramClient, user: BotUser, chatId: number, requestId: string) {

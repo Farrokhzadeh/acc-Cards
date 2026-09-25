@@ -231,7 +231,7 @@ export const BOT = {
   cardStateNow: m("Card is now <b>{status}</b>.", "کارت اکنون <b>{status}</b> است."),
   cardRequestCancelled: m("Card request cancelled.", "درخواست کارت لغو شد."),
   fundingAmountPrompt: m("Enter the USD amount to add to card •{last4}. Minimum: <b>{minimum}</b>.", "مبلغ دلاری برای افزودن به کارت •{last4} را وارد کنید. حداقل: <b>{minimum}</b>."),
-  fundingCreated: m("Funding request <b>{reference}</b> was created with an immutable quote.\nNow upload your payment receipt as a JPEG, PNG, WebP, or PDF.\n\nNo card funding has been executed yet.", "درخواست افزایش موجودی <b>{reference}</b> با نرخ ثابت ایجاد شد.\nاکنون رسید پرداخت را به صورت JPEG، PNG، WebP یا PDF ارسال کنید.\n\nهنوز هیچ افزایش موجودی کارت انجام نشده است."),
+  fundingCreated: m("Funding request <b>{reference}</b> was created with an immutable quote.\nUpload your payment receipt as a JPEG, PNG, WebP, or PDF within <b>5 minutes</b>. After 5 minutes this request is cancelled and a new request is required.\n\nNo card funding has been executed yet.", "درخواست افزایش موجودی <b>{reference}</b> با نرخ ثابت ایجاد شد.\nرسید پرداخت را حداکثر تا <b>۵ دقیقه</b> به صورت JPEG، PNG، WebP یا PDF ارسال کنید. بعد از ۵ دقیقه این درخواست لغو می‌شود و باید درخواست جدیدی ایجاد کنید.\n\nهنوز هیچ افزایش موجودی کارت انجام نشده است."),
   fundingDraftCancelled: m("Funding request draft cancelled.", "پیش‌نویس درخواست افزایش موجودی لغو شد."),
   fundingCancelled: m("Funding request <b>{reference}</b> was cancelled.", "درخواست افزایش موجودی <b>{reference}</b> لغو شد."),
   actionExpired: m("This action is no longer available. Use /start to reopen the menu.", "این عملیات دیگر در دسترس نیست. برای باز کردن دوباره منو /start را بفرستید."),

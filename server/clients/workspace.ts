@@ -1,5 +1,6 @@
 import { getPool } from "@/server/database/pool";
 import { ApiError } from "@/server/http/api";
+import { expireStaleFundingRequests } from "@/server/funding/service";
 
 export async function getClientWorkspace(userId: string) {
   const db = getPool();
@@ -20,6 +21,8 @@ export async function getClientWorkspace(userId: string) {
   );
   const row = user.rows[0];
   if (!row) throw new ApiError(404, "client_not_found", "Telegram client not found.");
+
+  await expireStaleFundingRequests(userId);
 
   const [accounts, cards, transactions, cardRequests, fundingRequests, audit] = await Promise.all([
     db.query<{
@@ -82,6 +85,7 @@ export async function getClientWorkspace(userId: string) {
          FROM funding_requests fr
          JOIN cards c ON c.id=fr.card_id
         WHERE fr.user_id=$1::uuid
+          AND NOT (fr.status='cancelled' AND COALESCE(fr.admin_note,'')='Expired automatically after 5 minutes without a receipt.')
         ORDER BY fr.submitted_at DESC,fr.id DESC
         LIMIT 100`,
       [userId],
