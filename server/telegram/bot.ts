@@ -283,11 +283,16 @@ async function sendKycInfo(client: TelegramClient, user: BotUser, chatId: number
     country: string;
     national_id: string;
     phone: string;
+    delivery_country: string | null;
+    delivery_province: string | null;
+    delivery_city: string | null;
+    delivery_address_line: string | null;
+    delivery_postal_code: string | null;
     status: string;
     submitted_at: Date;
     document_object_key: string | null;
   }>(
-    `SELECT full_name,date_of_birth,country,national_id,phone,status,submitted_at,document_object_key
+    `SELECT full_name,date_of_birth,country,national_id,phone,delivery_country,delivery_province,delivery_city,delivery_address_line,delivery_postal_code,status,submitted_at,document_object_key
        FROM kyc_submissions
       WHERE telegram_user_id=$1::uuid
       ORDER BY submitted_at DESC,id DESC
@@ -300,9 +305,16 @@ async function sendKycInfo(client: TelegramClient, user: BotUser, chatId: number
     return;
   }
   const dob = row.date_of_birth instanceof Date ? row.date_of_birth.toISOString().slice(0, 10) : String(row.date_of_birth ?? "—").slice(0, 10);
+  const deliveryAddress = [
+    row.delivery_address_line,
+    row.delivery_city,
+    row.delivery_province,
+    row.delivery_country,
+    row.delivery_postal_code ? `Postal/ZIP ${row.delivery_postal_code}` : null,
+  ].filter(Boolean).join(", ") || "—";
   const text = user.lang === "fa"
-    ? `<b>🪪 اطلاعات احراز هویت</b>\nنام: <b>${escapeHtml(row.full_name)}</b>\nتاریخ تولد: ${escapeHtml(dob)}\nکشور: ${escapeHtml(row.country)}\nکد ملی / گذرنامه: <code>${escapeHtml(row.national_id)}</code>\nتلفن: <code>${escapeHtml(row.phone)}</code>\nوضعیت: <b>${escapeHtml(row.status)}</b>\nمدرک: ${row.document_object_key ? "ثبت شده ✅" : "ثبت نشده"}`
-    : `<b>🪪 My KYC</b>\nName: <b>${escapeHtml(row.full_name)}</b>\nDate of birth: ${escapeHtml(dob)}\nCountry: ${escapeHtml(row.country)}\nNational ID / passport: <code>${escapeHtml(row.national_id)}</code>\nPhone: <code>${escapeHtml(row.phone)}</code>\nStatus: <b>${escapeHtml(row.status)}</b>\nDocument: ${row.document_object_key ? "submitted ✅" : "not submitted"}`;
+    ? `<b>🪪 اطلاعات احراز هویت</b>\nنام: <b>${escapeHtml(row.full_name)}</b>\nتاریخ تولد: ${escapeHtml(dob)}\nکشور: ${escapeHtml(row.country)}\nکد ملی / گذرنامه: <code>${escapeHtml(row.national_id)}</code>\nتلفن: <code>${escapeHtml(row.phone)}</code>\nآدرس تحویل کارت: ${escapeHtml(deliveryAddress)}\nوضعیت: <b>${escapeHtml(row.status)}</b>\nمدرک: ${row.document_object_key ? "ثبت شده ✅" : "ثبت نشده"}`
+    : `<b>🪪 My KYC</b>\nName: <b>${escapeHtml(row.full_name)}</b>\nDate of birth: ${escapeHtml(dob)}\nCountry: ${escapeHtml(row.country)}\nNational ID / passport: <code>${escapeHtml(row.national_id)}</code>\nPhone: <code>${escapeHtml(row.phone)}</code>\nCard delivery address: ${escapeHtml(deliveryAddress)}\nStatus: <b>${escapeHtml(row.status)}</b>\nDocument: ${row.document_object_key ? "submitted ✅" : "not submitted"}`;
   const progress = await firstCardProgress(user.id);
   await client.sendMessage({ chatId, text, protectContent: true, replyMarkup: await waitingKeyboard(user, Boolean(progress.payment_receipt_object_key)) });
 }
@@ -1421,6 +1433,11 @@ type KycDraftPayload = {
   country?: string;
   nationalId?: string;
   phone?: string;
+  deliveryCountry?: string;
+  deliveryProvince?: string;
+  deliveryCity?: string;
+  deliveryAddressLine?: string;
+  deliveryPostalCode?: string | null;
   document?: {
     objectKey: string;
     mimeType: string;
@@ -1513,6 +1530,41 @@ async function handleKycText(client: TelegramClient, user: BotUser, chatId: numb
   if (state.mode === "kyc_phone") {
     if (!/^\+?[0-9][0-9 ()-]{6,20}$/.test(value)) { await client.sendMessage({ chatId, text: pick(KYC.errPhone, user.lang) }); return true; }
     draft.phone = value;
+    await setKycState(user.id, "kyc_delivery_country", draft, 30);
+    await client.sendMessage({ chatId, text: pick(KYC.askDeliveryCountry, user.lang) });
+    return true;
+  }
+  if (state.mode === "kyc_delivery_country") {
+    if (value.length < 2 || value.length > 80) { await client.sendMessage({ chatId, text: pick(KYC.errDeliveryCountry, user.lang) }); return true; }
+    draft.deliveryCountry = value;
+    await setKycState(user.id, "kyc_delivery_province", draft, 30);
+    await client.sendMessage({ chatId, text: pick(KYC.askDeliveryProvince, user.lang) });
+    return true;
+  }
+  if (state.mode === "kyc_delivery_province") {
+    if (value.length < 2 || value.length > 120) { await client.sendMessage({ chatId, text: pick(KYC.errDeliveryProvince, user.lang) }); return true; }
+    draft.deliveryProvince = value;
+    await setKycState(user.id, "kyc_delivery_city", draft, 30);
+    await client.sendMessage({ chatId, text: pick(KYC.askDeliveryCity, user.lang) });
+    return true;
+  }
+  if (state.mode === "kyc_delivery_city") {
+    if (value.length < 2 || value.length > 120) { await client.sendMessage({ chatId, text: pick(KYC.errDeliveryCity, user.lang) }); return true; }
+    draft.deliveryCity = value;
+    await setKycState(user.id, "kyc_delivery_address", draft, 30);
+    await client.sendMessage({ chatId, text: pick(KYC.askDeliveryAddress, user.lang) });
+    return true;
+  }
+  if (state.mode === "kyc_delivery_address") {
+    if (value.length < 8 || value.length > 300) { await client.sendMessage({ chatId, text: pick(KYC.errDeliveryAddress, user.lang) }); return true; }
+    draft.deliveryAddressLine = value;
+    await setKycState(user.id, "kyc_delivery_postal", draft, 30);
+    await client.sendMessage({ chatId, text: pick(KYC.askDeliveryPostal, user.lang) });
+    return true;
+  }
+  if (state.mode === "kyc_delivery_postal") {
+    if (value !== "-" && (value.length < 2 || value.length > 32)) { await client.sendMessage({ chatId, text: pick(KYC.errDeliveryPostal, user.lang) }); return true; }
+    draft.deliveryPostalCode = value === "-" ? null : value;
     await setKycState(user.id, "kyc_document", draft, 30);
     await client.sendMessage({ chatId, text: pick(KYC.askDocument, user.lang) });
     return true;
@@ -1575,7 +1627,7 @@ async function handleKycMedia(client: TelegramClient, user: BotUser, chatId: num
 }
 
 async function sendKycConfirm(client: TelegramClient, user: BotUser, chatId: number, draft: KycDraftPayload) {
-  if (!draft.fullName || !draft.country || !draft.nationalId || !draft.phone || !draft.document) {
+  if (!draft.fullName || !draft.country || !draft.nationalId || !draft.phone || !draft.deliveryCountry || !draft.deliveryProvince || !draft.deliveryCity || !draft.deliveryAddressLine || !draft.document) {
     throw new ApiError(409, "kyc_incomplete", "This KYC draft is incomplete. Send /kyc to start again.");
   }
   await setKycState(user.id, "kyc_confirm", draft, 20);
@@ -1587,6 +1639,13 @@ async function sendKycConfirm(client: TelegramClient, user: BotUser, chatId: num
     country: escapeHtml(draft.country),
     nationalId: escapeHtml(draft.nationalId),
     phone: escapeHtml(draft.phone),
+    deliveryAddress: escapeHtml([
+      draft.deliveryAddressLine,
+      draft.deliveryCity,
+      draft.deliveryProvince,
+      draft.deliveryCountry,
+      draft.deliveryPostalCode ? `Postal/ZIP ${draft.deliveryPostalCode}` : null,
+    ].filter(Boolean).join(", ")),
   }, user.lang);
   await client.sendMessage({
     chatId,
@@ -1599,7 +1658,7 @@ async function submitKyc(client: TelegramClient, user: BotUser, chatId: number) 
   const state = await getKycState(user.id);
   if (!state || state.mode !== "kyc_confirm") throw new ApiError(409, "kyc_expired", "This KYC session expired. Send /kyc to start again.");
   const draft = state.payload;
-  if (!draft.fullName || !draft.country || !draft.nationalId || !draft.phone) {
+  if (!draft.fullName || !draft.country || !draft.nationalId || !draft.phone || !draft.deliveryCountry || !draft.deliveryProvince || !draft.deliveryCity || !draft.deliveryAddressLine) {
     throw new ApiError(409, "kyc_incomplete", "This KYC draft is incomplete. Send /kyc to start again.");
   }
   const created = await createKycSubmission({
@@ -1609,6 +1668,11 @@ async function submitKyc(client: TelegramClient, user: BotUser, chatId: number) 
     country: draft.country,
     nationalId: draft.nationalId,
     phone: draft.phone,
+    deliveryCountry: draft.deliveryCountry,
+    deliveryProvince: draft.deliveryProvince,
+    deliveryCity: draft.deliveryCity,
+    deliveryAddressLine: draft.deliveryAddressLine,
+    deliveryPostalCode: draft.deliveryPostalCode ?? null,
     document: draft.document ?? null,
   });
   await getPool().query(`DELETE FROM telegram_bot_states WHERE user_id=$1::uuid`, [user.id]);
@@ -1635,7 +1699,9 @@ async function handleMessage(client: TelegramClient, message: z.infer<typeof mes
     await client.sendMessage({ chatId, text: pick(KYC.accessDisabled, user.lang) });
     return;
   }
-  if ((text || message.photo || message.document) && !(await supportMode(user.id))) {
+  const activeFlowState = await getBotState(user.id);
+  const isSensitiveKycFlow = Boolean(activeFlowState?.mode.startsWith("kyc_"));
+  if ((text || message.photo || message.document) && !(await supportMode(user.id)) && !isSensitiveKycFlow) {
     await logChatMessage(user, "client_to_admin", text || (message.photo ? "[photo]" : "[document]")).catch(() => {});
   }
 

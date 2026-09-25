@@ -21,6 +21,11 @@ export type KycSubmission = {
   country: string;
   nationalId: string;
   phone: string;
+  deliveryCountry: string | null;
+  deliveryProvince: string | null;
+  deliveryCity: string | null;
+  deliveryAddressLine: string | null;
+  deliveryPostalCode: string | null;
   hasDocument: boolean;
   documentMimeType: string | null;
   documentFilename: string | null;
@@ -45,6 +50,11 @@ type Row = {
   country: string;
   national_id: string;
   phone: string;
+  delivery_country: string | null;
+  delivery_province: string | null;
+  delivery_city: string | null;
+  delivery_address_line: string | null;
+  delivery_postal_code: string | null;
   document_object_key: string | null;
   document_mime_type: string | null;
   document_filename: string | null;
@@ -60,6 +70,7 @@ type Row = {
 };
 
 const SELECT = `SELECT k.id, k.telegram_user_id, k.full_name, k.date_of_birth, k.country, k.national_id, k.phone,
+       k.delivery_country, k.delivery_province, k.delivery_city, k.delivery_address_line, k.delivery_postal_code,
        k.document_object_key, k.document_mime_type, k.document_filename, k.status, k.review_note,
        k.reviewed_by, k.reviewed_at, k.submitted_at, k.created_at,
        u.display_name AS u_display_name, u.username AS u_username, u.telegram_user_id AS u_telegram_user_id
@@ -85,6 +96,11 @@ function serialize(row: Row): KycSubmission {
     country: row.country,
     nationalId: row.national_id,
     phone: row.phone,
+    deliveryCountry: row.delivery_country,
+    deliveryProvince: row.delivery_province,
+    deliveryCity: row.delivery_city,
+    deliveryAddressLine: row.delivery_address_line,
+    deliveryPostalCode: row.delivery_postal_code,
     hasDocument: Boolean(row.document_object_key),
     documentMimeType: row.document_mime_type,
     documentFilename: row.document_filename,
@@ -123,13 +139,19 @@ export async function createKycSubmission(input: {
   country: string;
   nationalId: string;
   phone: string;
+  deliveryCountry: string;
+  deliveryProvince: string;
+  deliveryCity: string;
+  deliveryAddressLine: string;
+  deliveryPostalCode: string | null;
   document: KycDocumentRef | null;
 }): Promise<{ id: string }> {
   const result = await getPool().query<{ id: string }>(
     `INSERT INTO kyc_submissions(
         telegram_user_id, full_name, date_of_birth, country, national_id, phone,
+        delivery_country, delivery_province, delivery_city, delivery_address_line, delivery_postal_code,
         document_object_key, document_mime_type, document_filename, document_size_bytes, document_sha256, status)
-     VALUES ($1::uuid, $2, $3::date, $4, $5, $6, $7, $8, $9, $10, $11, 'pending')
+     VALUES ($1::uuid, $2, $3::date, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, 'pending')
      RETURNING id`,
     [
       input.telegramUserId,
@@ -138,6 +160,11 @@ export async function createKycSubmission(input: {
       input.country,
       input.nationalId,
       input.phone,
+      input.deliveryCountry,
+      input.deliveryProvince,
+      input.deliveryCity,
+      input.deliveryAddressLine,
+      input.deliveryPostalCode,
       input.document?.objectKey ?? null,
       input.document?.mimeType ?? null,
       input.document?.filename ?? null,
@@ -168,6 +195,9 @@ export async function listKycSubmissions(page: {
     const i = values.length;
     where.push(
       `(k.full_name ILIKE $${i} OR k.country ILIKE $${i} OR k.national_id ILIKE $${i} OR k.phone ILIKE $${i}
+        OR COALESCE(k.delivery_country,'') ILIKE $${i} OR COALESCE(k.delivery_province,'') ILIKE $${i}
+        OR COALESCE(k.delivery_city,'') ILIKE $${i} OR COALESCE(k.delivery_address_line,'') ILIKE $${i}
+        OR COALESCE(k.delivery_postal_code,'') ILIKE $${i}
         OR COALESCE(u.display_name, '') ILIKE $${i} OR COALESCE(u.username, '') ILIKE $${i}
         OR u.telegram_user_id::text ILIKE $${i})`,
     );

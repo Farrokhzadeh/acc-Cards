@@ -2500,7 +2500,12 @@ function KycView() {
                   <KycDetailField label="Country" value={selected.country} />
                   <KycDetailField label="National ID" value={selected.nationalId} />
                   <KycDetailField label="Phone" value={selected.phone} />
+                  <KycDetailField label="Delivery country" value={selected.deliveryCountry ?? "—"} />
+                  <KycDetailField label="Province / state" value={selected.deliveryProvince ?? "—"} />
+                  <KycDetailField label="City" value={selected.deliveryCity ?? "—"} />
+                  <KycDetailField label="Postal / ZIP" value={selected.deliveryPostalCode ?? "—"} />
                   <KycDetailField label="Telegram" value={selected.customer.username ? `@${selected.customer.username}` : selected.customer.displayName ?? `ID ${selected.customer.telegramUserId}`} />
+                  <div className="sm:col-span-2"><KycDetailField label="Card delivery address" value={selected.deliveryAddressLine ?? "—"} /></div>
                 </div>
 
                 <div>
@@ -3412,6 +3417,7 @@ function ClientKycSection({ clientId }: { clientId: string | null }) {
         <p><span className="text-[#9692a3]">Country:</span> {kyc.country}</p>
         <p><span className="text-[#9692a3]">National ID:</span> {kyc.nationalId}</p>
         <p><span className="text-[#9692a3]">Phone:</span> {kyc.phone}</p>
+        <p><span className="text-[#9692a3]">Delivery:</span> {[kyc.deliveryAddressLine, kyc.deliveryCity, kyc.deliveryProvince, kyc.deliveryCountry, kyc.deliveryPostalCode].filter(Boolean).join(", ") || "—"}</p>
         <p><span className="text-[#9692a3]">Submitted:</span> {new Date(kyc.submittedAt).toLocaleString()}</p>
       </div>
       {kyc.reviewNote && <p className="mt-1 text-xs text-[#777287]">Note: {kyc.reviewNote}</p>}

@@ -20,8 +20,8 @@ export const KYC = {
     "⏳ درخواست احراز هویت شما در حال بررسی است. پس از تأیید مدیر به شما اطلاع می‌دهیم.",
   ),
   invite: m(
-    "🪪 <b>Identity verification (KYC)</b>\nTo verify, please have these ready:\n• Full legal name (as on ID)\n• Date of birth (Shamsi, e.g. 1374-02-03)\n• Country of residence\n• National ID / passport number\n• Phone number (with country code)\n• A clear photo of your ID (passport or national card)\n\n⏱ Takes about a minute. Your information is encrypted and used only for verification.",
-    "🪪 <b>احراز هویت</b>\nبرای احراز، این موارد را آماده داشته باشید:\n• نام و نام خانوادگی (مانند مدرک)\n• تاریخ تولد (شمسی، مثلاً 1374-02-03)\n• کشور محل سکونت\n• کد ملی / شماره گذرنامه\n• شماره تلفن با کد کشور\n• عکس واضح از مدرک (گذرنامه یا کارت ملی)\n\n⏱ حدود یک دقیقه. اطلاعات شما رمزنگاری شده و فقط برای احراز استفاده می‌شود.",
+    "🪪 <b>Identity verification (KYC)</b>\nTo verify, please have these ready:\n• Full legal name (as on ID)\n• Date of birth (Shamsi, e.g. 1374-02-03)\n• Country of residence\n• National ID / passport number\n• Phone number (with country code)\n• Home/card-delivery address\n• A clear photo of your ID (passport or national card)\n\n📦 We collect your home address so your card can be sent to you.\n⏱ Takes about a minute. Your information is encrypted and used only for verification and card delivery.",
+    "🪪 <b>احراز هویت</b>\nبرای احراز، این موارد را آماده داشته باشید:\n• نام و نام خانوادگی (مانند مدرک)\n• تاریخ تولد (شمسی، مثلاً 1374-02-03)\n• کشور محل سکونت\n• کد ملی / شماره گذرنامه\n• شماره تلفن با کد کشور\n• آدرس منزل / تحویل کارت\n• عکس واضح از مدرک (گذرنامه یا کارت ملی)\n\n📦 آدرس منزل برای ارسال کارت به شما دریافت می‌شود.\n⏱ حدود یک دقیقه. اطلاعات شما رمزنگاری شده و فقط برای احراز هویت و ارسال کارت استفاده می‌شود.",
   ),
   startKyc: m("✅ Start KYC", "✅ شروع احراز هویت"),
   cancelBtn: m("Cancel", "انصراف"),
@@ -40,6 +40,16 @@ export const KYC = {
   errNationalId: m("Please enter an ID between 3 and 40 characters.", "لطفاً شناسه‌ای بین ۳ تا ۴۰ نویسه وارد کنید."),
   askPhone: m("Enter your phone number, including the country code (for example <code>+989121234567</code>).", "شماره تلفن خود را با کد کشور وارد کنید (مثلاً <code>+989121234567</code>)."),
   errPhone: m("Enter a valid phone number (6-20 digits, optional +).", "یک شماره تلفن معتبر وارد کنید (۶ تا ۲۰ رقم، با + اختیاری)."),
+  askDeliveryCountry: m("📦 Now enter the <b>country for card delivery</b>. This address is used to send your card to you.", "📦 اکنون <b>کشور محل تحویل کارت</b> را وارد کنید. این آدرس برای ارسال کارت به شما استفاده می‌شود."),
+  errDeliveryCountry: m("Please enter a delivery country between 2 and 80 characters.", "لطفاً کشور محل تحویل را بین ۲ تا ۸۰ نویسه وارد کنید."),
+  askDeliveryProvince: m("Enter your <b>province / state</b> for card delivery.", "<b>استان / ایالت</b> محل تحویل کارت را وارد کنید."),
+  errDeliveryProvince: m("Please enter a province or state between 2 and 120 characters.", "لطفاً استان یا ایالت را بین ۲ تا ۱۲۰ نویسه وارد کنید."),
+  askDeliveryCity: m("Enter your <b>city</b> for card delivery.", "<b>شهر</b> محل تحویل کارت را وارد کنید."),
+  errDeliveryCity: m("Please enter a city between 2 and 120 characters.", "لطفاً شهر را بین ۲ تا ۱۲۰ نویسه وارد کنید."),
+  askDeliveryAddress: m("Enter your full <b>street address</b>, including street, building, and unit/apartment when applicable.", "<b>آدرس کامل منزل</b> را شامل خیابان، ساختمان و واحد/آپارتمان در صورت وجود وارد کنید."),
+  errDeliveryAddress: m("Please enter a complete address between 8 and 300 characters.", "لطفاً آدرس کاملی بین ۸ تا ۳۰۰ نویسه وارد کنید."),
+  askDeliveryPostal: m("Enter your <b>postal / ZIP code</b>. Send <code>-</code> if your address does not have one.", "<b>کد پستی</b> را وارد کنید. اگر آدرس شما کد پستی ندارد، <code>-</code> بفرستید."),
+  errDeliveryPostal: m("Enter a postal/ZIP code up to 32 characters, or send <code>-</code> if unavailable.", "کد پستی را حداکثر تا ۳۲ نویسه وارد کنید، یا اگر ندارید <code>-</code> بفرستید."),
   askDocument: m("📷 Now send a clear <b>photo of your ID document</b> (passport or national ID card). JPEG, PNG, WebP, or PDF.", "📷 اکنون یک <b>عکس واضح از مدرک شناسایی</b> (گذرنامه یا کارت ملی) بفرستید. JPEG، PNG، WebP یا PDF."),
   errDocType: m("That file type is not accepted. Send a JPEG, PNG, WebP image or a PDF.", "این نوع فایل پذیرفته نمی‌شود. تصویر JPEG، PNG، WebP یا PDF بفرستید."),
   errDocSize: m("That file is too large. Please send a smaller image or PDF.", "این فایل خیلی بزرگ است. لطفاً تصویر یا PDF کوچک‌تری بفرستید."),
@@ -135,13 +145,13 @@ export const NOTIFY = {
   accountReady: m("✅ Your onboarding is complete. Open the menu to view your card.", "✅ ثبت‌نام شما تکمیل شد. منو را باز کنید و کارت خود را ببینید."),
 };
 export function kycConfirmSummary(
-  f: { fullName: string; dateOfBirth: string; country: string; nationalId: string; phone: string },
+  f: { fullName: string; dateOfBirth: string; country: string; nationalId: string; phone: string; deliveryAddress: string },
   lang: string | null | undefined,
 ): string {
   return pick(
     m(
-      `<b>Confirm your details</b>\nName: ${f.fullName}\nDate of birth: ${f.dateOfBirth}\nCountry: ${f.country}\nNational ID: ${f.nationalId}\nPhone: ${f.phone}\nDocument: attached\n\nTap <b>Submit</b> to send for admin review.`,
-      `<b>تأیید اطلاعات</b>\nنام: ${f.fullName}\nتاریخ تولد: ${f.dateOfBirth}\nکشور: ${f.country}\nکد ملی: ${f.nationalId}\nتلفن: ${f.phone}\nمدرک: پیوست شد\n\nبرای ارسال جهت بررسی، <b>ثبت</b> را بزنید.`,
+      `<b>Confirm your details</b>\nName: ${f.fullName}\nDate of birth: ${f.dateOfBirth}\nCountry: ${f.country}\nNational ID: ${f.nationalId}\nPhone: ${f.phone}\nCard delivery address: ${f.deliveryAddress}\nDocument: attached\n\nTap <b>Submit</b> to send for admin review.`,
+      `<b>تأیید اطلاعات</b>\nنام: ${f.fullName}\nتاریخ تولد: ${f.dateOfBirth}\nکشور: ${f.country}\nکد ملی: ${f.nationalId}\nتلفن: ${f.phone}\nآدرس تحویل کارت: ${f.deliveryAddress}\nمدرک: پیوست شد\n\nبرای ارسال جهت بررسی، <b>ثبت</b> را بزنید.`,
     ),
     lang,
   );

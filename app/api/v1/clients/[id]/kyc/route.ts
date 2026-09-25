@@ -12,10 +12,14 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
     const userId = requireUuid(id, "client id");
     const result = await getPool().query<{
       id: string; status: string; full_name: string; date_of_birth: string | null; country: string;
-      national_id: string; phone: string; document_object_key: string | null; document_mime_type: string | null;
+      national_id: string; phone: string;
+      delivery_country: string | null; delivery_province: string | null; delivery_city: string | null;
+      delivery_address_line: string | null; delivery_postal_code: string | null;
+      document_object_key: string | null; document_mime_type: string | null;
       review_note: string | null; submitted_at: Date;
     }>(
       `SELECT id, status, full_name, date_of_birth, country, national_id, phone,
+              delivery_country, delivery_province, delivery_city, delivery_address_line, delivery_postal_code,
               document_object_key, document_mime_type, review_note, submitted_at
          FROM kyc_submissions
         WHERE telegram_user_id = $1::uuid
@@ -69,6 +73,11 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
         country: row.country,
         nationalId: row.national_id,
         phone: row.phone,
+        deliveryCountry: row.delivery_country,
+        deliveryProvince: row.delivery_province,
+        deliveryCity: row.delivery_city,
+        deliveryAddressLine: row.delivery_address_line,
+        deliveryPostalCode: row.delivery_postal_code,
         hasDocument: Boolean(row.document_object_key),
         documentMimeType: row.document_mime_type,
         reviewNote: row.review_note,
