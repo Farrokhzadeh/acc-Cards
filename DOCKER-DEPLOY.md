@@ -108,6 +108,87 @@ docker compose up -d --force-recreate accabad-admin accabad-worker
 Money-moving calls are **single-attempt (no auto-retry)** by design
 to prevent double-spend.
 
+## How card funding works
+
+Think of card funding as two separate money movements:
+
+1. **The customer pays you in IRR.** The bot calculates the exact IRR amount from the requested
+   USD card amount, provider fee, service fee, and the current approved exchange rate.
+2. **The customer has 5 minutes to upload the payment receipt.** If no receipt is received in that
+   window, AccAbad cancels the unpaid funding request and its customer-payment record. A late
+   receipt is rejected and the customer must start a new request.
+3. **You review the receipt in Admin → Requests.** Accepting the receipt means only
+   “the customer paid us”; it does not yet change the Kripicard card balance.
+4. **Make sure the Kripicard account wallet has enough money.** If needed, use the account's
+   wallet/deposit controls and wait until Kripicard shows the deposit.
+5. **Click Fund card.** AccAbad performs one provider funding attempt for the accepted request.
+6. If Kripicard confirms the operation, the request becomes **Completed**.
+7. If the provider response is uncertain, AccAbad moves the request to reconciliation instead of
+   blindly retrying. Check Kripicard first, then reconcile the result from the admin panel.
+
+The 5-minute limit applies to the customer's **receipt submission**, not to how quickly an admin
+must review an already submitted receipt.
+
+## Connect Outlook / Hotmail or Gmail
+
+AccAbad uses **one OAuth application per provider for the whole installation**. Do not create a
+new Microsoft or Google OAuth application for every Kripicard account. Each AccAbad account
+authorizes its own mailbox separately and stores its own encrypted refresh token.
+
+### Microsoft Outlook / Hotmail
+
+1. In `.env`, set:
+   ```env
+   MICROSOFT_OAUTH_CLIENT_ID=...
+   MICROSOFT_OAUTH_CLIENT_SECRET=...
+   MICROSOFT_OAUTH_TENANT=consumers
+   ```
+2. In Microsoft Entra, create a web application for AccAbad. The default `consumers` tenant is for
+   personal Microsoft accounts such as Outlook.com and Hotmail. If you intentionally need
+   Microsoft 365 work/school accounts too, configure the Entra application accordingly and use the
+   appropriate tenant value.
+3. Register this exact redirect URI, replacing the host with your `APP_BASE_URL`:
+   ```text
+   https://cards.example.com/api/v1/email/outlook/callback
+   ```
+4. Recreate the app and worker:
+   ```bash
+   docker compose up -d --force-recreate accabad-admin accabad-worker
+   ```
+5. In AccAbad, open **Accounts**, edit the Kripicard account, choose **Outlook / Hotmail**, and save.
+   The mailbox field may be left blank.
+6. Click **Connect Outlook**, sign in to the mailbox that belongs to that Kripicard account, and
+   approve access. AccAbad records the mailbox identity returned by Microsoft.
+7. Repeat only step 5–6 for every other Outlook/Hotmail mailbox. They all use the same OAuth
+   application credentials but receive separate per-account tokens.
+8. Run **Sync email** once after connecting to verify messages can be read.
+
+If you pre-fill a mailbox address in AccAbad, OAuth must return that same address. This prevents
+accidentally connecting the wrong Microsoft account.
+
+### Gmail
+
+1. In `.env`, set:
+   ```env
+   GOOGLE_OAUTH_CLIENT_ID=...
+   GOOGLE_OAUTH_CLIENT_SECRET=...
+   ```
+2. In Google Cloud, enable the Gmail API, configure the OAuth consent screen, and create a web OAuth
+   client.
+3. Register this exact redirect URI:
+   ```text
+   https://cards.example.com/api/v1/email/gmail/callback
+   ```
+4. Recreate the app and worker.
+5. In **Accounts**, choose **Gmail** for the Kripicard account and save. The mailbox field may be
+   blank.
+6. Click **Connect Gmail**, sign in to the correct mailbox, and approve read-only Gmail access.
+7. Repeat the account-level connection for each Gmail mailbox.
+8. Run **Sync email** once to verify the connection.
+
+The admin panel also shows the exact redirect URI for each provider under
+**Settings → Email OAuth setup**. Copy that value exactly; it is safer than typing it by hand.
+
 ## Common commands
 
 ```bash
