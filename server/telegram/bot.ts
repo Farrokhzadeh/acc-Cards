@@ -1699,7 +1699,9 @@ async function handleMessage(client: TelegramClient, message: z.infer<typeof mes
     await client.sendMessage({ chatId, text: pick(KYC.accessDisabled, user.lang) });
     return;
   }
-  if ((text || message.photo || message.document) && !(await supportMode(user.id))) {
+  const activeFlowState = await getBotState(user.id);
+  const isSensitiveKycFlow = Boolean(activeFlowState?.mode.startsWith("kyc_"));
+  if ((text || message.photo || message.document) && !(await supportMode(user.id)) && !isSensitiveKycFlow) {
     await logChatMessage(user, "client_to_admin", text || (message.photo ? "[photo]" : "[document]")).catch(() => {});
   }
 
