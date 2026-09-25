@@ -429,7 +429,10 @@ export async function setClientBanned(id: string, banned: boolean) {
 
 export type ClientKyc = {
   id: string; status: string; fullName: string; dateOfBirth: string | null; country: string;
-  nationalId: string; phone: string; hasDocument: boolean; documentMimeType: string | null;
+  nationalId: string; phone: string;
+  deliveryCountry: string | null; deliveryProvince: string | null; deliveryCity: string | null;
+  deliveryAddressLine: string | null; deliveryPostalCode: string | null;
+  hasDocument: boolean; documentMimeType: string | null;
   reviewNote: string | null; submittedAt: string;
 } | null;
 
@@ -1012,6 +1015,11 @@ export type ApiKycSubmission = {
   country: string;
   nationalId: string;
   phone: string;
+  deliveryCountry: string | null;
+  deliveryProvince: string | null;
+  deliveryCity: string | null;
+  deliveryAddressLine: string | null;
+  deliveryPostalCode: string | null;
   hasDocument: boolean;
   documentMimeType: string | null;
   documentFilename: string | null;
