@@ -151,7 +151,7 @@ test("requesting correction invalidates the previously accepted receipt before r
 test("unpaid funding requests have a hard five minute receipt window", () => {
   assert.match(service, /FUNDING_RECEIPT_WINDOW_MS = 5 \* 60_000/);
   assert.match(service, /receiptExpiresAt = new Date\(Date\.now\(\) \+ FUNDING_RECEIPT_WINDOW_MS\)/);
-  assert.match(bot, /funding_request_receipt", \{ fundingRequestId: created\.id \}, 5/);
+  assert.match(bot, /funding_request_expired/);
 });
 
 test("stale funding requests are cancelled with their unified payment and removed from active work", () => {
