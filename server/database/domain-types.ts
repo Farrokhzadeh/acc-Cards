@@ -53,7 +53,7 @@ export interface EmailAccountRecord {
   id: UUID;
   accountId: UUID;
   provider: EmailProvider;
-  emailAddress: string;
+  emailAddress: string | null;
   connectionStatus: EmailConnectionStatus;
   providerIdentityEmail: string | null;
   lastSyncedAt: Date | null;

@@ -34,9 +34,11 @@ test("Gmail refresh tokens and incremental synchronization cursors are encrypted
   assert.doesNotMatch(dashboard, /encrypted_refresh_token/);
 });
 
-test("Gmail binds the authorized identity to the configured @gmail.com mailbox", () => {
+test("Gmail can discover the mailbox identity during OAuth while preserving explicit mismatch checks", () => {
   assert.match(googleService, /google_mailbox_mismatch/);
-  assert.match(googleService, /providerIdentityEmail !== configuredConnection\.email_address/);
+  assert.match(googleService, /configuredMailbox && providerIdentityEmail !== configuredMailbox/);
+  assert.match(googleService, /email_address = \$5/);
+  assert.match(googleService, /google_mailbox_already_connected/);
   assert.match(googleClient, /users\/me\/profile/);
 });
 

@@ -25,7 +25,7 @@ type OutlookConnectionRow = {
   id: string;
   account_id: string;
   provider: "outlook" | "gmail";
-  email_address: string;
+  email_address: string | null;
   encrypted_refresh_token: string | null;
   encrypted_sync_cursor: string | null;
   connection_status: string;
@@ -139,7 +139,11 @@ export async function completeOutlookConnection(args: {
     const profile = await getMicrosoftProfile(token.access_token);
     const providerIdentityEmail = (profile.mail || profile.userPrincipalName || "").trim().toLowerCase() || null;
     const configuredConnection = await getOutlookConnection(state.account_id);
-    if (!providerIdentityEmail || providerIdentityEmail !== configuredConnection.email_address.trim().toLowerCase()) {
+    const configuredMailbox = configuredConnection.email_address?.trim().toLowerCase() || null;
+    if (!providerIdentityEmail) {
+      throw new ApiError(502, "microsoft_mailbox_identity_missing", "Microsoft did not return a mailbox identity for this authorization.");
+    }
+    if (configuredMailbox && providerIdentityEmail !== configuredMailbox) {
       throw new ApiError(409, "microsoft_mailbox_mismatch", "The Microsoft account you authorized does not match the Outlook/Hotmail mailbox configured for this AccAbad account.");
     }
 
@@ -150,6 +154,7 @@ export async function completeOutlookConnection(args: {
                 encrypted_access_token = NULL,
                 token_expires_at = $3,
                 provider_subject = $4,
+                email_address = $5,
                 provider_identity_email = $5,
                 oauth_scope = $6,
                 encrypted_sync_cursor = NULL,
@@ -184,6 +189,9 @@ export async function completeOutlookConnection(args: {
     return { accountId: state.account_id, providerIdentityEmail };
   } catch (error) {
     if (error instanceof ApiError) throw error;
+    if ((error as { code?: string }).code === "23505") {
+      throw new ApiError(409, "microsoft_mailbox_already_connected", "That Outlook/Hotmail mailbox is already connected to another AccAbad account.");
+    }
     if (error instanceof MicrosoftIntegrationError) {
       throw new ApiError(error.status, error.code, error.message);
     }

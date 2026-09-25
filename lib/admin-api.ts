@@ -9,7 +9,7 @@ export type ApiAccount = {
   lastSyncedAt: string | null;
   emailAccount: null | {
     provider: "outlook" | "gmail";
-    emailAddress: string;
+    emailAddress: string | null;
     connectionStatus: "not_connected" | "connected" | "reauth_required" | "error" | "disabled";
     providerIdentityEmail: string | null;
     lastSyncedAt: string | null;
@@ -127,7 +127,7 @@ export async function createAccount(input: { label: string; loginEmail: string; 
   return apiJson<{ id: string }>("/api/v1/accounts", { method: "POST", body: JSON.stringify(input) });
 }
 
-export async function updateAccount(id: string, input: { label?: string; loginEmail?: string; password?: string; apiKey?: string; emailProvider?: "outlook" | "gmail"; emailAddress?: string }) {
+export async function updateAccount(id: string, input: { label?: string; loginEmail?: string; password?: string; apiKey?: string; emailProvider?: "outlook" | "gmail"; emailAddress?: string | null }) {
   return apiJson<{ ok: true }>(`/api/v1/accounts/${encodeURIComponent(id)}`, { method: "PATCH", body: JSON.stringify(input) });
 }
 

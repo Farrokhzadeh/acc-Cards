@@ -29,7 +29,7 @@ type GmailConnectionRow = {
   id: string;
   account_id: string;
   provider: "outlook" | "gmail";
-  email_address: string;
+  email_address: string | null;
   encrypted_refresh_token: string | null;
   encrypted_sync_cursor: string | null;
   connection_status: string;
@@ -144,7 +144,8 @@ export async function completeGmailConnection(args: {
     const profile = await getGmailProfile(token.access_token);
     const providerIdentityEmail = profile.emailAddress.trim().toLowerCase();
     const configuredConnection = await getGmailConnection(state.account_id);
-    if (providerIdentityEmail !== configuredConnection.email_address.trim().toLowerCase()) {
+    const configuredMailbox = configuredConnection.email_address?.trim().toLowerCase() || null;
+    if (configuredMailbox && providerIdentityEmail !== configuredMailbox) {
       throw new ApiError(409, "google_mailbox_mismatch", "The Google account you authorized does not match the Gmail mailbox configured for this AccAbad account.");
     }
 
@@ -155,6 +156,7 @@ export async function completeGmailConnection(args: {
                 encrypted_access_token = NULL,
                 token_expires_at = $3,
                 provider_subject = $4,
+                email_address = $5,
                 provider_identity_email = $5,
                 oauth_scope = $6,
                 encrypted_sync_cursor = NULL,
@@ -189,6 +191,9 @@ export async function completeGmailConnection(args: {
     return { accountId: state.account_id, providerIdentityEmail };
   } catch (error) {
     if (error instanceof ApiError) throw error;
+    if ((error as { code?: string }).code === "23505") {
+      throw new ApiError(409, "google_mailbox_already_connected", "That Gmail mailbox is already connected to another AccAbad account.");
+    }
     if (error instanceof GoogleIntegrationError) {
       throw new ApiError(error.status, error.code, error.message);
     }
@@ -439,6 +444,10 @@ async function syncGmailInboxCore(accountId: string) {
   if (!connection.encrypted_refresh_token) {
     throw new ApiError(409, "gmail_not_connected", "Connect this Gmail mailbox before synchronizing it.");
   }
+  const mailbox = connection.email_address?.trim().toLowerCase();
+  if (!mailbox) {
+    throw new ApiError(409, "gmail_mailbox_identity_missing", "Reconnect this Gmail mailbox so its authorized address can be identified.");
+  }
   await getPool().query(`UPDATE email_accounts SET last_sync_attempt_at = now(), updated_at = now() WHERE id = $1::uuid`, [connection.id]);
 
   try {
@@ -449,13 +458,13 @@ async function syncGmailInboxCore(accountId: string) {
 
     let sync;
     if (!storedCursor) {
-      sync = await collectFullInbox(token.access_token, connection.email_address);
+      sync = await collectFullInbox(token.access_token, mailbox);
     } else {
       try {
-        sync = await collectIncrementalInbox(token.access_token, storedCursor, connection.email_address);
+        sync = await collectIncrementalInbox(token.access_token, storedCursor, mailbox);
       } catch (error) {
         if (error instanceof GoogleIntegrationError && error.code === "gmail_sync_cursor_expired") {
-          sync = await collectFullInbox(token.access_token, connection.email_address);
+          sync = await collectFullInbox(token.access_token, mailbox);
         } else {
           throw error;
         }
