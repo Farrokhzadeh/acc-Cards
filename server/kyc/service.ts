@@ -199,7 +199,7 @@ export async function listKycSubmissions(page: {
         OR COALESCE(k.delivery_city,'') ILIKE ${i} OR COALESCE(k.delivery_address_line,'') ILIKE ${i}
         OR COALESCE(k.delivery_postal_code,'') ILIKE ${i}
         OR COALESCE(u.display_name, '') ILIKE ${i} OR COALESCE(u.username, '') ILIKE ${i}
-        OR u.telegram_user_id::text ILIKE $${i})`,
+        OR u.telegram_user_id::text ILIKE ${i})`,
     );
   }
   if (page.cursor) {
