@@ -538,7 +538,7 @@ export default function DashboardApp() {
 
         const nextAccounts: Account[] = snapshot.accounts.map((account) => {
           const totals = cardTotals.get(account.id) ?? { count: 0, cents: 0 };
-          const mailbox = account.emailAccount?.emailAddress ?? account.loginEmail;
+          const mailbox = account.emailAccount?.providerIdentityEmail ?? account.emailAccount?.emailAddress ?? "";
           const provider = account.emailAccount?.provider === "gmail" || account.loginEmail.toLowerCase().endsWith("@gmail.com") ? "Gmail" : "Outlook / Hotmail";
           return {
             id: account.id,
@@ -899,18 +899,18 @@ export default function DashboardApp() {
     }
     try {
       if (editingAccountId) {
-        const update: { label?: string; loginEmail?: string; password?: string; apiKey?: string; emailProvider?: "outlook" | "gmail"; emailAddress?: string } = {
+        const update: { label?: string; loginEmail?: string; password?: string; apiKey?: string; emailProvider?: "outlook" | "gmail"; emailAddress?: string | null } = {
           label: accountForm.name.trim(),
           loginEmail: accountForm.owner.trim(),
           emailProvider: accountForm.mailProvider === "Gmail" ? "gmail" : "outlook",
-          emailAddress: (accountForm.mailbox.trim() || accountForm.owner.trim()),
+          emailAddress: accountForm.mailbox.trim() ? accountForm.mailbox.trim() : null,
         };
         if (accountForm.password.trim()) update.password = accountForm.password;
         if (accountForm.apiKey.trim()) update.apiKey = accountForm.apiKey;
         await updateAccount(editingAccountId, update);
         setAccounts((current) => current.map((account) => {
           if (account.id !== editingAccountId) return account;
-          const nextMailbox = accountForm.mailbox.trim() || accountForm.owner.trim();
+          const nextMailbox = accountForm.mailbox.trim();
           const emailConnectionChanged = account.mailProvider !== accountForm.mailProvider || account.mailbox.toLowerCase() !== nextMailbox.toLowerCase();
           return {
             ...account,
@@ -929,16 +929,16 @@ export default function DashboardApp() {
         }));
         toast.success("Account connection updated securely.");
       } else {
-        const mailbox = (accountForm.mailbox.trim() || accountForm.owner.trim()).toLowerCase();
+        const mailbox = accountForm.mailbox.trim().toLowerCase();
         const provider = accountForm.mailProvider === "Gmail" ? "gmail" : "outlook";
-        const domain = mailbox.split("@").pop() ?? "";
-        const domainOk = provider === "gmail" ? domain === "gmail.com" : domain === "outlook.com" || domain === "hotmail.com";
+        const domain = mailbox ? mailbox.split("@").pop() ?? "" : "";
+        const domainOk = !mailbox || (provider === "gmail" ? domain === "gmail.com" : domain === "outlook.com" || domain === "hotmail.com");
         if (!accountForm.name.trim() || !accountForm.owner.trim() || !accountForm.password || !accountForm.apiKey) {
           toast.error("Fill in all fields: name, login email, password, and API key.");
           return;
         }
         if (!domainOk) {
-          toast.error(provider === "gmail" ? "The connected inbox or login email must be a @gmail.com address." : "The connected inbox or login email must be an @outlook.com or @hotmail.com address.");
+          toast.error(provider === "gmail" ? "The connected inbox must be a @gmail.com address when provided." : "The connected inbox must be an @outlook.com or @hotmail.com address when provided.");
           return;
         }
         const created = await createAccount({
@@ -947,7 +947,7 @@ export default function DashboardApp() {
           password: accountForm.password,
           apiKey: accountForm.apiKey,
           emailProvider: provider,
-          emailAddress: mailbox,
+          ...(mailbox ? { emailAddress: mailbox } : {}),
         });
         setAccounts((current) => [...current, {
           id: created.id,
@@ -2044,7 +2044,7 @@ export default function DashboardApp() {
             <div className="grid gap-2">
               <Label htmlFor="account-mailbox">Connected inbox address <span className="font-normal text-slate-400">· optional</span></Label>
               <Input id="account-mailbox" type="email" value={accountForm.mailbox} onChange={(event) => setAccountForm((current) => ({ ...current, mailbox: event.target.value }))} placeholder="e.g. account-name@outlook.com" />
-              <p className="text-xs leading-5 text-[#8f8b9c]">Leave blank to use the Kripicard login email. Each account stores its own encrypted OAuth refresh token after you click Connect.</p>
+              <p className="text-xs leading-5 text-[#8f8b9c]">Leave blank and click Connect; OAuth will save the mailbox identity returned by the provider. The OAuth app credentials are global, while every connected account stores its own encrypted refresh token.</p>
             </div>
             <div className="grid gap-2">
               <Label htmlFor="account-password">Account password {editingAccountId && <span className="font-normal text-slate-400">· leave blank to keep current</span>}</Label>
