@@ -182,6 +182,49 @@ test("deployment templates expose the required live-write acknowledgment", () =>
   assert.match(deployGuide, /502 immediately after enabling provider writes/);
 });
 
+test("production rollout uses the AccAbad authorization token and keeps legacy upgrade compatibility", () => {
+  const current = safeParseServerEnv({
+    APP_ENV: "production",
+    APP_BASE_URL: "https://admin.example.com",
+    ENABLE_LIVE_PROVIDER_WRITES: "false",
+    PRODUCTION_ROLLOUT_BLOCKED: "false",
+    PRODUCTION_ROLLOUT_AUTHORIZATION: "ACCABAD_PRODUCTION_RELEASE_AUTHORIZED",
+    ...productionSecurity,
+    ...database,
+    ...encryption,
+  });
+  const legacy = safeParseServerEnv({
+    APP_ENV: "production",
+    APP_BASE_URL: "https://admin.example.com",
+    ENABLE_LIVE_PROVIDER_WRITES: "false",
+    PRODUCTION_ROLLOUT_BLOCKED: "false",
+    PRODUCTION_ROLLOUT_AUTHORIZATION: "PHASE24_RELEASE_AUTHORIZED",
+    ...productionSecurity,
+    ...database,
+    ...encryption,
+  });
+  const invalid = safeParseServerEnv({
+    APP_ENV: "production",
+    APP_BASE_URL: "https://admin.example.com",
+    ENABLE_LIVE_PROVIDER_WRITES: "false",
+    PRODUCTION_ROLLOUT_BLOCKED: "false",
+    PRODUCTION_ROLLOUT_AUTHORIZATION: "not-authorized",
+    ...productionSecurity,
+    ...database,
+    ...encryption,
+  });
+
+  assert.equal(current.success, true);
+  assert.equal(legacy.success, true);
+  assert.equal(invalid.success, false);
+  assert.match(deployGuide, /PRODUCTION_ROLLOUT_AUTHORIZATION=ACCABAD_PRODUCTION_RELEASE_AUTHORIZED/);
+});
+
+test("active deployment templates do not carry phase-specific app version markers", () => {
+  assert.doesNotMatch(envExample, /^APP_VERSION=/m);
+  assert.doesNotMatch(setupScript, /^APP_VERSION=/m);
+});
+
 test("easy setup exposes optional mailbox OAuth credentials and the deploy guide explains per-account connections", () => {
   assert.match(setupScript, /^MICROSOFT_OAUTH_CLIENT_ID=$/m);
   assert.match(setupScript, /^MICROSOFT_OAUTH_CLIENT_SECRET=$/m);

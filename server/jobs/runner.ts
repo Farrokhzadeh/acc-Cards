@@ -122,7 +122,7 @@ export async function runClaimedJob(job: ScheduledJob, workerId: string) {
   const run = await pool.query<{ id: string }>(
     `INSERT INTO job_runs(job_type,job_key,scheduled_job_key,worker_id,status,attempts,safe_metadata)
      VALUES ($1,$2,$2,$3,'running',$4,$5::jsonb) RETURNING id`,
-    [job.jobType, job.jobKey, workerId, job.consecutiveFailures + 1, JSON.stringify({ source: "phase19-worker" })],
+    [job.jobType, job.jobKey, workerId, job.consecutiveFailures + 1, JSON.stringify({ source: "accabad-worker" })],
   );
   const runId = run.rows[0].id;
   const startedAt = Date.now();
@@ -136,7 +136,7 @@ export async function runClaimedJob(job: ScheduledJob, workerId: string) {
           WHERE job_key=$1 AND lease_owner=$3`,
         [job.jobKey, job.intervalSeconds, workerId],
       );
-      await db.query(`UPDATE job_runs SET status='succeeded',finished_at=now(),duration_ms=$3,safe_metadata=$2::jsonb WHERE id=$1::uuid`, [runId, JSON.stringify({ source: "phase20-worker", result }), Date.now()-startedAt]);
+      await db.query(`UPDATE job_runs SET status='succeeded',finished_at=now(),duration_ms=$3,safe_metadata=$2::jsonb WHERE id=$1::uuid`, [runId, JSON.stringify({ source: "accabad-worker", result }), Date.now()-startedAt]);
     });
     return { jobKey: job.jobKey, status: "succeeded" as const, result };
   } catch (error) {

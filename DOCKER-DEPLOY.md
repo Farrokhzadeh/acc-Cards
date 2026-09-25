@@ -46,6 +46,17 @@ Open `.env` and set at minimum:
 Keep **`APP_ENV=staging`** for a simple deploy. Switching to `production` re-enforces
 HTTPS-only URLs **and** fail-closed ClamAV scanning (which this lean setup removed).
 
+Production also starts with the rollout gate blocked. Only when you intentionally want to unblock
+production, set both values together:
+
+```env
+PRODUCTION_ROLLOUT_BLOCKED=false
+PRODUCTION_ROLLOUT_AUTHORIZATION=ACCABAD_PRODUCTION_RELEASE_AUTHORIZED
+```
+
+Existing deployments that still use the old `PHASE24_RELEASE_AUTHORIZED` token remain accepted for
+upgrade compatibility, but new deployments should use the AccAbad authorization value above.
+
 ## 2. Build and start
 
 ```bash
