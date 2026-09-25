@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { getPool, withTransaction } from "@/server/database/pool";
 import { classifyPendingEmailMessages, expireOtpDeliveries } from "@/server/email/classifier";
+import { expireStaleFundingRequests } from "@/server/funding/service";
 import { syncConnectedGmailInboxesSystem } from "@/server/providers/google/service";
 import { syncConnectedOutlookInboxesSystem } from "@/server/providers/microsoft/service";
 import { syncKripicardAccountsSystem } from "@/server/providers/kripicard/service";
@@ -103,6 +104,10 @@ export async function executeJob(job: ScheduledJob, workerId: string) {
     case "telegram_outbox":
       if (!await runtimeControlEnabled("telegram_sends")) return { skipped: true, reason: "runtime_control_disabled" };
       return processTelegramOutbox(intConfig(job.safeConfig, "limit", 200, 1, 1000));
+    case "funding_request_expiry": {
+      const expired = await expireStaleFundingRequests();
+      return { expired: expired.length };
+    }
     case "maintenance_expiry":
       return runMaintenance();
     case "operations_health_scan":
