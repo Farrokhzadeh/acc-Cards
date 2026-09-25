@@ -76,7 +76,7 @@ type EmailAccountRow = {
   id: string;
   account_id: string;
   provider: EmailProvider;
-  email_address: string;
+  email_address: string | null;
   connection_status: EmailConnectionStatus;
   provider_identity_email: string | null;
   last_synced_at: Date | string | null;
