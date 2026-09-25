@@ -76,7 +76,7 @@ export async function listBotTexts() {
       ...entry,
       enText: override?.en_text ?? entry.defaultEn,
       faText: override?.fa_text ?? entry.defaultFa,
-      overridden: Boolean(override),
+      overridden: Boolean(override && (override.en_text !== entry.defaultEn || override.fa_text !== entry.defaultFa)),
       hasImage: Boolean(override?.image_mime_type),
       imageMimeType: override?.image_mime_type ?? null,
       imageFilename: override?.image_filename ?? null,
