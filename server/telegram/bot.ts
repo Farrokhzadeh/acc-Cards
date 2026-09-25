@@ -900,10 +900,10 @@ function formatRialValue(value: string) {
 async function beginCardRequest(client: TelegramClient, user: BotUser, chatId: number) {
   const policy = await getCardRequestPolicy();
   await setBotState(user.id, "card_request_amount", {}, 20);
-  const text = user.lang === "fa"
-    ? `<b>🆕 درخواست کارت جدید</b>\nمبلغ اولیه‌ای که می‌خواهید روی کارت جدید باشد را به دلار وارد کنید. حداقل: <b>${formatUsdCents(String(policy.minimumUsdCents))}</b>.\n\nانتخاب نوع صدور کارت توسط تیم ما انجام می‌شود.`
-    : `<b>🆕 Request a new card</b>\nEnter the initial USD amount you want on the new card. Minimum: <b>${formatUsdCents(String(policy.minimumUsdCents))}</b>.\n\nOur team will handle the card setup after reviewing your request.`;
-  await client.sendMessage({ chatId, text });
+  await client.sendMessage({
+    chatId,
+    text: render(BOT.requestCardStart, user.lang, { minimum: formatUsdCents(String(policy.minimumUsdCents)) }),
+  });
 }
 
 async function handleCardRequestText(client: TelegramClient, user: BotUser, chatId: number, text: string) {
@@ -916,7 +916,7 @@ async function handleCardRequestText(client: TelegramClient, user: BotUser, chat
     const cents = dollarsToCents(value);
     const policy = await getCardRequestPolicy();
     if (cents == null || cents < policy.minimumUsdCents) {
-      await client.sendMessage({ chatId, text: `Enter a valid USD amount of at least <b>${formatUsdCents(String(policy.minimumUsdCents))}</b>.` });
+      await client.sendMessage({ chatId, text: render(BOT.cardAmountInvalid, user.lang, { minimum: formatUsdCents(String(policy.minimumUsdCents)) }) });
       return true;
     }
     draft.amountUsdCents = cents;
@@ -937,10 +937,8 @@ async function handleCardRequestText(client: TelegramClient, user: BotUser, chat
     const cancel = await createCallbackToken({ userId: user.id, action: "cardreq.cancel_draft", singleUse: true, ttlMinutes: 20 });
     await client.sendMessage({
       chatId,
-      text: user.lang === "fa"
-        ? `<b>بررسی درخواست کارت</b>\nمبلغ اولیه: <b>${formatUsdCents(String(draft.amountUsdCents))}</b>\nایمیل: <code>${escapeHtml(draft.email)}</code>\n\nپس از ثبت، مدیر درخواست را بررسی می‌کند.`
-        : `<b>Review card request</b>\nInitial amount: <b>${formatUsdCents(String(draft.amountUsdCents))}</b>\nEmail: <code>${escapeHtml(draft.email)}</code>\n\nAfter submission, an administrator will review the request.`,
-      replyMarkup: { inline_keyboard: [[{ text: "✅ Submit", callback_data: submit }], [{ text: "Cancel", callback_data: cancel }]] },
+      text: render(BOT.cardRequestReview, user.lang, { amount: formatUsdCents(String(draft.amountUsdCents)), email: escapeHtml(draft.email) }),
+      replyMarkup: { inline_keyboard: [[{ text: pick(BOT.submit, user.lang), callback_data: submit }], [{ text: pick(BOT.cancel, user.lang), callback_data: cancel }]] },
     });
     return true;
   }
