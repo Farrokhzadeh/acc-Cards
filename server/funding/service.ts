@@ -284,7 +284,7 @@ export async function listFundingRequests(args:{search?:string;status?:string|nu
   const limit=Math.max(1,Math.min(100,args.limit??50)); const search=(args.search??"").trim().slice(0,200);
   const values:unknown[]=[search]; const where=[`($1='' OR fr.reference ILIKE '%'||$1||'%' OR COALESCE(tu.display_name,'') ILIKE '%'||$1||'%' OR COALESCE(tu.username,'') ILIKE '%'||$1||'%' OR COALESCE(c.last4,'') ILIKE '%'||$1||'%')`];
   if(args.status){values.push(args.status);where.push(`fr.status=${values.length}`);}
-  else where.push(`NOT (fr.status='cancelled' AND fr.admin_note='Expired automatically after 5 minutes without a receipt.')`);
+  else where.push(`NOT (fr.status='cancelled' AND COALESCE(fr.admin_note,'')='Expired automatically after 5 minutes without a receipt.')`);
   if(args.cursor){
     try {
       const [submitted,id]=Buffer.from(args.cursor,"base64url").toString("utf8").split("|");
