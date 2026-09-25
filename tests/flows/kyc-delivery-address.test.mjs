@@ -57,5 +57,5 @@ test("admin KYC review and customer page expose the card-delivery address", () =
   assert.match(dashboard, /Card delivery address/);
   assert.match(dashboard, /Delivery country/);
   assert.match(workspace, /Card delivery address/);
-  assert.match(workspace, /Collected so the customer’s card can be sent to this address/);
+  assert.match(workspace, /Collected so this address can be used for card delivery/);
 });
