@@ -25,6 +25,7 @@ const rowSchema = z.object({
   provider_fee_fixed_usd_cents: z.union([z.string(), z.bigint()]),
   service_fee_basis_points: z.number().int(),
   quote_expires_at: z.coerce.date().nullable(),
+  receipt_expires_at: z.coerce.date().nullable(),
   status: z.string(),
   admin_note: z.string().nullable(),
   reviewed_by: z.string().uuid().nullable(),
@@ -129,7 +130,7 @@ function serialize(rowInput: FundingRow) {
     cardAmountUsdCents: money(row.card_amount_usd_cents)!, providerFeeUsdCents: money(row.provider_fee_usd_cents)!, ownFeeUsdCents: money(row.own_fee_usd_cents)!,
     clientPaysUsdCents: money(row.client_pays_usd_cents)!, clientPaysRial: money(row.client_pays_rial), rateId: row.rate_id, rateRialPerUsd: money(row.rate_rial_per_usd),
     providerFeeBasisPoints: row.provider_fee_basis_points, providerFeeFixedUsdCents: money(row.provider_fee_fixed_usd_cents)!, serviceFeeBasisPoints: row.service_fee_basis_points,
-    quoteExpiresAt: row.quote_expires_at?.toISOString() ?? null, status: row.status as FundingStatus, adminNote: row.admin_note, reviewedBy: row.reviewed_by,
+    quoteExpiresAt: row.quote_expires_at?.toISOString() ?? null, receiptExpiresAt: row.receipt_expires_at?.toISOString() ?? null, status: row.status as FundingStatus, adminNote: row.admin_note, reviewedBy: row.reviewed_by,
     reviewedAt: row.reviewed_at?.toISOString() ?? null, submittedAt: row.submitted_at.toISOString(), updatedAt: row.updated_at.toISOString(),
   };
 }
@@ -139,13 +140,13 @@ async function expireStaleFundingRequestsInTransaction(db: DatabaseQueryable, us
     userId
       ? `SELECT * FROM funding_requests
            WHERE user_id=$1::uuid AND status='pending_receipt'
-             AND quote_expires_at IS NOT NULL AND quote_expires_at<=now()
+             AND receipt_expires_at IS NOT NULL AND receipt_expires_at<=now()
            ORDER BY submitted_at ASC
            LIMIT 500
            FOR UPDATE SKIP LOCKED`
       : `SELECT * FROM funding_requests
            WHERE status='pending_receipt'
-             AND quote_expires_at IS NOT NULL AND quote_expires_at<=now()
+             AND receipt_expires_at IS NOT NULL AND receipt_expires_at<=now()
            ORDER BY submitted_at ASC
            LIMIT 500
            FOR UPDATE SKIP LOCKED`,
@@ -169,7 +170,7 @@ async function expireStaleFundingRequestsInTransaction(db: DatabaseQueryable, us
       toStatus: "cancelled",
       actorType: "system",
       note: FUNDING_AUTO_EXPIRED_NOTE,
-      metadata: { receiptDeadline: row.quote_expires_at?.toISOString() ?? null },
+      metadata: { receiptDeadline: row.receipt_expires_at?.toISOString() ?? null },
     });
     expired.push(next);
   }
@@ -211,10 +212,10 @@ export async function createTelegramFundingRequest(input: { userId: string; card
     const serviceFee = feeFor(amount,input.quote.serviceFeeBasisPoints);
     const total = amount + providerFee + serviceFee;
     const result = await db.query<FundingRow>(
-      `INSERT INTO funding_requests(reference,user_id,card_id,card_amount_usd_cents,provider_fee_usd_cents,own_fee_usd_cents,client_pays_usd_cents,client_pays_rial,rate_id,rate_rial_per_usd,status,provider_fee_basis_points,provider_fee_fixed_usd_cents,service_fee_basis_points,quote_expires_at)
-       VALUES('FR-'||nextval('funding_request_reference_seq')::text,$1::uuid,$2::uuid,$3,$4,$5,$6,$7,$8::uuid,$9,'pending_receipt',$10,$11,$12,$13)
+      `INSERT INTO funding_requests(reference,user_id,card_id,card_amount_usd_cents,provider_fee_usd_cents,own_fee_usd_cents,client_pays_usd_cents,client_pays_rial,rate_id,rate_rial_per_usd,status,provider_fee_basis_points,provider_fee_fixed_usd_cents,service_fee_basis_points,quote_expires_at,receipt_expires_at)
+       VALUES('FR-'||nextval('funding_request_reference_seq')::text,$1::uuid,$2::uuid,$3,$4,$5,$6,$7,$8::uuid,$9,'pending_receipt',$10,$11,$12,$13,$14)
        RETURNING *`,
-      [input.userId,card.id,amount.toString(),providerFee.toString(),serviceFee.toString(),total.toString(),rialFor(total,BigInt(input.quote.rialPerUsd)).toString(),rate.id,input.quote.rialPerUsd,input.quote.providerFeeBasisPoints,input.quote.providerFeeFixedUsdCents,input.quote.serviceFeeBasisPoints,receiptExpiresAt],
+      [input.userId,card.id,amount.toString(),providerFee.toString(),serviceFee.toString(),total.toString(),rialFor(total,BigInt(input.quote.rialPerUsd)).toString(),rate.id,input.quote.rialPerUsd,input.quote.providerFeeBasisPoints,input.quote.providerFeeFixedUsdCents,input.quote.serviceFeeBasisPoints,quoteExpiresAt,receiptExpiresAt],
     );
     const row=result.rows[0]!;
     await createCustomerPaymentInTransaction(db, {
@@ -238,7 +239,7 @@ export async function createTelegramFundingRequest(input: { userId: string; card
 export async function markReceiptAttachedInTransaction(db: DatabaseQueryable, input: { requestId: string; userId: string; receiptId: string }) {
   const locked=await db.query<FundingRow>(`SELECT * FROM funding_requests WHERE id=$1::uuid AND user_id=$2::uuid FOR UPDATE`,[input.requestId,input.userId]);
   const row=locked.rows[0]; if(!row) throw new ApiError(404,"not_found","Funding request not found.");
-  if(row.status==="pending_receipt" && row.quote_expires_at && row.quote_expires_at.getTime()<=Date.now()) {
+  if(row.status==="pending_receipt" && row.receipt_expires_at && row.receipt_expires_at.getTime()<=Date.now()) {
     throw new ApiError(409,"funding_request_expired","This funding request expired because no receipt was submitted within 5 minutes. Start a new funding request.");
   }
   if(!["pending_receipt","correction_needed"].includes(row.status)) throw new ApiError(409,"invalid_state","This request is not waiting for receipt evidence.");
