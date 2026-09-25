@@ -783,6 +783,7 @@ export type ApiCardRequest = {
   email: string;
   dateOfBirth: string | null;
   status: "pending_review" | "approved" | "correction_needed" | "issuing" | "issue_failed" | "needs_reconciliation" | "issued" | "rejected" | "cancelled";
+  origin: "customer" | "onboarding" | "admin_direct";
   adminNote: string | null;
   providerCardId: string | null;
   createdAt: string;
