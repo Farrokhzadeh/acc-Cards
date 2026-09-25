@@ -60,3 +60,30 @@ test("existing client drawer links to the full page and no longer embeds the ful
 test("customer workspace does not surface raw provider card identifiers", () => {
   assert.doesNotMatch(workspacePage, /Provider card:/);
 });
+
+
+test("customer page returns to the explicit Clients dashboard view", () => {
+  assert.match(workspacePage, /href="\/\?view=clients"/);
+  assert.match(dashboard, /searchParams\.get\("view"\)/);
+  assert.match(dashboard, /window\.addEventListener\("hashchange"/);
+});
+
+test("request rows expose their unified payment receipts without leaving the customer page", () => {
+  assert.match(workspacePage, /paymentByRequest/);
+  assert.match(workspacePage, /request\.payment\?\.receipt/);
+  assert.match(workspacePage, /customerPaymentReceiptUrl\(request\.payment!\.id\)/);
+  assert.match(workspacePage, /unlinkedReceiptPayments/);
+  assert.match(workspacePage, /First-card payment receipt/);
+});
+
+test("support conversation keeps the composer visible and scrolls messages independently", () => {
+  assert.match(workspacePage, /supportScrollRef/);
+  assert.match(workspacePage, /requestAnimationFrame/);
+  assert.match(workspacePage, /min-h-0 flex-1 space-y-3 overflow-y-auto/);
+  assert.match(workspacePage, /shrink-0 space-y-2 border-t bg-white/);
+});
+
+test("customer workspace expires and hides stale unpaid funding requests", () => {
+  assert.match(service, /expireStaleFundingRequests\(userId\)/);
+  assert.match(service, /Expired automatically after 5 minutes without a receipt/);
+});
