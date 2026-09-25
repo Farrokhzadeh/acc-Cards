@@ -32,7 +32,7 @@ test("customer workspace stays scoped to one Telegram customer while exposing ad
 
 test("customer page includes the planned workspace sections and unified financial activity", () => {
   for (const section of ["Overview", "Cards", "Financial activity", "Requests", "KYC", "Support", "Admin activity"]) {
-    assert.ok(workspacePage.includes(section), \`missing section: \${section}\`);
+    assert.ok(workspacePage.includes(section), "missing section: " + section);
   }
   assert.match(workspacePage, /fetchClientPayments/);
   assert.match(workspacePage, /workspace\?\.transactions/);
