@@ -10,7 +10,7 @@ export async function GET(request: Request, context: { params: Promise<{ key: st
     await requireAdmin(request, "bot_texts.read");
     const { key } = await context.params;
     const image = await getBotTextImage(decodeURIComponent(key));
-    return new Response(image.bytes, {
+    return new Response(new Uint8Array(image.bytes), {
       headers: {
         "content-type": image.mimeType,
         "content-disposition": `inline; filename*=UTF-8''${encodeURIComponent(image.filename)}`,
