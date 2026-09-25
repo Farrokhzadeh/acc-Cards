@@ -1075,7 +1075,7 @@ async function handleFundingRequestText(client: TelegramClient, user: BotUser, c
     const cents = dollarsToCents(text);
     const policy = await getFundingPolicy();
     if (cents == null || cents < policy.minimumUsdCents) {
-      await client.sendMessage({ chatId, text: `Enter a valid USD amount of at least <b>${formatUsdCents(String(policy.minimumUsdCents))}</b>, for example <code>50</code> or <code>75.25</code>.` });
+      await client.sendMessage({ chatId, text: render(BOT.fundingAmountInvalid, user.lang, { minimum: formatUsdCents(String(policy.minimumUsdCents)) }) });
       return true;
     }
     draft.amountUsdCents = cents;
@@ -1104,7 +1104,7 @@ async function handleFundingReceiptMedia(client: TelegramClient, user: BotUser, 
     return true;
   }
   if (document?.mime_type && !["application/pdf","image/jpeg","image/png","image/webp"].includes(document.mime_type)) {
-    await client.sendMessage({ chatId, text: "That document type is not accepted. Upload a PDF, JPEG, PNG, or WebP receipt." });
+    await client.sendMessage({ chatId, text: pick(BOT.invalidReceiptType, user.lang) });
     return true;
   }
   const attached = await attachTelegramReceipt({
@@ -1116,7 +1116,7 @@ async function handleFundingReceiptMedia(client: TelegramClient, user: BotUser, 
     declaredMimeType: document?.mime_type ?? "image/jpeg",
   });
   await getPool().query(`DELETE FROM telegram_bot_states WHERE user_id=$1::uuid`,[user.id]);
-  await client.sendMessage({ chatId, text: `Receipt received for <b>${escapeHtml(attached.request.reference)}</b>. The request is now awaiting admin review. No card funding has been executed.\n${pick(FLOW.waitPayment, user.lang)}` });
+  await client.sendMessage({ chatId, text: `${render(BOT.receiptReceived, user.lang, { reference: escapeHtml(attached.request.reference) })}\n${pick(FLOW.waitPayment, user.lang)}` });
   return true;
 }
 
