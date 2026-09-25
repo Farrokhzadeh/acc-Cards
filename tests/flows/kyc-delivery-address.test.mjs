@@ -23,7 +23,7 @@ test("KYC schema stores a structured card-delivery address and extends the bot s
 });
 
 test("Telegram explains why the address is collected and requires it before KYC submission", () => {
-  assert.match(messages, /home\/card-delivery address/);
+  assert.match(messages, /Home\/card-delivery address/);
   assert.match(messages, /send your card to you/);
   assert.match(messages, /آدرس منزل/);
   assert.match(bot, /askDeliveryCountry/);
