@@ -55,3 +55,8 @@ test("existing client drawer links to the full page and no longer embeds the ful
   assert.match(dashboard, /\/clients\//);
   assert.doesNotMatch(dashboard, /ClientFinancialHistorySection/);
 });
+
+
+test("customer workspace does not surface raw provider card identifiers", () => {
+  assert.doesNotMatch(workspacePage, /Provider card:/);
+});
