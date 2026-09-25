@@ -858,6 +858,7 @@ export type ApiFundingRequest = {
   providerFeeFixedUsdCents: string;
   serviceFeeBasisPoints: number;
   quoteExpiresAt: string | null;
+  receiptExpiresAt: string | null;
   status: "pending_receipt" | "pending_review" | "correction_needed" | "accepted" | "funding" | "funding_failed" | "needs_reconciliation" | "completed" | "rejected" | "cancelled";
   adminNote: string | null;
   reviewedBy: string | null;
