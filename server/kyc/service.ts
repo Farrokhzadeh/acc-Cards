@@ -194,12 +194,12 @@ export async function listKycSubmissions(page: {
     values.push(`%${page.search}%`);
     const i = values.length;
     where.push(
-      `(k.full_name ILIKE ${i} OR k.country ILIKE ${i} OR k.national_id ILIKE ${i} OR k.phone ILIKE ${i}
-        OR COALESCE(k.delivery_country,'') ILIKE ${i} OR COALESCE(k.delivery_province,'') ILIKE ${i}
-        OR COALESCE(k.delivery_city,'') ILIKE ${i} OR COALESCE(k.delivery_address_line,'') ILIKE ${i}
-        OR COALESCE(k.delivery_postal_code,'') ILIKE ${i}
-        OR COALESCE(u.display_name, '') ILIKE ${i} OR COALESCE(u.username, '') ILIKE ${i}
-        OR u.telegram_user_id::text ILIKE ${i})`,
+      `(k.full_name ILIKE $${i} OR k.country ILIKE $${i} OR k.national_id ILIKE $${i} OR k.phone ILIKE $${i}
+        OR COALESCE(k.delivery_country,'') ILIKE $${i} OR COALESCE(k.delivery_province,'') ILIKE $${i}
+        OR COALESCE(k.delivery_city,'') ILIKE $${i} OR COALESCE(k.delivery_address_line,'') ILIKE $${i}
+        OR COALESCE(k.delivery_postal_code,'') ILIKE $${i}
+        OR COALESCE(u.display_name, '') ILIKE $${i} OR COALESCE(u.username, '') ILIKE $${i}
+        OR u.telegram_user_id::text ILIKE $${i})`,
     );
   }
   if (page.cursor) {
