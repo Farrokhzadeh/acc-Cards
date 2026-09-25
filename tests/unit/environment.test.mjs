@@ -181,3 +181,21 @@ test("deployment templates expose the required live-write acknowledgment", () =>
   assert.match(deployGuide, /LIVE_PROVIDER_WRITE_CONFIRMATION=ACCABAD_LIVE_WRITES_ENABLED/);
   assert.match(deployGuide, /502 immediately after enabling provider writes/);
 });
+
+test("easy setup exposes optional mailbox OAuth credentials and the deploy guide explains per-account connections", () => {
+  assert.match(setupScript, /^MICROSOFT_OAUTH_CLIENT_ID=$/m);
+  assert.match(setupScript, /^MICROSOFT_OAUTH_CLIENT_SECRET=$/m);
+  assert.match(setupScript, /^GOOGLE_OAUTH_CLIENT_ID=$/m);
+  assert.match(setupScript, /^GOOGLE_OAUTH_CLIENT_SECRET=$/m);
+  assert.match(deployGuide, /one OAuth application per provider for the whole installation/);
+  assert.match(deployGuide, /\/api\/v1\/email\/outlook\/callback/);
+  assert.match(deployGuide, /\/api\/v1\/email\/gmail\/callback/);
+  assert.match(deployGuide, /stores its own encrypted refresh token/);
+});
+
+test("deployment guide documents the five minute customer funding receipt window and provider funding step", () => {
+  assert.match(deployGuide, /customer has 5 minutes to upload the payment receipt/);
+  assert.match(deployGuide, /Click Fund card/);
+  assert.match(deployGuide, /single-attempt \(no auto-retry\)/);
+  assert.match(deployGuide, /reconciliation/);
+});
