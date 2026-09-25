@@ -20,8 +20,8 @@ export const KYC = {
     "⏳ درخواست احراز هویت شما در حال بررسی است. پس از تأیید مدیر به شما اطلاع می‌دهیم.",
   ),
   invite: m(
-    "🪪 <b>Identity verification (KYC)</b>\nTo verify, please have these ready:\n• Full legal name (as on ID)\n• Date of birth (Shamsi, e.g. 1374-02-03)\n• Country of residence\n• National ID / passport number\n• Phone number (with country code)\n• A clear photo of your ID (passport or national card)\n\n⏱ Takes about a minute. Your information is encrypted and used only for verification.",
-    "🪪 <b>احراز هویت</b>\nبرای احراز، این موارد را آماده داشته باشید:\n• نام و نام خانوادگی (مانند مدرک)\n• تاریخ تولد (شمسی، مثلاً 1374-02-03)\n• کشور محل سکونت\n• کد ملی / شماره گذرنامه\n• شماره تلفن با کد کشور\n• عکس واضح از مدرک (گذرنامه یا کارت ملی)\n\n⏱ حدود یک دقیقه. اطلاعات شما رمزنگاری شده و فقط برای احراز استفاده می‌شود.",
+    "🪪 <b>Identity verification (KYC)</b>\nTo verify, please have these ready:\n• Full legal name (as on ID)\n• Date of birth (Shamsi, e.g. 1374-02-03)\n• Country of residence\n• National ID / passport number\n• Phone number (with country code)\n• Home/card-delivery address\n• A clear photo of your ID (passport or national card)\n\n📦 We collect your home address so your card can be sent to you.\n⏱ Takes about a minute. Your information is encrypted and used only for verification and card delivery.",
+    "🪪 <b>احراز هویت</b>\nبرای احراز، این موارد را آماده داشته باشید:\n• نام و نام خانوادگی (مانند مدرک)\n• تاریخ تولد (شمسی، مثلاً 1374-02-03)\n• کشور محل سکونت\n• کد ملی / شماره گذرنامه\n• شماره تلفن با کد کشور\n• آدرس منزل / تحویل کارت\n• عکس واضح از مدرک (گذرنامه یا کارت ملی)\n\n📦 آدرس منزل برای ارسال کارت به شما دریافت می‌شود.\n⏱ حدود یک دقیقه. اطلاعات شما رمزنگاری شده و فقط برای احراز هویت و ارسال کارت استفاده می‌شود.",
   ),
   startKyc: m("✅ Start KYC", "✅ شروع احراز هویت"),
   cancelBtn: m("Cancel", "انصراف"),
