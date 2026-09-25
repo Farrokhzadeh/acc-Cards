@@ -1699,20 +1699,33 @@ export default function DashboardApp() {
 
   useEffect(() => {
     const valid: View[] = ["overview", "accounts", "clients", "requests", "inbox", "bot-texts", "operations", "settings"];
-    const applyHash = () => {
-      const hash = window.location.hash.replace(/^#/, "") as View;
-      if (valid.includes(hash)) setView(hash);
+    const applyNavigationState = () => {
+      const url = new URL(window.location.href);
+      const requestedView = url.searchParams.get("view") as View | null;
+      const hashView = url.hash.replace(/^#/, "") as View;
+      if (requestedView && valid.includes(requestedView)) {
+        setView(requestedView);
+        return;
+      }
+      if (valid.includes(hashView)) setView(hashView);
     };
-    applyHash();
-    window.addEventListener("popstate", applyHash);
-    return () => window.removeEventListener("popstate", applyHash);
+    applyNavigationState();
+    window.addEventListener("popstate", applyNavigationState);
+    window.addEventListener("hashchange", applyNavigationState);
+    return () => {
+      window.removeEventListener("popstate", applyNavigationState);
+      window.removeEventListener("hashchange", applyNavigationState);
+    };
   }, []);
 
   const changeView = (nextView: View) => {
     setView(nextView);
     setSearch("");
     if (typeof window !== "undefined" && window.location.hash.replace(/^#/, "") !== nextView) {
-      window.history.pushState({ view: nextView }, "", `#${nextView}`);
+      const url = new URL(window.location.href);
+      url.searchParams.delete("view");
+      url.hash = nextView;
+      window.history.pushState({ view: nextView }, "", `${url.pathname}${url.search}${url.hash}`);
     }
   };
 
