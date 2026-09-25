@@ -25,6 +25,7 @@ type IssueRequestRow = {
   date_of_birth: string | Date | null;
   status: string;
   provider_card_id: string | null;
+  origin: "customer" | "onboarding" | "admin_direct";
   issuance_started_at: Date | null;
   last_issue_operation_id: string | null;
 };
@@ -92,13 +93,14 @@ async function event(db: DatabaseQueryable, args: {
 }
 
 async function notify(db: DatabaseQueryable, requestId: string, status: string) {
-  const onboarding = await db.query<{ onboarding: boolean }>(
-    `SELECT EXISTS(
-       SELECT 1 FROM telegram_users WHERE onboarding_card_request_id=$1::uuid
-     ) AS onboarding`,
+  const request = await db.query<{ origin: string; onboarding: boolean }>(
+    `SELECT cr.origin,
+            EXISTS(SELECT 1 FROM telegram_users WHERE onboarding_card_request_id=cr.id) AS onboarding
+       FROM card_requests cr
+      WHERE cr.id=$1::uuid`,
     [requestId],
   );
-  if (onboarding.rows[0]?.onboarding) return;
+  if (request.rows[0]?.origin === "admin_direct" || request.rows[0]?.onboarding) return;
   await db.query(
     `INSERT INTO outbox_events(topic,aggregate_type,aggregate_id,event_type,payload,status,available_at)
      VALUES('telegram','card_request',$1::uuid,'card_request.status_changed',$2::jsonb,'pending',now())`,
@@ -171,6 +173,7 @@ async function loadAccountForIssue(db: DatabaseQueryable, row: IssueRequestRow) 
 }
 
 async function assertAcceptedPaymentForIssuance(db: DatabaseQueryable, row: IssueRequestRow) {
+  if (row.origin === "admin_direct") return null;
   const onboarding = await db.query<{ onboarding: boolean }>(
     `SELECT EXISTS(
        SELECT 1 FROM telegram_users
@@ -378,7 +381,9 @@ export async function attachExistingCardToRequest(
     if (!row.selected_account_id) {
       throw new ApiError(409, "account_required", "Approve the request with an internal issuing account before attaching a card.");
     }
-    await assertAcceptedPaymentForCardRequest(db, row.id);
+    if (row.origin !== "admin_direct") {
+      await assertAcceptedPaymentForCardRequest(db, row.id);
+    }
 
     const ownership = await db.query<{ ok: boolean }>(
       `SELECT true AS ok
