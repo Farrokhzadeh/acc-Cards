@@ -197,7 +197,7 @@ test("first-card configuration validates BINs early and does not retroactively a
   assert.doesNotMatch(dashboard, /htmlFor="onboarding-bin"/);
   assert.match(dashboard, /Customers never choose a BIN/);
   assert.match(dashboard, /Minimum existing-card top-up/);
-  assert.match(dashboard, /Minimum first-card purchase/);
+  assert.match(dashboard, /Minimum card purchase/);
 });
 
 test("first-card creation requires an explicit crypto wallet confirmation", () => {
