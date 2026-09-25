@@ -467,7 +467,6 @@ export default function ClientWorkspacePage({ clientId }: { clientId: string }) 
                     <p><span className="text-[#9692a3]">BIN:</span> {card.bin ?? "—"}</p>
                     <p><span className="text-[#9692a3]">Cardholder:</span> {card.cardholderName ?? "—"}</p>
                     <p><span className="text-[#9692a3]">Card email:</span> {card.cardEmail ?? "—"}</p>
-                    <p className="break-all text-xs text-[#777287]">Provider card: {card.providerCardId ?? "not linked"}</p>
                   </CardContent>
                 </Card>
               ))}
