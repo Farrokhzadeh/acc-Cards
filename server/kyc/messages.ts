@@ -273,6 +273,14 @@ export const BOT = {
   fundingClientPays: m("Client pays", "مبلغ پرداختی"),
   unavailable: m("Unavailable", "ناموجود"),
   stored: m("stored", "ذخیره شده"),
+  firstCardRate: m("Locked rate: <b>{rate}</b> rial/USD\nPay exactly: <b>{rial}</b>", "نرخ ثبت‌شده: <b>{rate}</b> ریال برای هر دلار\nمبلغ دقیق قابل پرداخت: <b>{rial}</b>"),
+  requestCardStart: m("<b>🆕 Request a new card</b>\nEnter the initial USD amount you want on the new card. Minimum: <b>{minimum}</b>.\n\nOur team will handle the card setup after reviewing your request.", "<b>🆕 درخواست کارت جدید</b>\nمبلغ اولیه‌ای که می‌خواهید روی کارت جدید باشد را به دلار وارد کنید. حداقل: <b>{minimum}</b>.\n\nانتخاب نوع صدور کارت توسط تیم ما انجام می‌شود."),
+  cardRequestReview: m("<b>Review card request</b>\nInitial amount: <b>{amount}</b>\nEmail: <code>{email}</code>\n\nAfter submission, an administrator will review the request.", "<b>بررسی درخواست کارت</b>\nمبلغ اولیه: <b>{amount}</b>\nایمیل: <code>{email}</code>\n\nپس از ثبت، مدیر درخواست را بررسی می‌کند."),
+  cardRequestPayment: m("Card request <b>{reference}</b> was created.\nUSD basis: <b>{usd}</b>\nLocked rate: {rate} rial/USD\nPay exactly: <b>{rial}</b>\nPayment card: <code>{card}</code>\nHolder: <b>{holder}</b>\n\nAfter paying, upload the receipt here. No card will be approved or issued before admin verification.", "درخواست <b>{reference}</b> ثبت شد.\nمبلغ: <b>{usd}</b>\nنرخ ثبت‌شده: {rate} ریال/دلار\nمبلغ دقیق قابل پرداخت: <b>{rial}</b>\nکارت پرداخت: <code>{card}</code>\nبه نام: <b>{holder}</b>\n\nبعد از پرداخت، رسید را همینجا ارسال کنید. تا تایید مدیر هیچ کارتی ساخته نمی‌شود."),
+  cardRequestDetail: m("<b>{reference}</b>\nType: <b>{type}</b>\nStatus: <b>{status}</b>\nInitial amount: <b>{amount}</b>\nEmail: <code>{email}</code>{payment}{adminNote}\n\n<b>Timeline</b>\n{timeline}", "<b>{reference}</b>\nنوع: <b>{type}</b>\nوضعیت: <b>{status}</b>\nمبلغ اولیه: <b>{amount}</b>\nایمیل: <code>{email}</code>{payment}{adminNote}\n\n<b>تاریخچه</b>\n{timeline}"),
+  cardRequestPaymentDetail: m("\nPayment: <b>{status}</b>\nRate: {rate} rial/USD\nPayable: <b>{rial}</b>", "\nپرداخت: <b>{status}</b>\nنرخ: {rate} ریال/دلار\nمبلغ قابل پرداخت: <b>{rial}</b>"),
+  adminNoteLine: m("\nAdmin note: {note}", "\nیادداشت مدیر: {note}"),
+  fundingDetail: m("<b>{reference}</b>\nStatus: <b>{status}</b>\nCard: •{last4}\nCard amount: <b>{amount}</b>\nTotal USD basis: {total}\nClient pays: {rial}{adminNote}\nReceipt: {receipt}\n\n<b>Timeline</b>\n{timeline}", "<b>{reference}</b>\nوضعیت: <b>{status}</b>\nکارت: •{last4}\nمبلغ کارت: <b>{amount}</b>\nمبنای کل دلاری: {total}\nمبلغ پرداختی: {rial}{adminNote}\nرسید: {receipt}\n\n<b>تاریخچه</b>\n{timeline}"),
 };
 
 export type BotTextCatalogEntry = {
