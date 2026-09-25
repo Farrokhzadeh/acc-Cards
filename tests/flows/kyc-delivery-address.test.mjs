@@ -35,6 +35,8 @@ test("Telegram explains why the address is collected and requires it before KYC 
   assert.match(bot, /deliveryPostalCode/);
   assert.match(bot, /kyc_incomplete/);
   assert.match(bot, /Card delivery address/);
+  assert.match(bot, /isSensitiveKycFlow/);
+  assert.match(bot, /!isSensitiveKycFlow/);
 });
 
 test("KYC service persists and returns delivery address fields", () => {
