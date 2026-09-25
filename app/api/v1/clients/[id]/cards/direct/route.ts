@@ -23,7 +23,7 @@ const schema = z.object({
 
 export async function GET(request: Request, context: { params: Promise<{ id: string }> }) {
   return apiRoute(request, async () => {
-    await requireAdmin(request, "cards.read");
+    await requireAdmin(request, "cards.create_direct");
     const { id: rawId } = await context.params;
     const clientId = requireUuid(rawId, "client id");
     const [accounts, bins, profile] = await Promise.all([
