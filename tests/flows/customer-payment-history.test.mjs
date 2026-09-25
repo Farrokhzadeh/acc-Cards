@@ -9,6 +9,7 @@ const messages = await readFile(new URL("../../server/kyc/messages.ts", import.m
 const clientPaymentsRoute = await readFile(new URL("../../app/api/v1/clients/[id]/payments/route.ts", import.meta.url), "utf8");
 const adminApi = await readFile(new URL("../../lib/admin-api.ts", import.meta.url), "utf8");
 const dashboard = await readFile(new URL("../../app/dashboard-app.tsx", import.meta.url), "utf8");
+const workspacePage = await readFile(new URL("../../app/clients/[id]/client-workspace-page.tsx", import.meta.url), "utf8");
 
 test("customer payment history is sourced from the unified ledger with request, card, rate, and receipt metadata", () => {
   assert.match(payments, /listCustomerPaymentsForUser/);
@@ -50,8 +51,9 @@ test("admin client detail exposes the same payment ledger without raw receipt st
   assert.match(clientPaymentsRoute, /listCustomerPaymentsForAdmin/);
   assert.match(adminApi, /fetchClientPayments/);
   assert.match(adminApi, /ApiCustomerPaymentHistory/);
-  assert.match(dashboard, /ClientFinancialHistorySection/);
-  assert.match(dashboard, /Financial history/);
-  assert.match(dashboard, /customerPaymentReceiptUrl/);
+  assert.doesNotMatch(dashboard, /ClientFinancialHistorySection/);
+  assert.match(workspacePage, /Financial activity/);
+  assert.match(workspacePage, /fetchClientPayments/);
+  assert.match(workspacePage, /customerPaymentReceiptUrl/);
   assert.doesNotMatch(adminApi, /objectKey/);
 });
