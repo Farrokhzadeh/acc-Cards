@@ -1109,17 +1109,26 @@ async function handleFundingReceiptMedia(client: TelegramClient, user: BotUser, 
     await client.sendMessage({ chatId, text: pick(BOT.invalidReceiptType, user.lang) });
     return true;
   }
-  const attached = await attachTelegramReceipt({
-    userId: user.id,
-    requestId: state.payload.fundingRequestId,
-    telegramFileId: selected.file_id,
-    telegramFileUniqueId: selected.file_unique_id,
-    originalFilename: document?.file_name ?? `telegram-receipt-${message.message_id}.jpg`,
-    declaredMimeType: document?.mime_type ?? "image/jpeg",
-  });
-  await getPool().query(`DELETE FROM telegram_bot_states WHERE user_id=$1::uuid`,[user.id]);
-  await client.sendMessage({ chatId, text: `${render(BOT.receiptReceived, user.lang, { reference: escapeHtml(attached.request.reference) })}\n${pick(FLOW.waitPayment, user.lang)}` });
-  return true;
+  try {
+    const attached = await attachTelegramReceipt({
+      userId: user.id,
+      requestId: state.payload.fundingRequestId,
+      telegramFileId: selected.file_id,
+      telegramFileUniqueId: selected.file_unique_id,
+      originalFilename: document?.file_name ?? `telegram-receipt-${message.message_id}.jpg`,
+      declaredMimeType: document?.mime_type ?? "image/jpeg",
+    });
+    await getPool().query(`DELETE FROM telegram_bot_states WHERE user_id=$1::uuid`,[user.id]);
+    await client.sendMessage({ chatId, text: `${render(BOT.receiptReceived, user.lang, { reference: escapeHtml(attached.request.reference) })}\n${pick(FLOW.waitPayment, user.lang)}` });
+    return true;
+  } catch (error) {
+    if (error instanceof ApiError && error.code === "funding_request_expired") {
+      await getPool().query(`DELETE FROM telegram_bot_states WHERE user_id=$1::uuid`,[user.id]);
+      await client.sendMessage({ chatId, text: escapeHtml(error.message) });
+      return true;
+    }
+    throw error;
+  }
 }
 
 async function sendFundingRequestDetail(client: TelegramClient, user: BotUser, chatId: number, requestId: string) {
@@ -1431,7 +1440,7 @@ async function handleCallback(client: TelegramClient, callback: z.infer<typeof c
             expiresAt: draft.quoteExpiresAt,
           },
         });
-        await setBotState(user.id, "funding_request_receipt", { fundingRequestId: created.id }, 5);
+        await setBotState(user.id, "funding_request_receipt", { fundingRequestId: created.id }, 60);
         await client.sendMessage({ chatId, text: render(BOT.fundingCreated, user.lang, { reference: escapeHtml(created.reference) }) });
         break;
       }
