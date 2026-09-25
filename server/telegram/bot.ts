@@ -5,7 +5,7 @@ import { ApiError } from "@/server/http/api";
 import { randomToken, sha256Hex } from "@/server/security/crypto";
 import { TelegramClient, type TelegramInlineKeyboard } from "@/server/providers/telegram/client";
 import { getLiveKripicardCardDetailsForTelegram, listStoredCardTransactions, setKripicardCardFrozenStateForTelegram } from "@/server/providers/kripicard/service";
-import { cancelTelegramFundingRequest, createTelegramFundingRequest, getFundingPolicy, getTelegramFundingRequest, previewFundingQuote } from "@/server/funding/service";
+import { cancelTelegramFundingRequest, createTelegramFundingRequest, expireStaleFundingRequests, getFundingPolicy, getTelegramFundingRequest, previewFundingQuote } from "@/server/funding/service";
 import { cancelTelegramCardRequest, createTelegramCardRequest, getCardRequestPolicy, getTelegramCardRequest } from "@/server/card-requests/service";
 import { attachTelegramReceipt } from "@/server/funding/receipts";
 import { createFirstCardPayment, getCustomerPaymentHistoryDetail, getPaymentForFundingRequest, listCustomerPaymentsForUser } from "@/server/payments/service";
@@ -687,6 +687,7 @@ function customerPaymentPurposeIcon(purpose: "first_card" | "additional_card" | 
 }
 
 async function sendRequests(client: TelegramClient, user: BotUser, chatId: number) {
+  await expireStaleFundingRequests(user.id);
   const [payments, funding, cards] = await Promise.all([
     listCustomerPaymentsForUser(user.id, 20),
     getPool().query<{ id: string; reference: string; status: string; submitted_at: Date }>(
@@ -1430,7 +1431,7 @@ async function handleCallback(client: TelegramClient, callback: z.infer<typeof c
             expiresAt: draft.quoteExpiresAt,
           },
         });
-        await setBotState(user.id, "funding_request_receipt", { fundingRequestId: created.id }, 60);
+        await setBotState(user.id, "funding_request_receipt", { fundingRequestId: created.id }, 5);
         await client.sendMessage({ chatId, text: render(BOT.fundingCreated, user.lang, { reference: escapeHtml(created.reference) }) });
         break;
       }
